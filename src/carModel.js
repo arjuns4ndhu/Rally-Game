@@ -12,35 +12,35 @@ const PROFILES = {
     body: [[-1.84, 0.3], [-1.86, 0.78], [-1.5, 0.86], [-0.55, 0.92], [0.45, 0.84], [1.6, 0.6], [1.86, 0.44], [1.82, 0.3]],
     glass: [[-0.62, 0.91], [-0.36, 1.1], [0.0, 1.13], [0.58, 0.83]],
     width: 1.76, hood: [0.65, 1.7],
-    wing: 'roof', lamps: 'pod', flares: true, louvres: true,
+    wing: 'roof', lamps: 'pod', flares: true, louvres: true, round: 3, mirrors: 'stalk',
   },
   // 60s mini: a small upright box on tiny wheels, contrast roof, grille lamps.
   mini: {
     body: [[-1.5, 0.27], [-1.53, 0.84], [-1.45, 0.9], [0.75, 0.9], [1.35, 0.82], [1.52, 0.66], [1.53, 0.27]],
     glass: [[-1.42, 0.89], [-1.36, 1.3], [0.4, 1.32], [0.66, 0.89]],
     width: 1.42, hood: [0.78, 1.4],
-    wing: 'none', lamps: 'grille', flares: true, roofContrast: true, roundLights: true,
+    wing: 'none', lamps: 'grille', flares: true, roofContrast: true, roundLights: true, round: 1, mirrors: 'door', grille: 'mini',
   },
   // 80s turbo coupe: boxy three-box shape with big blistered arches.
   quattro: {
     body: [[-2.2, 0.32], [-2.22, 0.84], [-2.05, 0.94], [-1.2, 0.96], [1.15, 0.9], [2.1, 0.82], [2.22, 0.56], [2.2, 0.32]],
     glass: [[-1.3, 0.95], [-0.75, 1.33], [0.45, 1.36], [1.1, 0.9]],
     width: 1.74, hood: [1.2, 2.05],
-    wing: 'lip', lamps: 'bar', flares: true, bigFlares: true,
+    wing: 'lip', lamps: 'bar', flares: true, bigFlares: true, round: 1, mirrors: 'door', grille: 'wide',
   },
   // 00s world-rally hatch: tall five-door, raked screen, roof-edge wing.
   focus: {
     body: [[-2.05, 0.34], [-2.08, 0.95], [-1.95, 1.0], [0.9, 0.95], [1.85, 0.78], [2.06, 0.55], [2.04, 0.34]],
     glass: [[-1.95, 0.99], [-1.8, 1.42], [0.05, 1.46], [0.85, 0.94]],
     width: 1.8, hood: [0.95, 1.85],
-    wing: 'hatch', lamps: 'pod', flares: true, scoop: true, vent: true, round: true,
+    wing: 'hatch', lamps: 'pod', flares: true, scoop: true, vent: true, round: 3, mirrors: 'door', grille: 'mesh',
   },
   // Rally-raid SUV: tall body on big tyres, roof rack, spare wheels, light bar.
   dakar: {
     body: [[-2.3, 0.5], [-2.35, 1.15], [-2.2, 1.25], [0.95, 1.22], [1.95, 1.05], [2.33, 0.9], [2.35, 0.5]],
     glass: [[-2.15, 1.24], [-1.9, 1.68], [0.2, 1.72], [0.95, 1.21]],
     width: 1.95, hood: [1.0, 1.95],
-    wing: 'none', lamps: 'roof', flares: true, rack: true, skid: true,
+    wing: 'none', lamps: 'roof', flares: true, rack: true, skid: true, round: 2, mirrors: 'door', grille: 'wide', snorkel: true,
   },
 };
 
@@ -68,8 +68,9 @@ function roundOff(pts, passes = 3) {
   return pts;
 }
 
-function extrudeProfile(pts, width, bevel = 0.05, round = false) {
-  pts = round ? roundOff(pts) : resample(pts);
+function extrudeProfile(pts, width, bevel = 0.05, round = 0) {
+  // Rounded outline, then split long edges so the body can take dents.
+  pts = resample(round ? roundOff(pts, round) : pts, 0.25);
   const shape = new THREE.Shape();
   shape.moveTo(pts[0][0], pts[0][1]);
   for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1]);
@@ -198,8 +199,9 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     return top[top.length - 1][1];
   };
 
-  const bodyMesh = new THREE.Mesh(extrudeProfile(bodyPts, W, prof.round ? 0.1 : 0.05, prof.round), paint);
-  const glassMesh = new THREE.Mesh(extrudeProfile(g, W - (prof.round ? 0.3 : 0.18), prof.round ? 0.1 : 0.04, prof.round), glass);
+  const rnd = prof.round || 0;
+  const bodyMesh = new THREE.Mesh(extrudeProfile(bodyPts, W, rnd ? 0.06 + rnd * 0.015 : 0.05, rnd), paint);
+  const glassMesh = new THREE.Mesh(extrudeProfile(g, W - (rnd ? 0.24 + rnd * 0.02 : 0.18), rnd ? 0.08 : 0.04, Math.min(rnd, 2)), glass);
   bodyMesh.castShadow = glassMesh.castShadow = true;
   body.add(bodyMesh, glassMesh);
 
@@ -308,13 +310,59 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
 
   // Box-flared wheel arches and mud flaps.
   if (prof.flares) {
+    // Curved arch flares over each wheel: a paint shell with a dark lip.
+    const fw = prof.bigFlares ? 0.22 : 0.15, ar = WR + 0.1;
+    const archGeo = new THREE.CylinderGeometry(ar, ar, fw, 18, 1, true, 0, Math.PI);
+    archGeo.rotateZ(Math.PI / 2);
+    const lipGeo = new THREE.TorusGeometry(ar, 0.03, 4, 18, Math.PI);
+    lipGeo.rotateY(Math.PI / 2);
+    const archMat = paint.clone(); archMat.side = THREE.DoubleSide; mats.push(archMat);
+    archMat.userData.followPaint = true;
     for (const side of [-1, 1]) for (const wz of [spec.a, -spec.b]) {
-      const fw = prof.bigFlares ? 0.2 : 0.13, fl = WR * 3.0;
-      add(new THREE.BoxGeometry(fw, 0.2, fl), paint, side * (W / 2 + fw / 2 - 0.04), WR + 0.3, wz, true);
-      add(new THREE.BoxGeometry(fw + 0.01, 0.05, fl + 0.02), dark, side * (W / 2 + fw / 2 - 0.035), WR + 0.18, wz);
+      const a = add(archGeo, archMat, side * (W / 2 + fw / 2 - 0.05), WR, wz, true);
+      a.userData.arch = true;
+      add(lipGeo, dark, side * (W / 2 + fw - 0.04), WR, wz);
     }
   }
-  for (const side of [-1, 1]) for (const wz of [spec.a + 0.42, -spec.b - 0.45]) {
+  // Door mirrors.
+  if (prof.mirrors) {
+    const mz = g[3][0] - 0.12, my = g[3][1] + 0.12;
+    for (const side of [-1, 1]) {
+      add(new THREE.BoxGeometry(0.06, 0.03, 0.04), dark, side * (W / 2 + 0.03), my - 0.02, mz);
+      add(new THREE.BoxGeometry(0.12, 0.1, 0.07), paint, side * (W / 2 + 0.1), my + 0.02, mz - 0.02);
+    }
+  }
+  // Pillars between the side windows and a door shut line.
+  {
+    const pz = (g[1][0] + g[2][0]) / 2 + (g[2][0] - g[1][0]) * 0.1;
+    const py0 = topY(pz) + 0.02, py1 = Math.max(g[1][1], g[2][1]) - 0.02;
+    for (const side of [-1, 1]) {
+      add(new THREE.BoxGeometry(0.02, Math.max(0.1, py1 - py0), 0.09), paint, side * ((W - (rnd ? 0.24 + rnd * 0.02 : 0.18)) / 2 + 0.005), (py0 + py1) / 2, pz);
+      add(new THREE.BoxGeometry(0.012, 0.42, 0.015), dark, side * (W / 2 + 0.004), 0.58, g[3][0] - 0.05);
+      add(new THREE.BoxGeometry(0.012, 0.42, 0.015), dark, side * (W / 2 + 0.004), 0.58, pz - 0.05);
+    }
+  }
+  // Front grille.
+  if (prof.grille) {
+    const gw = prof.grille === 'mini' ? 0.5 : prof.grille === 'mesh' ? 0.8 : W - 0.7;
+    add(new THREE.BoxGeometry(gw, 0.14, 0.03), dark, 0, topY(front - 0.1) - 0.2, front + 0.03);
+    for (let n = 0; n < 3; n++) add(new THREE.BoxGeometry(gw - 0.04, 0.012, 0.035), trim, 0, topY(front - 0.1) - 0.25 + n * 0.045, front + 0.035);
+  }
+  // Exhaust tailpipe(s).
+  {
+    const pipe = new THREE.CylinderGeometry(0.045, 0.045, 0.16, 10);
+    pipe.rotateX(Math.PI / 2);
+    const chrome = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.8, roughness: 0.3 });
+    mats.push(chrome);
+    const n = spec.cyl >= 6 ? 2 : 1;
+    for (let i = 0; i < n; i++) add(pipe, chrome, (n === 2 ? (i ? 0.35 : -0.35) : 0.45), bodyPts[0][1] + 0.02, rear - 0.04);
+  }
+  // Rally-raid snorkel up the A-pillar.
+  if (prof.snorkel) {
+    const sz = g[3][0] - 0.1;
+    add(new THREE.CylinderGeometry(0.05, 0.05, Math.max(0.3, g[2][1] - topY(sz)), 8), dark, W / 2 + 0.06, (topY(sz) + g[2][1]) / 2, sz);
+  }
+  for (const side of [-1, 1]) for (const wz of [spec.a - WR - 0.12, -spec.b - WR - 0.12]) {
     add(new THREE.BoxGeometry(0.3, 0.24, 0.02), dark, side * (spec.track / 2), Math.max(0.2, WR - 0.12), wz);
   }
 
@@ -348,8 +396,16 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   add(new THREE.CylinderGeometry(0.01, 0.01, 0.5, 4), dark, 0.4, roofY + 0.25, roofZ - roofLen * 0.3);
 
   // Wheels: pivot (steers) -> spinner (rolls) -> tyre + rim.
-  const tyreGeo = new THREE.CylinderGeometry(WR, WR, WR > 0.38 ? 0.32 : 0.25, 14);
+  // Tyre: a lathed profile with rounded shoulders, chunky tread blocks on top.
+  const tw = WR > 0.38 ? 0.32 : 0.25, hw = tw / 2, rIn = WR * 0.62;
+  const prof2 = [[rIn, -hw], [WR - 0.05, -hw], [WR - 0.01, -hw + 0.03], [WR, -hw + 0.07], [WR, hw - 0.07], [WR - 0.01, hw - 0.03], [WR - 0.05, hw], [rIn, hw]]
+    .map(([r, y]) => new THREE.Vector2(r, y));
+  const tyreGeo = new THREE.LatheGeometry(prof2, 20);
   tyreGeo.rotateZ(Math.PI / 2);
+  // Dark disc filling the middle of the tyre behind the rim.
+  const hubGeo = new THREE.CircleGeometry(rIn + 0.01, 16);
+  hubGeo.rotateY(Math.PI / 2);
+  const darkDS = dark.clone(); darkDS.side = THREE.DoubleSide; mats.push(darkDS);
   const rimMat = new THREE.MeshStandardMaterial({ color: RIM_COLORS[wheelStyle], roughness: 0.4, metalness: 0.5, flatShading: true });
   mats.push(rimMat);
   const wheels = [];
@@ -363,7 +419,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     const spin = new THREE.Group();
     const tyre = new THREE.Mesh(tyreGeo, dark);
     tyre.castShadow = true;
-    spin.add(tyre);
+    spin.add(tyre, new THREE.Mesh(hubGeo, darkDS));
     const rim = buildRim(wheelStyle, rimMat, dark);
     rim.position.x = Math.sign(x) * 0.12;
     rim.scale.setScalar(WR / 0.32);
@@ -387,7 +443,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   const roofH = roofBox.max.y + (prof.rack ? 0.3 : 0);
   const api = {
     root, body, wheels, paint, roofH,
-    setColor(c) { paint.color.set(c); },
+    setColor(c) { paint.color.set(c); for (const m of mats) if (m.userData.followPaint) m.color.set(c); },
     // Purely cosmetic crash damage: push the bodywork in around a point
     // (body space: x right, y up, z forward). `depth` in metres.
     dent(x, y, z, depth) {
@@ -395,9 +451,11 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
       const hit = new THREE.Vector3(x, y, z);
       const push = new THREE.Vector3(-x * 0.8, 0.55 - y, -z).normalize();   // toward the middle
       const inv = new THREE.Matrix4(), p = new THREE.Vector3(), dir = new THREE.Vector3(), v = new THREE.Vector3();
-      const done = new Set();
+      const done = new Set(), users = new Map();
+      for (const m of body.children) if (m.isMesh) users.set(m.geometry, (users.get(m.geometry) || 0) + 1);
       for (const m of body.children) {
-        if (!m.isMesh || done.has(m.geometry)) continue;
+        // Skip parts that share a geometry (arches, pipes): denting one would dent all.
+        if (!m.isMesh || done.has(m.geometry) || users.get(m.geometry) > 1) continue;
         done.add(m.geometry);
         m.updateMatrix();
         inv.copy(m.matrix).invert();
