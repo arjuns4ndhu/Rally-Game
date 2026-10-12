@@ -8,6 +8,7 @@ import { CameraRig } from './camera.js';
 import { Dust } from './particles.js';
 import { AudioEngine } from './audio.js';
 import { Input } from './input.js';
+import { TyreMarks, buildRacingMarks } from './tyremarks.js';
 
 const $ = (id) => document.getElementById(id);
 document.body.classList.add('scanlines');
@@ -28,6 +29,7 @@ const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 2500);
 const world = setupWorld(scene);
 const rig = new CameraRig(camera);
 const dust = new Dust(scene);
+const marks = new TyreMarks(scene);
 const audio = new AudioEngine();
 const input = new Input();
 
@@ -37,6 +39,40 @@ const gravelMat = new THREE.MeshStandardMaterial({ map: gravelTexture(), roughne
 const vergeMat = new THREE.MeshStandardMaterial({ color: 0x6e6340, roughness: 1 });
 scene.add(road.buildRibbon(road.width + 4.5, 0.012, vergeMat, 1 / 10));
 scene.add(road.buildRibbon(road.width, 0.03, gravelMat, 1 / 12));
+road.computeRacingLine();
+// The racing line shows as dark, worn tyre tracks when the assist is on.
+const lineMesh = buildRacingMarks(road);
+lineMesh.visible = false;
+scene.add(lineMesh);
+
+// ---------- Racing line assist ----------
+// A soft, damped spring that nudges the car sideways toward the racing line.
+// It only moves the car's position across the road; steering, throttle and
+// drifting stay fully in the player's hands.
+const ASSIST_LEVELS = { low: 0.5, medium: 1, high: 1.8 };
+const assist = { on: false, level: 'medium' };
+try {
+  const saved = JSON.parse(localStorage.getItem('sideways.assist') || 'null');
+  if (saved && saved.level in ASSIST_LEVELS) Object.assign(assist, { on: !!saved.on, level: saved.level });
+} catch { /* storage unavailable: use defaults */ }
+function saveAssist() {
+  try { localStorage.setItem('sideways.assist', JSON.stringify(assist)); } catch { /* ignore */ }
+}
+function applyLineAssist(q, dt) {
+  if (!assist.on || car.gear < 0) return;
+  const k = ASSIST_LEVELS[assist.level];
+  const lx = q.tz, lz = -q.tx;                       // road "left" unit vector
+  const err = road.racingAt(q) - q.lateral;           // metres to the line (left +)
+  const vLat = car.vx * lx + car.vz * lz;             // sideways speed across the road
+  // Fade in with speed, fade out when well off the road.
+  const fade = Math.min(1, car.speed / 8) * Math.max(0, 1 - Math.max(0, Math.abs(q.lateral) - road.width / 2) / 6);
+  const kp = 1.2 * k;                                 // spring stiffness (1/s^2)
+  let a = (kp * err - 1.6 * Math.sqrt(kp) * vLat) * fade;   // ~0.8 critical damping
+  const cap = 2.4 * k;                                // at most ~0.25 g on Medium
+  a = Math.max(-cap, Math.min(cap, a));
+  car.vx += lx * a * dt;
+  car.vz += lz * a * dt;
+}
 scene.add(buildScenery(road, 1));
 
 // Start/finish style gantry so the loop has a landmark.
@@ -74,6 +110,7 @@ function placeOnRoad(i) {
   car.y = road.py[i];
   roadHint = i;
   dust.clear();
+  marks.cut();
   rig.snap(car);
 }
 
@@ -209,6 +246,18 @@ function resetCar() {
 $('btn-start').addEventListener('click', start);
 $('btn-resume').addEventListener('click', () => setPaused(false));
 $('btn-reset').addEventListener('click', () => { resetCar(); setPaused(false); });
+function setAssist(on, level = assist.level) {
+  assist.on = on; assist.level = level;
+  lineMesh.visible = on;
+  $('opt-assist').checked = on;
+  $('opt-assist-level').value = level;
+  $('hud-assist').hidden = !on;
+  $('hud-assist').textContent = `LINE ASSIST · ${level.toUpperCase()}`;
+  saveAssist();
+}
+setAssist(assist.on, assist.level);
+$('opt-assist').addEventListener('change', (e) => setAssist(e.target.checked));
+$('opt-assist-level').addEventListener('change', (e) => { setAssist(true, e.target.value); e.target.blur(); });
 $('opt-scan').addEventListener('change', (e) => document.body.classList.toggle('scanlines', e.target.checked));
 
 input.on('key', (code, key) => {
@@ -217,6 +266,7 @@ input.on('key', (code, key) => {
   if (!running) { if (code === 'Enter' || code === 'Space') start(); return; }
   if (paused) return;
   if (code === 'KeyC') toast(rig.cycle().toUpperCase() + ' CAM', 800);
+  if (code === 'KeyG') { setAssist(!assist.on); toast(assist.on ? `LINE ASSIST ${assist.level.toUpperCase()}` : 'LINE ASSIST OFF', 1000); }
   if (code === 'KeyR') resetCar();
   const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(code);
   if (n >= 0) setCar(CAR_ORDER[n]);
@@ -281,6 +331,25 @@ function emitDust(dt) {
   }
 }
 
+// ---------- Tyre marks ----------
+// Each wheel leaves a light scuff while it's on the gravel road; sliding
+// wheels mark harder.
+let roadLat = 0, roadLx = 1, roadLz = 0;
+function layMarks() {
+  const s = car.spec;
+  const sn = Math.sin(car.yaw), cs = Math.cos(car.yaw);
+  const y = car.y ?? 0;
+  for (let w = 0; w < 4; w++) {
+    const front = w < 2;
+    const lx = (w % 2 ? -1 : 1) * s.track / 2, lz = front ? s.a : -s.b;
+    const ox = sn * lz + cs * lx, oz = cs * lz - sn * lx;           // offset from car centre
+    const lat = roadLat + ox * roadLx + oz * roadLz;                  // wheel's lateral on the road
+    const on = Math.abs(lat) < road.width / 2 && car.speed > 0.5;
+    const strength = front ? car.frontSlide * 0.6 + car.brake * 0.2 : Math.max(car.rearSlide, car.brake * 0.3);
+    marks.track(w, car.x + ox, y, car.z + oz, on, Math.min(1, strength));
+  }
+}
+
 // ---------- Main loop ----------
 let last = performance.now(), acc = 0;
 function frame(now) {
@@ -297,11 +366,15 @@ function frame(now) {
       const q = road.nearest(car.x, car.z, roadHint);
       roadHint = q.i;
       surface = road.surfaceAt(Math.abs(q.lateral));
+      roadLat = q.lateral; roadLx = q.tz; roadLz = -q.tx;
       car.step(STEP, inp, surface);
+      applyLineAssist(q, STEP);
       car.y = q.y;
       acc -= STEP;
     }
     emitDust(dt);
+    layMarks();
+    marks.flush();
     // Far off the road: put the car back.
     if (road.q.dist > 40) { toast('BACK ON THE ROAD', 1000); resetCar(); }
   }
@@ -323,12 +396,16 @@ function stepSim(seconds, inp) {
     const q = road.nearest(car.x, car.z, roadHint);
     roadHint = q.i;
     surface = road.surfaceAt(Math.abs(q.lateral));
+    roadLat = q.lateral; roadLx = q.tz; roadLz = -q.tx;
     car.step(STEP, inp, surface);
+    applyLineAssist(q, STEP);
     car.y = q.y;
     emitDust(STEP);
+    layMarks();
     dust.update(STEP);
   }
+  marks.flush();
   model.update(car, 0.2);
   rig.snap(car);
 }
-window.__sideways = { car, road, input, TUNE, CARS, start, stepSim, placeOnRoad, get surface() { return surface; } };
+window.__sideways = { renderer, scene, camera, lineMesh, marks, assist, setAssist, car, road, input, TUNE, CARS, start, stepSim, placeOnRoad, get surface() { return surface; } };

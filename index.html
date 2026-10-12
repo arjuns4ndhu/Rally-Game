@@ -22,6 +22,7 @@
   <div class="hud-tl">
     <div class="brand">SIDEWAYS</div>
     <div class="hud-sub"><span id="hud-stage">Test road</span> · <span id="hud-car">Vanta GT</span></div>
+    <div class="hud-chip" id="hud-assist" hidden>LINE ASSIST</div>
   </div>
   <div class="hud-drift" id="hud-drift"><span class="label">DRIFT</span> <span id="hud-drift-val">0°</span></div>
   <div class="hud-br">
@@ -32,7 +33,7 @@
     </div>
   </div>
   <div class="hud-help" id="hud-help">
-    <b>W/S</b> throttle/brake · <b>A/D</b> steer · <b>Space</b> handbrake · <b>C</b> camera · <b>R</b> reset · <b>1–4</b> car · <b>?</b> tuning · <b>Esc</b> pause
+    <b>W/S</b> throttle/brake · <b>A/D</b> steer · <b>Space</b> handbrake · <b>C</b> camera · <b>G</b> line assist · <b>R</b> reset · <b>1–4</b> car · <b>?</b> tuning · <b>Esc</b> pause
   </div>
   <div class="toast" id="toast"></div>
 </div>
@@ -67,6 +68,7 @@
       <li><b>Hold throttle</b> to keep the drift going.</li>
       <li><b>Lift off</b> to rotate more, <b>counter-steer</b> to straighten or flick.</li>
       <li><b>Space</b> handbrake for hairpins.</li>
+      <li><b>G</b> turns on the racing line assist, a gentle pull toward the ideal line.</li>
     </ul>
   </div>
 </div>
@@ -77,6 +79,14 @@
     <h2 class="logo">PAUSED</h2>
     <button id="btn-resume" class="btn btn-primary">Resume</button>
     <button id="btn-reset" class="btn">Reset car</button>
+    <label class="check"><input type="checkbox" id="opt-assist"> Racing line assist</label>
+    <label class="check select">Assist strength
+      <select id="opt-assist-level">
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select>
+    </label>
     <label class="check"><input type="checkbox" id="opt-scan" checked> Scanlines</label>
   </div>
 </div>

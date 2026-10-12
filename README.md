@@ -19,6 +19,7 @@ ES modules need a web server, so opening `index.html` straight from the file sys
 | Steer | A / D or ← / → | ◀ ▶ |
 | Handbrake | Space | HB |
 | Camera (chase / bonnet / far) | C | CAM |
+| Racing line assist on/off (shows the line as dark tyre tracks) | G | pause menu |
 | Reset car | R | RESET |
 | Pause | Esc | II |
 | Tuning panel (dev) | ? | |
@@ -44,6 +45,7 @@ src/track.js      road centreline, nearest-point queries, ribbon mesh
 src/scenery.js    sky, lights, trees, rocks, fences, hills
 src/camera.js     camera rigs
 src/particles.js  dust
+src/tyremarks.js  racing-line tracks + your own tyre marks
 src/audio.js      Web Audio engine / tyre synthesis
 src/input.js      keyboard + touch
 src/rng.js        seeded PRNG + date seeds

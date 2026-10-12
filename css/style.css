@@ -153,3 +153,13 @@ body.touch .hud-br { bottom: auto; top: calc(56px + env(safe-area-inset-top, 0px
 
 .dbg-reset { width: 100%; margin-top: 10px; font-size: 13px; padding: 8px 10px; text-align: center; }
 .dbg-reset:hover, .dbg-reset:focus-visible { transform: none; }
+
+.hud-chip {
+  display: inline-block; margin-top: 6px; padding: 3px 8px; border-radius: 3px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.16em; color: var(--ink); background: var(--accent);
+}
+.check.select { justify-content: space-between; }
+.check select {
+  font-family: var(--font-ui); font-weight: 600; font-size: 14px; color: var(--text);
+  background: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px;
+}

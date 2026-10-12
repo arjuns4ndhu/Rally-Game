@@ -86,6 +86,76 @@ export class Road {
     return q;
   }
 
+  // Racing line as a lateral offset per sample (left positive). Found by
+  // relaxing the line toward the midpoint of its neighbours, which minimises
+  // curvature: it cuts to the inside of corners and runs wide on entry/exit.
+  computeRacingLine(margin = 1.3) {
+    const n = this.n, lim = this.width / 2 - margin;
+    const off = new Float32Array(n), next = new Float32Array(n);
+    const lx = (i) => this.tz[i], lz = (i) => -this.tx[i];
+    for (const [k, iters] of [[12, 220], [5, 160], [2, 80]]) {
+      for (let it = 0; it < iters; it++) {
+        for (let i = 0; i < n; i++) {
+          if (!this.closed && (i < k || i >= n - k)) { next[i] = off[i] * 0.5; continue; }
+          const a = this.idx(i - k), b = this.idx(i + k);
+          const mx = (this.px[a] + lx(a) * off[a] + this.px[b] + lx(b) * off[b]) / 2;
+          const mz = (this.pz[a] + lz(a) * off[a] + this.pz[b] + lz(b) * off[b]) / 2;
+          const want = (mx - this.px[i]) * lx(i) + (mz - this.pz[i]) * lz(i);
+          next[i] = Math.max(-lim, Math.min(lim, off[i] + (want - off[i]) * 0.5));
+        }
+        off.set(next);
+      }
+    }
+    // Smooth out kinks where the line touches the road-edge limit.
+    for (let pass = 0; pass < 6; pass++) {
+      for (let i = 0; i < n; i++) {
+        let s = 0;
+        for (let d = -3; d <= 3; d++) s += off[this.idx(i + d)];
+        next[i] = s / 7;
+      }
+      off.set(next);
+    }
+    this.racing = off;
+    return off;
+  }
+
+  // Racing-line offset at a query result (interpolated between samples).
+  racingAt(q) {
+    if (!this.racing) return 0;
+    const i = q.i, j = this.idx(i + 1);
+    const segLen = (this.cum[j] - this.cum[i]) || 2;
+    const t = Math.max(0, Math.min(1, (q.along - this.cum[i]) / segLen));
+    return this.racing[i] + (this.racing[j] - this.racing[i]) * t;
+  }
+
+  // A strip of `width` metres running along the road at a lateral offset
+  // (left positive) given per sample by `offsetAt(i)`. Used for tyre tracks.
+  buildOffsetStrip(offsetAt, width, yOffset, material, uvScale = 1 / 4) {
+    const n = this.n + (this.closed ? 1 : 0);
+    const pos = new Float32Array(n * 6), uv = new Float32Array(n * 4);
+    const h = width / 2;
+    let dist = 0, px = 0, pz = 0;
+    for (let k = 0; k < n; k++) {
+      const i = k % this.n;
+      const lx = this.tz[i], lz = -this.tx[i];
+      const o = offsetAt(i);
+      const cx = this.px[i] + lx * o, cz = this.pz[i] + lz * o;
+      if (k > 0) dist += Math.hypot(cx - px, cz - pz);
+      px = cx; pz = cz;
+      const y = this.py[i] + yOffset;
+      pos.set([cx + lx * h, y, cz + lz * h, cx - lx * h, y, cz - lz * h], k * 6);
+      uv.set([0, dist * uvScale, 1, dist * uvScale], k * 4);
+    }
+    const idx = [];
+    for (let k = 0; k < n - 1; k++) { const a = k * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    // Unlit decal strip: no shadow receiving (it made the road under it vanish).
+    return new THREE.Mesh(geo, material);
+  }
+
   surfaceAt(lateralAbs) {
     if (lateralAbs < this.width / 2) return SURFACES.gravel;
     if (lateralAbs < this.width / 2 + 1.8) return SURFACES.verge;
