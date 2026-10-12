@@ -14,6 +14,7 @@ import { Input } from './input.js';
 import { TyreMarks, buildRacingMarks } from './tyremarks.js';
 import { GhostRecorder, saveGhost, loadGhost, samplePose } from './ghost.js';
 import { buildPaceNotes, CoDriver } from './pacenotes.js';
+import { notesHTML } from './paceicons.js';
 
 const $ = (id) => document.getElementById(id);
 document.body.classList.add('scanlines');
@@ -38,15 +39,17 @@ const marks = new TyreMarks(scene);
 const audio = new AudioEngine();
 const input = new Input();
 let noteTimer = 0;
-const codriver = new CoDriver((text) => {
+// Pace-note signs (DiRT Rally style) across the top of the screen.
+const codriver = new CoDriver((list) => {
   const el = $('hud-note');
-  el.textContent = text;
+  el.innerHTML = notesHTML(list);
+  el.setAttribute('aria-label', list.map((n) => n.text).join(', '));
   el.classList.add('on');
   clearTimeout(noteTimer);
-  noteTimer = setTimeout(() => el.classList.remove('on'), 3200);
+  noteTimer = setTimeout(() => el.classList.remove('on'), 3600);
 });
-codriver.mode = 'off';   // the spoken voice didn't sound right, so it's off; text calls are optional
-try { if (localStorage.getItem('sideways.codriver') === 'text') codriver.mode = 'text'; } catch { /* ignore */ }
+codriver.mode = 'signs';
+try { if (localStorage.getItem('sideways.codriver') === 'off') codriver.mode = 'off'; } catch { /* ignore */ }
 
 // ---------- Stage ----------
 // A stage is a road plus everything built around it. Loading a new one
@@ -87,6 +90,7 @@ function loadStage(kind, seed = 0) {
   road.computeRacingLine();
   const built = buildScenery(road, kind === 'practice' ? 1 : seed, { flat });
   terrain = built.terrain;
+  buildObstacleGrid(built.obstacles);
   stageGroup.add(built.group);
   stageGroup.add(road.buildRibbon(road.width + 4.5, 0.012, vergeMat, 1 / 10));
   stageGroup.add(road.buildRibbon(road.width, 0.03, gravelMat, 1 / 12));
@@ -161,6 +165,7 @@ function placeOnRoad(i) {
   car.y = road.py[i];
   car.groundPitch = 0; car.groundRoll = 0;
   car.vy = 0; car.air = false; car.airTime = 0; car.squash = 0;
+  car.crashTimer = 0; stuckTime = 0;
   roadHint = i;
   roadAlong = road.cum[i];
   codriver.seek(roadAlong);
@@ -489,8 +494,6 @@ try { muted = localStorage.getItem('sideways.muted') === '1'; } catch { /* ignor
 function setMuted(m) {
   muted = m;
   audio.setMuted(m);
-  codriver.muted = m;
-  if (m) codriver.stop();
   $('btn-mute').setAttribute('aria-pressed', String(m));
   $('btn-mute').setAttribute('aria-label', m ? 'Unmute sound' : 'Mute sound');
   $('opt-mute').checked = m;
@@ -502,7 +505,7 @@ $('opt-mute').addEventListener('change', (e) => setMuted(e.target.checked));
 $('opt-codriver').value = codriver.mode;
 $('opt-codriver').addEventListener('change', (e) => {
   codriver.mode = e.target.value;
-  codriver.stop();
+  if (codriver.mode === 'off') $('hud-note').classList.remove('on');
   try { localStorage.setItem('sideways.codriver', codriver.mode); } catch { /* ignore */ }
   e.target.blur();
 });
@@ -607,6 +610,62 @@ function layMarks() {
   }
 }
 
+// ---------- Crashes ----------
+// Tree trunks and big rocks are solid. A hard hit is a crash: the car stops,
+// and after a moment you're put back at the last checkpoint (+5 s, like any
+// respawn). Light knocks just bounce you off. R still restarts from the start.
+const OB_CELL = 10, CAR_R = 0.85, CRASH_SPEED = 8.5;   // m/s into the obstacle (~30 km/h)
+let obGrid = new Map(), stuckTime = 0;
+function buildObstacleGrid(list) {
+  obGrid = new Map();
+  for (const o of list) {
+    const k = `${Math.floor(o.x / OB_CELL)},${Math.floor(o.z / OB_CELL)}`;
+    if (!obGrid.has(k)) obGrid.set(k, []);
+    obGrid.get(k).push(o);
+  }
+}
+function collide() {
+  if (car.crashTimer > 0) return;
+  const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw), off = car.spec.length * 0.3;
+  for (const k of [off, 0, -off]) {
+    const cx = car.x + fx * k, cz = car.z + fz * k;
+    const gx = Math.floor(cx / OB_CELL), gz = Math.floor(cz / OB_CELL);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      const list = obGrid.get(`${gx + dx},${gz + dz}`);
+      if (!list) continue;
+      for (const o of list) {
+        const ex = cx - o.x, ez = cz - o.z, d = Math.hypot(ex, ez), min = CAR_R + o.r;
+        if (d >= min || d < 1e-4) continue;
+        const nx = ex / d, nz = ez / d;
+        car.x += nx * (min - d); car.z += nz * (min - d);       // push out
+        const vn = car.vx * nx + car.vz * nz;
+        if (vn >= 0) continue;
+        const impact = -vn;
+        if (impact > CRASH_SPEED && run.state !== 'finished') { crash(impact); return; }
+        // Bounce: kill most of the speed into it, scrub some along it, add a little spin.
+        car.vx -= 1.2 * vn * nx; car.vz -= 1.2 * vn * nz;
+        car.vx *= 0.8; car.vz *= 0.8;
+        car.yawRate += (fx * nz - fz * nx) * impact * 0.12 * Math.sign(k || 1);
+        audio.thud(Math.min(0.8, 0.15 + impact / 12));
+        shakeKick = Math.max(shakeKick, Math.min(0.3, impact * 0.03));
+      }
+    }
+  }
+}
+function crash(impact) {
+  car.crashTimer = 1.3;
+  car.vx *= 0.05; car.vz *= 0.05; car.yawRate = (Math.random() - 0.5) * 2;
+  audio.thud(1);
+  shakeKick = 0.45;
+  dust.clear();
+  for (let n = 0; n < 40; n++) {
+    const a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 5;
+    dust.emit(car.x, (car.y ?? 0) + 0.6, car.z, Math.cos(a) * sp, 1 + Math.random() * 2, Math.sin(a) * sp, 1.4, 1.6, [0.55, 0.5, 0.42]);
+  }
+  toast('CRASH!', 1200);
+  void impact;
+}
+
 // ---------- Physics step ----------
 const smoothstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 let offDist = 0;
@@ -616,6 +675,12 @@ function groundAt(x, z, lateralAbs, roadY) {
   return t <= 0 ? roadY : roadY * (1 - t) + terrain.heightAt(x, z) * t;
 }
 function stepPhysics(dt, inp) {
+  if (car.crashTimer > 0) {
+    car.crashTimer -= dt;
+    car.vx *= 0.9; car.vz *= 0.9; car.yawRate *= 0.9;
+    if (car.crashTimer <= 0) { resetCar(); return; }
+    inp = { throttle: 0, brake: 1, steer: 0, handbrake: false };
+  }
   const q = road.nearest(car.x, car.z, roadHint);
   roadHint = q.i;
   const lat = q.lateral, roadY = q.y, tx = q.tx, tz = q.tz;
@@ -631,6 +696,12 @@ function stepPhysics(dt, inp) {
   // Tiny hops over kinks in the ground keep their grip; real flights don't.
   const flying = car.air && car.airTime > 0.06;
   car.step(dt, inp, flying ? AIR : surface);
+  collide();
+  // Stuck off the road (crawling for 4 s while trying to drive): put back.
+  if (q.dist > road.width / 2 + 3 && car.speed < 1.5 && (inp.throttle > 0.5 || inp.brake > 0.5) && car.crashTimer <= 0) {
+    stuckTime += dt;
+    if (stuckTime > 4) { stuckTime = 0; toast('STUCK', 900); resetCar(); return; }
+  } else stuckTime = 0;
   if (flying) {
     // A little air control, and the spin bleeds off slowly.
     car.yawRate += inp.steer * 0.9 * dt;
@@ -761,6 +832,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
+  get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver,
   get ghostModel() { return ghostModel; }, recorder, loadGhost, onLanding, renderer, scene, camera, marks, assist, setAssist, car, input, TUNE, CARS, start, stepSim, placeOnRoad, loadStage, run, stage,
   get road() { return road; }, get terrain() { return terrain; }, get lineMesh() { return lineMesh; }, get surface() { return surface; }, get best() { return best; },

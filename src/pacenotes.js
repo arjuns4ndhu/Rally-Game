@@ -1,5 +1,5 @@
-// Co-driver: pace notes worked out from the road, read aloud with the
-// browser's built-in speech (no audio files) and shown as text.
+// Co-driver: pace notes worked out from the road and shown as on-screen
+// signs (corner arrows with a severity number), DiRT Rally style.
 //
 // Corner scale (classic rally style): 6 = nearly flat, 1 = very slow,
 // then "hairpin". Modifiers: long, tightens, opens, don't cut.
@@ -60,6 +60,7 @@ export function buildPaceNotes(road, { start = 0, finish = road.length } = {}) {
       const textWord = g === 'hairpin' ? `${side} hairpin` : `${side} ${g}`;
       const spokenWord = g === 'hairpin' ? `hairpin ${side}` : `${side} ${SPOKEN[g]}`;
       items.push({
+        kind: 'corner', dir: dir > 0 ? 'left' : 'right', grade: g, mods,
         at: road.cum[s], end: road.cum[Math.min(e, n - 1)], apex: road.cum[apex],
         text: [textWord, ...mods].join(' '),
         say: [spokenWord, ...mods].join(', '),
@@ -71,9 +72,9 @@ export function buildPaceNotes(road, { start = 0, finish = road.length } = {}) {
   // Jumps and crests.
   for (const b of road.bumps || []) {
     const at = b.kind === 'jump' ? b.at - (b.up || 20) : b.at - (b.len || 30) / 2;
-    items.push({ at, end: at + 10, text: b.kind === 'jump' ? 'jump!' : 'over crest', say: b.kind === 'jump' ? 'jump!' : 'over crest' });
+    items.push({ kind: b.kind, mods: [], at, end: at + 10, text: b.kind === 'jump' ? 'jump!' : 'over crest', say: b.kind === 'jump' ? 'jump!' : 'over crest' });
   }
-  if (!road.closed) items.push({ at: finish - 60, end: finish, text: 'flat to finish', say: 'flat to finish' });
+  if (!road.closed) items.push({ kind: 'finish', mods: [], at: finish - 60, end: finish, text: 'flat to finish', say: 'flat to finish' });
 
   items.sort((a, b) => a.at - b.at);
   // Distance to the next note becomes part of each call.
@@ -82,42 +83,29 @@ export function buildPaceNotes(road, { start = 0, finish = road.length } = {}) {
     const gap = notes[j + 1].at - notes[j].end;
     const d = callDistance(gap);
     if (d) { notes[j].text += d === 'into' ? ' › into' : ` › ${d}`; notes[j].say += d === 'into' ? ', into' : `, ${d}`; }
+    notes[j].dist = d;
     notes[j].linked = d === 'into';
   }
   return notes;
 }
 
 export class CoDriver {
-  constructor(onText) {
-    this.onText = onText;
-    this.mode = 'voice';      // 'voice' | 'text' | 'off'
-    this.muted = false;
+  constructor(onNotes) {
+    this.onNotes = onNotes;
+    this.mode = 'signs';      // 'signs' | 'off'
     this.notes = [];
     this.next = 0;
-    this.voice = null;
-    this.synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
-    if (this.synth) {
-      const pick = () => {
-        const vs = this.synth.getVoices();
-        this.voice = vs.find((v) => /en-GB/i.test(v.lang)) || vs.find((v) => /^en/i.test(v.lang)) || vs[0] || null;
-      };
-      pick();
-      this.synth.addEventListener?.('voiceschanged', pick);
-    }
   }
 
-  get canSpeak() { return !!this.synth; }
-
-  load(notes) { this.notes = notes; this.next = 0; this.stop(); }
+  load(notes) { this.notes = notes; this.next = 0; }
 
   // Skip notes that are already behind the car (after a respawn, say).
   seek(along) {
     this.next = 0;
     while (this.next < this.notes.length && this.notes[this.next].at < along + 5) this.next++;
-    this.stop();
   }
 
-  stop() { if (this.synth) this.synth.cancel(); }
+  stop() {}
 
   // Called every frame with the car's distance along the road and speed (m/s).
   update(along, speed) {
@@ -126,22 +114,11 @@ export class CoDriver {
     const lead = Math.max(70, Math.min(230, speed * 3 + 40));
     const n = this.notes[this.next];
     if (along < n.at - lead) return;
-    // Bundle notes joined by "into" so they're read as one breath.
-    let text = n.text, say = n.say, j = this.next;
-    while (this.notes[j].linked && j + 1 < this.notes.length && j - this.next < 2) {
-      j++;
-      text += '  ' + this.notes[j].text;
-      say += ', ' + this.notes[j].say;
-    }
+    // Notes joined by "into" are shown together, up to three.
+    const list = [n];
+    let j = this.next;
+    while (this.notes[j].linked && j + 1 < this.notes.length && list.length < 3) list.push(this.notes[++j]);
     this.next = j + 1;
-    this.onText?.(text);
-    if (this.mode === 'voice' && !this.muted && this.synth) {
-      // If a call is still going, keep it short rather than queueing up.
-      if (this.synth.speaking || this.synth.pending) this.synth.cancel();
-      const u = new SpeechSynthesisUtterance(say);
-      if (this.voice) u.voice = this.voice;
-      u.rate = 1.2; u.pitch = 1.0; u.volume = 1;
-      this.synth.speak(u);
-    }
+    this.onNotes?.(list);
   }
 }

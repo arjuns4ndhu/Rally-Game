@@ -231,13 +231,32 @@ body.touch .hud-top { transform: translateX(-50%) scale(0.85); transform-origin:
 body.touch .tc-top { right: calc(62px + env(safe-area-inset-right, 0px)); }
 #hud .hud-top { pointer-events: none; }
 
-/* ---------- Co-driver pace notes ---------- */
+/* ---------- Pace-note signs ---------- */
 .pacenote {
-  position: absolute; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
-  max-width: calc(100% - 32px); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  font-family: var(--font-display); font-size: clamp(16px, 2.4vw, 24px); letter-spacing: 0.02em; text-transform: uppercase;
-  color: var(--text); background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent);
-  border-radius: 4px; padding: 6px 14px; opacity: 0; transition: opacity 0.2s;
+  position: absolute; left: 50%; top: calc(112px + env(safe-area-inset-top, 0px)); transform: translateX(-50%) translateY(-6px);
+  display: flex; align-items: center; gap: 6px; max-width: calc(100% - 32px);
+  opacity: 0; transition: opacity 0.18s, transform 0.18s; pointer-events: none;
 }
-.pacenote.on { opacity: 1; }
-body.touch .pacenote { bottom: auto; top: calc(110px + env(safe-area-inset-top, 0px)); }
+.pacenote.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+.pn-tile {
+  position: relative; width: 78px; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 6px 4px 6px; border-radius: 6px; background: var(--panel); border: 2px solid var(--line);
+}
+.pn-tile svg { width: 52px; height: 52px; }
+.pn-tile .pn-line { fill: none; stroke: var(--text); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+.pn-tile .pn-head { fill: var(--text); }
+.pn-tile b { font-family: var(--font-display); font-weight: 400; line-height: 1; color: var(--text); }
+.pn-tile b.num { font-size: 26px; }
+.pn-tile b.word { font-size: 13px; letter-spacing: 0.04em; }
+.pn-tile small { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); }
+.pn-warn { border-color: var(--accent); }
+.pn-warn .pn-line { stroke: var(--accent); } .pn-warn .pn-head { fill: var(--accent); }
+.pn-danger { border-color: var(--hot); background: rgba(60, 12, 8, 0.82); }
+.pn-danger .pn-line { stroke: var(--hot); } .pn-danger .pn-head { fill: var(--hot); }
+.pn-danger small { color: var(--text); }
+.pn-dist {
+  font-family: var(--font-display); font-size: 15px; color: var(--ink); background: var(--text);
+  border-radius: 3px; padding: 3px 6px; font-variant-numeric: tabular-nums;
+}
+.split { top: calc(220px + env(safe-area-inset-top, 0px)); }
+body.touch .pacenote { top: calc(96px + env(safe-area-inset-top, 0px)); transform: translateX(-50%) scale(0.82); transform-origin: top center; }

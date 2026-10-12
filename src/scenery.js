@@ -134,7 +134,7 @@ export function buildScenery(road, seed = 1, { flat = false } = {}) {
     s.set(sc, sc * (0.85 + rand() * 0.4), sc);
     p.set(x, groundY(x, z) - 0.3, z);
     const color = new THREE.Color().setHSL(0.24 + rand() * 0.08, 0.35 + rand() * 0.2, 0.18 + rand() * 0.1);
-    return { x, z, m: new THREE.Matrix4().compose(p, q, s), color };
+    return { x, z, r: 0.42 * sc, m: new THREE.Matrix4().compose(p, q, s), color };
   });
   addTiled(group, trunkGeo, trunkMat, treeItems, false);
   addTiled(group, pineMerged, leafMat, treeItems, true);
@@ -156,7 +156,8 @@ export function buildScenery(road, seed = 1, { flat = false } = {}) {
     s.set(sc * (1 + rand()), sc * 0.7, sc * (1 + rand()));
     p.set(x, groundY(x, z) + sc * 0.15, z);
     const color = new THREE.Color().setHSL(0.08, 0.08 + rand() * 0.1, 0.35 + rand() * 0.2);
-    return { x, z, m: new THREE.Matrix4().compose(p, q, s), color };
+    // Small stones are drivable; only proper boulders block the car.
+    return { x, z, r: sc > 0.55 ? Math.min(s.x, s.z) * 0.85 : 0, m: new THREE.Matrix4().compose(p, q, s), color };
   });
   addTiled(group, rockGeo, rockMat, rockItems, true, true);
 
@@ -214,7 +215,9 @@ export function buildScenery(road, seed = 1, { flat = false } = {}) {
     group.add(h);
   }
 
-  return { group, terrain };
+  // Solid things the car can hit: tree trunks and big rocks.
+  const obstacles = [...treeItems, ...rockItems].filter((o) => o.r > 0).map(({ x, z, r }) => ({ x, z, r }));
+  return { group, terrain, obstacles };
 }
 
 // Split instances into map tiles so each tile can be frustum-culled, in both
