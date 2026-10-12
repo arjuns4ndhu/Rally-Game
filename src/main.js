@@ -1225,6 +1225,8 @@ function stopReplay() {
   $('hud-replay').hidden = true;
   document.body.classList.remove('replaying');
   hazards?.update(0, 1e9, null);                  // everything back to how it ended
+  samplePose(replay.samples, replay.end, replayPose);   // car back where the run finished
+  applyReplayPose(0);
   car.vx = car.vz = 0; car.speed = 0; car.yawRate = 0;
   rig.snap(car);
   if (run.state === 'finished') $('finish').hidden = false;
