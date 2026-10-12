@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Sideways</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23ffb000'/%3E%3Cpath d='M4 11l4-6 4 6' stroke='%230b0d12' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Chakra+Petch:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="scanlines" aria-hidden="true"></div>
+
+<!-- HUD -->
+<div id="hud" hidden>
+  <div class="hud-tl">
+    <div class="brand">SIDEWAYS</div>
+    <div class="hud-sub"><span id="hud-stage">Test road</span> · <span id="hud-car">Vanta GT</span></div>
+  </div>
+  <div class="hud-drift" id="hud-drift"><span class="label">DRIFT</span> <span id="hud-drift-val">0°</span></div>
+  <div class="hud-br">
+    <div class="rpm" id="hud-rpm"></div>
+    <div class="speed-row">
+      <div class="gear" id="hud-gear">1</div>
+      <div class="speed"><span id="hud-speed">0</span><span class="unit">KM/H</span></div>
+    </div>
+  </div>
+  <div class="hud-help" id="hud-help">
+    <b>W/S</b> throttle/brake · <b>A/D</b> steer · <b>Space</b> handbrake · <b>C</b> camera · <b>R</b> reset · <b>1–4</b> car · <b>`</b> tuning · <b>Esc</b> pause
+  </div>
+  <div class="toast" id="toast"></div>
+</div>
+
+<!-- Touch controls -->
+<div id="touch" hidden>
+  <div class="tc-left">
+    <button class="tc-btn" data-ctl="left" aria-label="Steer left">◀</button>
+    <button class="tc-btn" data-ctl="right" aria-label="Steer right">▶</button>
+  </div>
+  <div class="tc-right">
+    <button class="tc-btn tc-small" data-ctl="handbrake" aria-label="Handbrake">HB</button>
+    <button class="tc-btn tc-brake" data-ctl="brake" aria-label="Brake">BRAKE</button>
+    <button class="tc-btn tc-go" data-ctl="throttle" aria-label="Throttle">GO</button>
+  </div>
+  <div class="tc-top">
+    <button class="tc-mini" data-act="camera" aria-label="Camera">CAM</button>
+    <button class="tc-mini" data-act="reset" aria-label="Reset">RESET</button>
+    <button class="tc-mini" data-act="pause" aria-label="Pause">II</button>
+  </div>
+</div>
+
+<!-- Title / start -->
+<div id="start" class="overlay">
+  <div class="title-card">
+    <div class="eyebrow">Daily gravel rally</div>
+    <h1 class="logo">SIDE<span>WAYS</span></h1>
+    <p class="lede">Build 1: driving test. Throw the car into the corners and tell me how it feels.</p>
+    <button id="btn-start" class="btn btn-primary">Drive the test road</button>
+    <ul class="tips">
+      <li><b>Tap brake</b> while turning to kick the rear out.</li>
+      <li><b>Hold throttle</b> to keep the drift going.</li>
+      <li><b>Lift off</b> to rotate more, <b>counter-steer</b> to straighten or flick.</li>
+      <li><b>Space</b> handbrake for hairpins.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Pause -->
+<div id="pause" class="overlay" hidden>
+  <div class="title-card small">
+    <h2 class="logo">PAUSED</h2>
+    <button id="btn-resume" class="btn btn-primary">Resume</button>
+    <button id="btn-reset" class="btn">Reset car</button>
+    <label class="check"><input type="checkbox" id="opt-scan" checked> Scanlines</label>
+  </div>
+</div>
+
+<!-- Rotate prompt on portrait phones -->
+<div id="rotate" class="overlay" hidden>
+  <div class="title-card small"><h2 class="logo">ROTATE</h2><p class="lede">Turn your phone sideways to drive.</p></div>
+</div>
+
+<!-- Tuning panel -->
+<div id="debug" hidden>
+  <div class="dbg-title">Tuning <small>(` to hide)</small></div>
+  <pre id="dbg-read"></pre>
+  <div id="dbg-sliders"></div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
