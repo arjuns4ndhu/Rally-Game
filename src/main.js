@@ -45,7 +45,8 @@ const codriver = new CoDriver((text) => {
   clearTimeout(noteTimer);
   noteTimer = setTimeout(() => el.classList.remove('on'), 3200);
 });
-try { const m = localStorage.getItem('sideways.codriver'); if (m === 'voice' || m === 'text' || m === 'off') codriver.mode = m; } catch { /* ignore */ }
+codriver.mode = 'off';   // the spoken voice didn't sound right, so it's off; text calls are optional
+try { if (localStorage.getItem('sideways.codriver') === 'text') codriver.mode = 'text'; } catch { /* ignore */ }
 
 // ---------- Stage ----------
 // A stage is a road plus everything built around it. Loading a new one
