@@ -30,7 +30,7 @@ Driving: tap the brake while turning to kick the rear out. Hold the throttle to 
 ## Build status
 
 1. **Car driving and drifting**: done. Keys 1–4 switch cars.
-2. **Seeded stages**: done. A 2–3 km point-to-point gravel stage from a seed: today's date for the daily stage, or a random seed. Hairpins, sweepers, chicanes, esses and straights, with seeded hills and elevation. Each stage has 2–3 jumps and 2–3 crests, with warning boards. There are five sectors with split times and deltas against your best, and best times are saved per stage. Going more than 25 m off the road puts you back at the last checkpoint with a 5 s penalty. The practice loop is still there, now with a jump and a crest.
+2. **Seeded stages**: done. A 2–3 km point-to-point gravel stage from a seed: today's date for the daily stage, or a random seed. Hairpins, sweepers, chicanes, esses and straights, with seeded hills and elevation. Each stage has 2–3 jumps and 2–3 crests, with warning boards. There are five sectors with split times and deltas against your best, and best times are saved per stage. Going more than 25 m off the road puts you back at the last checkpoint with a 5 s penalty. The practice loop is still there, now with a jump and a crest. Hairpin-tight corners are announced the way a real stage would: 3-2-1 brake boards at 150, 100 and 50 m, red chevrons round the outside, and dark braking marks on the approach.
 3. HUD polish, countdown, settings
 4. Garage: paint, wheel styles, 3D preview
 5. Ghost replays and past-stages calendar

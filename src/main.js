@@ -4,7 +4,7 @@ import { CarPhysics, CARS, CAR_ORDER, TUNE } from './car.js';
 import { buildCarModel } from './carModel.js';
 import { Road, createTestRoad, gravelTexture, SURFACES } from './track.js';
 import { generateStage, stageName } from './stagegen.js';
-import { buildGate, buildSign } from './gates.js';
+import { buildGate, buildSign, buildCornerWarnings } from './gates.js';
 import { dateSeed } from './rng.js';
 import { setupWorld, buildScenery } from './scenery.js';
 import { CameraRig } from './camera.js';
@@ -81,6 +81,8 @@ function loadStage(kind, seed = 0) {
   // The racing line is always shown as dark, worn tyre tracks.
   lineMesh = buildRacingMarks(road);
   stageGroup.add(lineMesh);
+  // Really sharp corners get brake boards, chevrons and braking marks.
+  stageGroup.add(buildCornerWarnings(road, road.findSharpCorners()));
   (road.bumps || []).forEach((b, k) => {
     if (b.at > 75) stageGroup.add(buildSign(road, b.at - 70, b.kind === 'jump' ? 'JUMP' : 'CREST', k % 2 ? -1 : 1));
   });

@@ -63,6 +63,39 @@ export class Road {
     }
   }
 
+  // Find the really sharp corners (hairpin-tight). Returns
+  // [{ entry, apex, exit (distances along), dir (+1 left / -1 right), radius, angle }].
+  findSharpCorners({ maxRadius = 17, minAngle = 1.2 } = {}) {
+    const n = this.n, W = 4;
+    const head = (i) => Math.atan2(this.tx[i], this.tz[i]);
+    const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+    const R = new Float32Array(n), turn = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = this.idx(i - W), b = this.idx(i + W);
+      const d = wrap(head(b) - head(a));
+      R[i] = (2 * W * 2) / Math.max(1e-4, Math.abs(d));
+      turn[i] = wrap(head(this.idx(i + 1)) - head(i));
+    }
+    const corners = [];
+    let i = 0;
+    while (i < n) {
+      if (R[i] > maxRadius * 2.2) { i++; continue; }
+      // Grow a region of strong curvature in one direction.
+      const dir = Math.sign(turn[i]) || 1;
+      let s = i, e = i, minR = R[i], apex = i, total = 0;
+      while (e < n && R[e] < maxRadius * 2.2 && Math.sign(turn[e] || dir) === dir) {
+        total += turn[e];
+        if (R[e] < minR) { minR = R[e]; apex = e; }
+        e++;
+      }
+      if (minR <= maxRadius && Math.abs(total) >= minAngle) {
+        corners.push({ entry: this.cum[s], apex: this.cum[apex], exit: this.cum[Math.min(e, n - 1)], dir, radius: minR, angle: Math.abs(total) });
+      }
+      i = Math.max(e, i + 1);
+    }
+    return corners;
+  }
+
   // Sample index at a distance along the road (binary search).
   indexAt(along) {
     let lo = 0, hi = this.n - 1;
@@ -159,13 +192,14 @@ export class Road {
 
   // A strip of `width` metres running along the road at a lateral offset
   // (left positive) given per sample by `offsetAt(i)`. Used for tyre tracks.
-  buildOffsetStrip(offsetAt, width, yOffset, material, uvScale = 1 / 4) {
-    const n = this.n + (this.closed ? 1 : 0);
+  buildOffsetStrip(offsetAt, width, yOffset, material, uvScale = 1 / 4, from = 0, to = -1) {
+    const first = Math.max(0, from);
+    const n = (to < 0 ? this.n + (this.closed ? 1 : 0) : Math.min(to, this.n)) - first;
     const pos = new Float32Array(n * 6), uv = new Float32Array(n * 4);
     const h = width / 2;
     let dist = 0, px = 0, pz = 0;
     for (let k = 0; k < n; k++) {
-      const i = k % this.n;
+      const i = (k + first) % this.n;
       const lx = this.tz[i], lz = -this.tx[i];
       const o = offsetAt(i);
       const cx = this.px[i] + lx * o, cz = this.pz[i] + lz * o;
