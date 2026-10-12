@@ -1,6 +1,7 @@
 // Low-poly world dressing: sky, lights, fog, ground, trees, rocks, fences.
 import * as THREE from 'three';
 import { mulberry32 } from './rng.js';
+import { buildTerrain } from './terrain.js';
 
 export const PALETTE = {
   skyTop: new THREE.Color('#2a3a5c'),
@@ -11,7 +12,7 @@ export const PALETTE = {
 };
 
 function skyDome() {
-  const geo = new THREE.SphereGeometry(1800, 24, 12);
+  const geo = new THREE.SphereGeometry(440, 24, 12);
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
     uniforms: { top: { value: PALETTE.skyTop }, horizon: { value: PALETTE.horizon } },
@@ -48,7 +49,8 @@ function grassTexture() {
 export function setupWorld(scene) {
   scene.background = PALETTE.fog.clone();
   scene.fog = new THREE.FogExp2(PALETTE.fog, 0.0062);
-  scene.add(skyDome());
+  const sky = skyDome();
+  scene.add(sky);
 
   const hemi = new THREE.HemisphereLight(0xffe6c4, 0x5a5238, 1.6);
   scene.add(hemi);
@@ -63,7 +65,7 @@ export function setupWorld(scene) {
   const sunDir = new THREE.Vector3(-0.6, 0.55, -0.75).normalize();
 
   return {
-    sun,
+    sun, sky,
     follow(x, z) {
       sun.target.position.set(x, 0, z);
       sun.position.set(x + sunDir.x * 100, sunDir.y * 100, z + sunDir.z * 100);
@@ -71,8 +73,9 @@ export function setupWorld(scene) {
   };
 }
 
-// Build the dressing around a road. Returns a group to add/remove as a unit.
-export function buildScenery(road, seed = 1) {
+// Build the terrain and dressing around a road. Returns { group, terrain };
+// the group is added/removed as a unit.
+export function buildScenery(road, seed = 1, { flat = false } = {}) {
   const rand = mulberry32(seed * 7919 + 13);
   const group = new THREE.Group();
 
@@ -84,19 +87,22 @@ export function buildScenery(road, seed = 1) {
   }
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
 
-  // Ground
-  const gTex = grassTexture();
-  gTex.repeat.set(220, 220);
+  // Ground: shaped terrain around the road, plus a flat apron under the horizon.
+  const terrain = buildTerrain(road, { seed, flat, grassMap: grassTexture() });
+  group.add(terrain.mesh);
+  const apronTex = grassTexture();
+  apronTex.repeat.set(220, 220);
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(4000, 4000),
-    new THREE.MeshStandardMaterial({ map: gTex, roughness: 1 }),
+    new THREE.PlaneGeometry(6000, 6000),
+    new THREE.MeshStandardMaterial({ map: apronTex, roughness: 1 }),
   );
   ground.rotation.x = -Math.PI / 2;
-  ground.position.set(cx, -0.02, cz);
-  ground.receiveShadow = true;
+  ground.position.set(cx, terrain.minH - 3, cz);
   group.add(ground);
+  const groundY = terrain.heightAt;
 
-  const clear = (x, z, r) => road.nearest(x, z, -1).dist > r;
+  const clear = (x, z, r) => { const n = terrain.nearestRoad(x, z); return !n || n.d > r; };
+  const density = Math.max(1, Math.min(2.4, road.length / 1200));
 
   // --- Trees: pines and a few round broadleaf trees, denser near the road.
   const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, 2.2, 5);
@@ -111,33 +117,27 @@ export function buildScenery(road, seed = 1) {
 
   const spots = [];
   const tryPlace = (x, z, minR) => { if (clear(x, z, minR)) spots.push([x, z]); };
-  for (let k = 0; k < 1400; k++) {
+  for (let k = 0; k < 1400 * density; k++) {
     const i = Math.floor(rand() * road.n);
     const side = rand() < 0.5 ? -1 : 1;
     const off = road.width / 2 + 5 + Math.pow(rand(), 1.6) * 90;
     const lx = road.tz[i], lz = -road.tx[i];
     tryPlace(road.px[i] + lx * off * side + rand() * 4, road.pz[i] + lz * off * side + rand() * 4, road.width / 2 + 4);
   }
-  for (let k = 0; k < 900; k++) {
-    tryPlace(cx + (rand() - 0.5) * 700, cz + (rand() - 0.5) * 700, road.width / 2 + 6);
+  for (let k = 0; k < 550 * density; k++) {
+    tryPlace(minX - 150 + rand() * (maxX - minX + 300), minZ - 150 + rand() * (maxZ - minZ + 300), road.width / 2 + 6);
   }
-  const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
-  const leaves = new THREE.InstancedMesh(pineMerged, leafMat, spots.length);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
-  const col = new THREE.Color();
-  spots.forEach(([x, z], i) => {
+  const treeItems = spots.map(([x, z]) => {
     const sc = 0.7 + rand() * 0.8;
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * Math.PI * 2);
     s.set(sc, sc * (0.85 + rand() * 0.4), sc);
-    p.set(x, 0, z);
-    m4.compose(p, q, s);
-    trunks.setMatrixAt(i, m4);
-    leaves.setMatrixAt(i, m4);
-    col.setHSL(0.24 + rand() * 0.08, 0.35 + rand() * 0.2, 0.18 + rand() * 0.1);
-    leaves.setColorAt(i, col);
+    p.set(x, groundY(x, z) - 0.3, z);
+    const color = new THREE.Color().setHSL(0.24 + rand() * 0.08, 0.35 + rand() * 0.2, 0.18 + rand() * 0.1);
+    return { x, z, m: new THREE.Matrix4().compose(p, q, s), color };
   });
-  trunks.castShadow = leaves.castShadow = true;
-  group.add(trunks, leaves);
+  addTiled(group, trunkGeo, trunkMat, treeItems, false);
+  addTiled(group, pineMerged, leafMat, treeItems, true);
 
   // --- Rocks
   const rockGeo = new THREE.DodecahedronGeometry(1, 0);
@@ -150,19 +150,15 @@ export function buildScenery(road, seed = 1) {
     const x = road.px[i] + road.tz[i] * off * side, z = road.pz[i] - road.tx[i] * off * side;
     if (clear(x, z, road.width / 2 + 2.5)) rockSpots.push([x, z]);
   }
-  const rocks = new THREE.InstancedMesh(rockGeo, rockMat, rockSpots.length);
-  rockSpots.forEach(([x, z], i) => {
+  const rockItems = rockSpots.map(([x, z]) => {
     const sc = 0.3 + Math.pow(rand(), 2) * 1.6;
     q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 3, rand() * 3));
     s.set(sc * (1 + rand()), sc * 0.7, sc * (1 + rand()));
-    p.set(x, sc * 0.15, z);
-    m4.compose(p, q, s);
-    rocks.setMatrixAt(i, m4);
-    col.setHSL(0.08, 0.08 + rand() * 0.1, 0.35 + rand() * 0.2);
-    rocks.setColorAt(i, col);
+    p.set(x, groundY(x, z) + sc * 0.15, z);
+    const color = new THREE.Color().setHSL(0.08, 0.08 + rand() * 0.1, 0.35 + rand() * 0.2);
+    return { x, z, m: new THREE.Matrix4().compose(p, q, s), color };
   });
-  rocks.castShadow = true; rocks.receiveShadow = true;
-  group.add(rocks);
+  addTiled(group, rockGeo, rockMat, rockItems, true, true);
 
   // --- Fences on the outside of tight corners (a visual warning, too).
   const postGeo = new THREE.BoxGeometry(0.12, 1.1, 0.12);
@@ -185,7 +181,7 @@ export function buildScenery(road, seed = 1) {
   const railMesh = new THREE.InstancedMesh(railGeo, fenceMat, Math.max(1, posts.length * 2));
   let rc = 0;
   posts.forEach(([x, z], i) => {
-    m4.makeTranslation(x, 0, z);
+    m4.makeTranslation(x, groundY(x, z), z);
     postMesh.setMatrixAt(i, m4);
     const nxt = posts[i + 1];
     if (nxt) {
@@ -193,7 +189,7 @@ export function buildScenery(road, seed = 1) {
       if (len < 6) {
         q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(dx, dz));
         for (const h of [0.55, 0.95]) {
-          p.set(x + dx / 2, h, z + dz / 2); s.set(1, 1, len);
+          p.set(x + dx / 2, (groundY(x, z) + groundY(nxt[0], nxt[1])) / 2 + h, z + dz / 2); s.set(1, 1, len);
           m4.compose(p, q, s);
           railMesh.setMatrixAt(rc++, m4);
         }
@@ -213,12 +209,35 @@ export function buildScenery(road, seed = 1) {
     const h = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), hillMat);
     const w = 90 + rand() * 140;
     h.scale.set(w, 30 + rand() * 70, w * (0.6 + rand() * 0.6));
-    h.position.set(cx + Math.cos(a) * r, -8, cz + Math.sin(a) * r);
+    h.position.set(cx + Math.cos(a) * r, terrain.meanH - 8, cz + Math.sin(a) * r);
     h.rotation.y = rand() * 3;
     group.add(h);
   }
 
-  return group;
+  return { group, terrain };
+}
+
+// Split instances into map tiles so each tile can be frustum-culled, in both
+// the camera pass and the shadow pass. One huge InstancedMesh can't be.
+const TILE = 140;
+function addTiled(group, geo, mat, items, withColor, receive = false) {
+  const tiles = new Map();
+  for (const it of items) {
+    const k = `${Math.floor(it.x / TILE)},${Math.floor(it.z / TILE)}`;
+    if (!tiles.has(k)) tiles.set(k, []);
+    tiles.get(k).push(it);
+  }
+  for (const list of tiles.values()) {
+    const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+    list.forEach((it, i) => {
+      mesh.setMatrixAt(i, it.m);
+      if (withColor) mesh.setColorAt(i, it.color);
+    });
+    mesh.castShadow = true;
+    mesh.receiveShadow = receive;
+    mesh.computeBoundingSphere();
+    group.add(mesh);
+  }
 }
 
 function mergeGeos(geos) {

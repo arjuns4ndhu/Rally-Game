@@ -1,8 +1,11 @@
-// Sideways: build 1, driving test on a practice loop.
+// Sideways: build 2, seeded daily / random stages plus the practice loop.
 import * as THREE from 'three';
 import { CarPhysics, CARS, CAR_ORDER, TUNE } from './car.js';
 import { buildCarModel } from './carModel.js';
-import { createTestRoad, gravelTexture, SURFACES } from './track.js';
+import { Road, createTestRoad, gravelTexture, SURFACES } from './track.js';
+import { generateStage, stageName } from './stagegen.js';
+import { buildGate, buildSign } from './gates.js';
+import { dateSeed } from './rng.js';
 import { setupWorld, buildScenery } from './scenery.js';
 import { CameraRig } from './camera.js';
 import { Dust } from './particles.js';
@@ -25,7 +28,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 2500);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 480);
 const world = setupWorld(scene);
 const rig = new CameraRig(camera);
 const dust = new Dust(scene);
@@ -33,16 +36,71 @@ const marks = new TyreMarks(scene);
 const audio = new AudioEngine();
 const input = new Input();
 
-// ---------- Road ----------
-const road = createTestRoad();
+// ---------- Stage ----------
+// A stage is a road plus everything built around it. Loading a new one
+// disposes the old meshes.
 const gravelMat = new THREE.MeshStandardMaterial({ map: gravelTexture(), roughness: 0.95 });
 const vergeMat = new THREE.MeshStandardMaterial({ color: 0x6e6340, roughness: 1 });
-scene.add(road.buildRibbon(road.width + 4.5, 0.012, vergeMat, 1 / 10));
-scene.add(road.buildRibbon(road.width, 0.03, gravelMat, 1 / 12));
-road.computeRacingLine();
-// The racing line is always shown as dark, worn tyre tracks.
-const lineMesh = buildRacingMarks(road);
-scene.add(lineMesh);
+const SECTORS = 5;
+const PENALTY = 5;            // seconds added for a respawn
+const RESPAWN_DIST = 25;      // metres off the road before you're put back
+let road = null, terrain = null, stageGroup = null, lineMesh = null;
+const stage = { kind: 'practice', seed: 0, name: '', start: 0, finish: 0, cps: [] };
+
+function disposeGroup(g) {
+  g.traverse((o) => {
+    o.geometry?.dispose();
+    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of mats) { if (m === gravelMat || m === vergeMat) continue; m.map?.dispose(); m.dispose(); }
+  });
+}
+
+function loadStage(kind, seed = 0) {
+  if (stageGroup) { scene.remove(stageGroup); disposeGroup(stageGroup); }
+  stageGroup = new THREE.Group();
+  stage.kind = kind; stage.seed = seed;
+  let flat = false, runout = 0;
+  if (kind === 'practice') {
+    road = createTestRoad();
+    road.applyBumps([{ kind: 'jump', at: 100, h: 1.4, up: 20, down: 9 }, { kind: 'crest', at: 300, h: 1.2, len: 30 }]);
+    flat = true;
+    stage.name = 'Practice loop';
+  } else {
+    const def = generateStage(seed);
+    road = new Road(def.points, { width: def.width, closed: false });
+    road.applyBumps(def.bumps);
+    runout = def.runout;
+    stage.name = def.name;
+  }
+  road.computeRacingLine();
+  const built = buildScenery(road, kind === 'practice' ? 1 : seed, { flat });
+  terrain = built.terrain;
+  stageGroup.add(built.group);
+  stageGroup.add(road.buildRibbon(road.width + 4.5, 0.012, vergeMat, 1 / 10));
+  stageGroup.add(road.buildRibbon(road.width, 0.03, gravelMat, 1 / 12));
+  // The racing line is always shown as dark, worn tyre tracks.
+  lineMesh = buildRacingMarks(road);
+  stageGroup.add(lineMesh);
+  (road.bumps || []).forEach((b, k) => {
+    if (b.at > 75) stageGroup.add(buildSign(road, b.at - 70, b.kind === 'jump' ? 'JUMP' : 'CREST', k % 2 ? -1 : 1));
+  });
+
+  if (kind === 'practice') {
+    stage.start = stage.finish = 0; stage.cps = [];
+    stageGroup.add(buildGate(road, 40, 'PRACTICE', 'start'));
+  } else {
+    stage.start = 24;
+    stage.finish = road.length - runout;
+    stage.cps = [];
+    for (let k = 1; k <= SECTORS; k++) stage.cps.push(stage.start + (stage.finish - stage.start) * k / SECTORS);
+    stageGroup.add(buildGate(road, stage.start, 'START', 'start'));
+    for (let k = 0; k < SECTORS - 1; k++) stageGroup.add(buildGate(road, stage.cps[k], `S${k + 2}`, 'sector'));
+    stageGroup.add(buildGate(road, stage.finish, 'FINISH', 'finish'));
+  }
+  scene.add(stageGroup);
+  marks.clear();
+  restartRun();
+}
 
 // ---------- Racing line assist ----------
 // A soft, damped spring that nudges the car sideways toward the racing line.
@@ -72,28 +130,6 @@ function applyLineAssist(q, dt) {
   car.vx += lx * a * dt;
   car.vz += lz * a * dt;
 }
-scene.add(buildScenery(road, 1));
-
-// Start/finish style gantry so the loop has a landmark.
-(function gantry() {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x1b1e26, flatShading: true });
-  const band = new THREE.MeshStandardMaterial({ color: 0xffb000, emissive: 0x332200, flatShading: true });
-  const g = new THREE.Group();
-  for (const s of [-1, 1]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, 5, 0.4), mat);
-    post.position.set(s * (road.width / 2 + 1.2), 2.5, 0);
-    post.castShadow = true;
-    g.add(post);
-  }
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(road.width + 3, 0.9, 0.3), band);
-  beam.position.y = 4.8;
-  g.add(beam);
-  const i = 20;
-  g.position.set(road.px[i], 0, road.pz[i]);
-  g.rotation.y = Math.atan2(road.tx[i], road.tz[i]);
-  scene.add(g);
-})();
-
 // ---------- Car ----------
 let carId = 'vanta';
 const car = new CarPhysics(CARS[carId]);
@@ -107,10 +143,95 @@ function placeOnRoad(i) {
   const yaw = Math.atan2(road.tx[i], road.tz[i]);
   car.reset(road.px[i], road.pz[i], yaw);
   car.y = road.py[i];
+  car.groundPitch = 0; car.groundRoll = 0;
+  car.vy = 0; car.air = false; car.airTime = 0; car.squash = 0;
   roadHint = i;
   dust.clear();
   marks.cut();
   rig.snap(car);
+}
+
+// ---------- Timing ----------
+const run = { state: 'idle', t: 0, next: 0, splits: [], penalty: 0, respawns: 0 };
+function bestKey() { return `sideways.best.${stage.seed}`; }
+function loadBest() {
+  if (stage.kind === 'practice') return null;
+  try { return JSON.parse(localStorage.getItem(bestKey()) || 'null'); } catch { return null; }
+}
+function saveBest(rec) { try { localStorage.setItem(bestKey(), JSON.stringify(rec)); } catch { /* ignore */ } }
+let best = null;
+
+function fmt(t) {
+  if (t == null || !isFinite(t)) return '--:--.--';
+  const m = Math.floor(t / 60), sec = t - m * 60;
+  return `${m}:${sec.toFixed(2).padStart(5, '0')}`;
+}
+function fmtDelta(d) { return `${d < 0 ? '−' : '+'}${Math.abs(d).toFixed(2)}`; }
+
+function restartRun() {
+  run.state = stage.kind === 'practice' ? 'free' : 'ready';
+  run.t = 0; run.next = 0; run.splits = []; run.penalty = 0; run.respawns = 0;
+  best = loadBest();
+  placeOnRoad(stage.kind === 'practice' ? 0 : road.indexAt(stage.start - 14));
+  $('finish').hidden = true;
+  refreshStageHud();
+}
+
+// Back to the last checkpoint passed (or the start line) with a time penalty.
+function respawn() {
+  const along = run.next > 0 ? stage.cps[run.next - 1] + 4 : Math.max(stage.start - 14, 2);
+  placeOnRoad(road.indexAt(along));
+  if (run.state === 'running') {
+    run.penalty += PENALTY; run.t += PENALTY; run.respawns++;
+    toast(`+${PENALTY}s PENALTY`, 1300);
+  } else toast('BACK ON THE ROAD', 1000);
+  audio.thud(0.4);
+}
+
+// Called every physics step with the car's position along the road.
+function updateRun(q, dt) {
+  if (run.state === 'ready' && q.along >= stage.start && q.along < stage.start + 30) {
+    run.state = 'running'; run.t = 0;
+    audio.beep(880, 0.15);
+  }
+  if (run.state !== 'running') return;
+  run.t += dt;
+  const target = stage.cps[run.next];
+  // The jump check stops a nearest-point flip across a hairpin counting as progress.
+  if (q.along >= target && q.along - target < 30) passCheckpoint();
+}
+
+function passCheckpoint() {
+  const k = run.next;
+  run.splits.push(run.t);
+  run.next++;
+  const sectorTime = run.t - (k ? run.splits[k - 1] : 0);
+  const delta = best ? run.t - best.splits[k] : null;
+  if (k === SECTORS - 1) { finishRun(); return; }
+  showSplit(`S${k + 1}`, sectorTime, delta);
+  audio.beep(1040, 0.1, 'square', 0.18);
+  refreshStageHud();
+}
+
+function finishRun() {
+  run.state = 'finished';
+  const isBest = !best || run.t < best.time;
+  const prev = best;
+  if (isBest) { best = { time: run.t, splits: run.splits.slice(), car: carId, date: Date.now() }; saveBest(best); }
+  audio.beep(660, 0.12); setTimeout(() => audio.beep(990, 0.25), 140);
+  $('fin-stage').textContent = stageLabel();
+  $('fin-time').textContent = fmt(run.t);
+  $('fin-newbest').hidden = !isBest;
+  $('fin-prev').textContent = prev ? `Best ${fmt(prev.time)} (${fmtDelta(run.t - prev.time)})` : 'First finish on this stage';
+  $('fin-pen').textContent = run.respawns ? `Includes ${run.respawns} respawn${run.respawns > 1 ? 's' : ''}, +${run.penalty}s` : 'Clean run, no penalties';
+  const rows = run.splits.map((t, k) => {
+    const sec = t - (k ? run.splits[k - 1] : 0);
+    const d = prev ? t - prev.splits[k] : null;
+    return `<tr><td>S${k + 1}</td><td>${fmt(sec)}</td><td>${fmt(t)}</td><td class="${d == null ? '' : d < 0 ? 'good' : 'bad'}">${d == null ? '' : fmtDelta(d)}</td></tr>`;
+  }).join('');
+  $('fin-splits').innerHTML = `<tr><th>Sector</th><th>Time</th><th>Total</th><th>vs best</th></tr>${rows}`;
+  setTimeout(() => { if (run.state === 'finished') $('finish').hidden = false; }, 900);
+  refreshStageHud();
 }
 
 function setCar(id) {
@@ -126,8 +247,6 @@ function setCar(id) {
   toast(`${CARS[id].name} · ${CARS[id].tag}`);
   buildSliders();
 }
-
-placeOnRoad(0);
 
 // ---------- HUD ----------
 const rpmEl = $('hud-rpm');
@@ -147,12 +266,41 @@ function toast(msg, ms = 1600) {
   toastTimer = setTimeout(() => t.classList.remove('on'), ms);
 }
 
+function stageLabel() {
+  if (stage.kind === 'practice') return 'Practice loop';
+  if (stage.kind === 'daily') {
+    const d = new Date(Math.floor(stage.seed / 10000), Math.floor(stage.seed / 100) % 100 - 1, stage.seed % 100);
+    return `${stage.name} · ${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  }
+  return `${stage.name} · #${stage.seed}`;
+}
+function refreshStageHud() {
+  const timed = stage.kind !== 'practice';
+  $('hud-stage').textContent = stageLabel();
+  $('hud-timing').hidden = !timed;
+  $('hud-best').textContent = fmt(best?.time);
+  [...$('hud-sectors').children].forEach((el, k) => {
+    el.classList.toggle('done', k < run.next);
+    el.classList.toggle('now', run.state === 'running' && k === run.next);
+  });
+}
+let splitTimer = 0;
+function showSplit(label, sectorTime, delta) {
+  const el = $('hud-split');
+  el.innerHTML = `<span class="lbl">${label}</span> ${fmt(sectorTime)}` +
+    (delta == null ? '' : ` <span class="${delta < 0 ? 'good' : 'bad'}">${fmtDelta(delta)}</span>`);
+  el.classList.add('on');
+  clearTimeout(splitTimer);
+  splitTimer = setTimeout(() => el.classList.remove('on'), 2600);
+}
+
 let hudAcc = 0;
 function updateHud(dt) {
   hudAcc += dt;
   if (hudAcc < 1 / 30) return;
   hudAcc = 0;
   $('hud-speed').textContent = Math.round(car.speed * 3.6);
+  if (stage.kind !== 'practice') $('hud-time').textContent = fmt(run.t);
   $('hud-gear').textContent = car.gear < 0 ? 'R' : car.gear;
   const frac = (car.rpm - car.spec.idleRpm) / (car.spec.redline - car.spec.idleRpm);
   const lit = Math.round(Math.max(0, Math.min(1, frac)) * 20);
@@ -222,13 +370,24 @@ $('dbg-reset').addEventListener('click', (e) => { resetTuning(); e.currentTarget
 // ---------- Game state ----------
 let running = false, paused = false;
 
-function start() {
+function start(kind = 'daily', seed) {
   audio.init();
+  if (kind === 'daily') seed = dateSeed();
+  if (kind === 'random' && seed == null) seed = 100000 + Math.floor(Math.random() * 900000);
+  if (kind !== stage.kind || seed !== stage.seed || !road) loadStage(kind, seed);
+  else restartRun();
   $('start').hidden = true;
+  $('pause').hidden = true;
   $('hud').hidden = false;
   running = true;
   paused = false;
-  toast('GO!', 900);
+  toast(kind === 'practice' ? 'PRACTICE' : stage.name.toUpperCase(), 1400);
+}
+function toMenu() {
+  running = false; paused = false;
+  $('pause').hidden = true; $('finish').hidden = true; $('hud').hidden = true;
+  $('start').hidden = false;
+  audio.suspend();
 }
 function setPaused(p) {
   if (!running) return;
@@ -237,14 +396,28 @@ function setPaused(p) {
   if (p) audio.suspend(); else audio.resume();
 }
 function resetCar() {
-  const q = road.nearest(car.x, car.z, roadHint);
-  placeOnRoad(q.i);
-  audio.thud(0.3);
+  if (stage.kind === 'practice') {
+    const q = road.nearest(car.x, car.z, roadHint);
+    placeOnRoad(q.i);
+    audio.thud(0.3);
+  } else respawn();
+}
+function restartKey() {
+  if (stage.kind === 'practice') resetCar();
+  else { restartRun(); toast('RESTART', 800); }
 }
 
-$('btn-start').addEventListener('click', start);
+$('btn-daily').addEventListener('click', () => start('daily'));
+$('btn-random').addEventListener('click', () => start('random'));
+$('btn-practice').addEventListener('click', () => start('practice'));
 $('btn-resume').addEventListener('click', () => setPaused(false));
 $('btn-reset').addEventListener('click', () => { resetCar(); setPaused(false); });
+$('btn-restart').addEventListener('click', () => { restartKey(); setPaused(false); });
+$('btn-pmenu').addEventListener('click', toMenu);
+$('btn-retry').addEventListener('click', () => { restartRun(); });
+$('btn-new').addEventListener('click', () => start('random'));
+$('btn-fmenu').addEventListener('click', toMenu);
+$('daily-name').textContent = `${stageName(dateSeed())} · ${new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
 function setAssist(on, level = assist.level) {
   assist.on = on; assist.level = level;
   $('opt-assist').checked = on;
@@ -261,17 +434,18 @@ $('opt-scan').addEventListener('change', (e) => document.body.classList.toggle('
 input.on('key', (code, key) => {
   if (code === 'Escape') { if (running) setPaused(!paused); return; }
   if (key === '?' || code === 'Slash') { $('debug').hidden = !$('debug').hidden; return; }
-  if (!running) { if (code === 'Enter' || code === 'Space') start(); return; }
+  if (!running) { if (code === 'Enter') start('daily'); return; }
   if (paused) return;
   if (code === 'KeyC') toast(rig.cycle().toUpperCase() + ' CAM', 800);
   if (code === 'KeyG') { setAssist(!assist.on); toast(assist.on ? `LINE ASSIST ${assist.level.toUpperCase()}` : 'LINE ASSIST OFF', 1000); }
-  if (code === 'KeyR') resetCar();
+  if (code === 'KeyR') restartKey();
+  if (code === 'KeyT') resetCar();
   const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(code);
   if (n >= 0) setCar(CAR_ORDER[n]);
 });
 input.on('action', (act) => {
   if (act === 'camera') toast(rig.cycle().toUpperCase() + ' CAM', 800);
-  if (act === 'reset') resetCar();
+  if (act === 'reset') restartKey();
   if (act === 'pause') setPaused(!paused);
 });
 
@@ -299,6 +473,7 @@ resize();
 const emitAcc = [0, 0];
 const _w = new THREE.Vector3();
 function emitDust(dt) {
+  if (car.air) return;
   const s = car.spec;
   const sn = Math.sin(car.yaw), cs = Math.cos(car.yaw);
   const off = surface === SURFACES.grass;
@@ -342,9 +517,108 @@ function layMarks() {
     const lx = (w % 2 ? -1 : 1) * s.track / 2, lz = front ? s.a : -s.b;
     const ox = sn * lz + cs * lx, oz = cs * lz - sn * lx;           // offset from car centre
     const lat = roadLat + ox * roadLx + oz * roadLz;                  // wheel's lateral on the road
-    const on = Math.abs(lat) < road.width / 2 && car.speed > 0.5;
+    const on = !car.air && Math.abs(lat) < road.width / 2 && car.speed > 0.5;
     const strength = front ? car.frontSlide * 0.6 + car.brake * 0.2 : Math.max(car.rearSlide, car.brake * 0.3);
     marks.track(w, car.x + ox, y, car.z + oz, on, Math.min(1, strength));
+  }
+}
+
+// ---------- Physics step ----------
+const smoothstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+let offDist = 0;
+// Ground height: the road surface near the road, blending onto the terrain.
+function groundAt(x, z, lateralAbs, roadY) {
+  const t = smoothstep(road.width / 2 + 1.5, road.width / 2 + 5, lateralAbs);
+  return t <= 0 ? roadY : roadY * (1 - t) + terrain.heightAt(x, z) * t;
+}
+function stepPhysics(dt, inp) {
+  const q = road.nearest(car.x, car.z, roadHint);
+  roadHint = q.i;
+  const lat = q.lateral, roadY = q.y, tx = q.tx, tz = q.tz;
+  offDist = q.dist;
+  // Far off the road: put the car back (at the last checkpoint on a stage).
+  if (offDist > (stage.kind === 'practice' ? 40 : RESPAWN_DIST)) { resetCar(); return; }
+  surface = road.surfaceAt(Math.abs(lat));
+  roadLat = lat; roadLx = tz; roadLz = -tx;
+  if (run.state === 'finished') { inp = { throttle: 0, brake: 0.35, steer: 0, handbrake: false }; }
+  // Tiny hops over kinks in the ground keep their grip; real flights don't.
+  const flying = car.air && car.airTime > 0.06;
+  car.step(dt, inp, flying ? AIR : surface);
+  if (flying) {
+    // A little air control, and the spin bleeds off slowly.
+    car.yawRate += inp.steer * 0.9 * dt;
+    car.yawRate *= 1 - 0.6 * dt;
+  } else applyLineAssist(q, dt);
+  updateRun(q, dt);
+
+  // Height and slope. Sample the ground ahead/behind and to the sides.
+  const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
+  const latAbs = Math.abs(lat);
+  const h0 = groundAt(car.x, car.z, latAbs, roadY);
+  // Road slope along its tangent, plus terrain slope when off it.
+  const iA = road.idx(roadHint - 1), iB = road.idx(roadHint + 1);
+  const roadGrade = (road.py[iB] - road.py[iA]) / Math.max(1, road.cum[iB] - road.cum[iA] || 4);
+  const along1 = fx * tx + fz * tz;    // how much the car points along the road
+  const offT = smoothstep(road.width / 2 + 1.5, road.width / 2 + 5, latAbs);
+  let pitch = roadGrade * along1, roll = 0;
+  if (offT > 0) {
+    const hf = terrain.heightAt(car.x + fx * 1.6, car.z + fz * 1.6), hb = terrain.heightAt(car.x - fx * 1.6, car.z - fz * 1.6);
+    const hl = terrain.heightAt(car.x + fz * 0.9, car.z - fx * 0.9), hr = terrain.heightAt(car.x - fz * 0.9, car.z + fx * 0.9);
+    pitch = pitch * (1 - offT) + ((hf - hb) / 3.2) * offT;
+    roll = ((hl - hr) / 1.8) * offT;
+  }
+  // Vertical motion: follow the ground until it falls away faster than
+  // gravity can pull the car down, then fly until it catches up.
+  const G = 9.81;
+  if (!car.air) {
+    const vyGround = (h0 - car.y) / dt;
+    const needAccel = (vyGround - car.vy) / dt;
+    if (needAccel < -G - 4 && car.speed > 6) {
+      car.air = true; car.airTime = 0;
+    } else {
+      car.vy = vyGround;
+      car.y = h0;
+    }
+  }
+  if (car.air) {
+    car.airTime += dt;
+    car.vy -= G * dt;
+    car.y += car.vy * dt;
+    // Nose follows the arc; the body levels out across.
+    car.groundPitch = Math.atan2(car.vy, Math.max(car.speed, 1)) * 0.8;
+    car.groundRoll *= 1 - 2 * dt;
+    if (car.y <= h0) {
+      const vyGround = pitch * car.vF;
+      const impact = Math.max(0, vyGround - car.vy);
+      car.y = h0; car.vy = vyGround; car.air = false;
+      if (car.airTime > 0.12) onLanding(impact);
+    }
+    return;
+  }
+  car.groundPitch = Math.atan(pitch);
+  car.groundRoll = Math.atan(roll);
+  // Gravity along the slope: uphill slows you, downhill speeds you up.
+  const g = G * pitch / Math.sqrt(1 + pitch * pitch);
+  car.vx -= fx * g * dt;
+  car.vz -= fz * g * dt;
+}
+const AIR = { name: 'air', grip: 0.02, drag: 0, dust: [0.7, 0.6, 0.5] };
+
+// Landing: thump, dust, camera kick and a body squash, scaled by impact speed.
+let shakeKick = 0;
+function onLanding(impact) {
+  if (impact < 1.5) return;
+  const k = Math.min(1, impact / 8);
+  shakeKick = Math.max(shakeKick, 0.06 + k * 0.3);
+  car.squash = 0.04 + k * 0.1;
+  audio.thud(0.25 + k * 0.6);
+  if (impact > 9) { car.vx *= 0.88; car.vz *= 0.88; }   // a heavy landing costs speed
+  const col = surface.dust;
+  for (let n = 0; n < 10 + k * 26; n++) {
+    const a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 4 * k;
+    dust.emit(car.x + Math.cos(a) * 1.2, car.y + 0.2, car.z + Math.sin(a) * 1.8,
+      car.vx * 0.3 + Math.cos(a) * sp, 0.8 + Math.random() * 1.5, car.vz * 0.3 + Math.sin(a) * sp,
+      1 + Math.random() * 1.2, 1.4 + Math.random(), col);
   }
 }
 
@@ -360,44 +634,34 @@ function frame(now) {
   if (active) {
     acc += dt;
     while (acc >= STEP) {
-      const inp = input.update(STEP);
-      const q = road.nearest(car.x, car.z, roadHint);
-      roadHint = q.i;
-      surface = road.surfaceAt(Math.abs(q.lateral));
-      roadLat = q.lateral; roadLx = q.tz; roadLz = -q.tx;
-      car.step(STEP, inp, surface);
-      applyLineAssist(q, STEP);
-      car.y = q.y;
+      stepPhysics(STEP, input.update(STEP));
       acc -= STEP;
     }
     emitDust(dt);
     layMarks();
     marks.flush();
-    // Far off the road: put the car back.
-    if (road.q.dist > 40) { toast('BACK ON THE ROAD', 1000); resetCar(); }
   }
 
   model.update(car, dt);
   world.follow(car.x, car.z);
-  rig.shake = active ? (surface === SURFACES.grass ? 0.05 : 0.012) * Math.min(car.speed / 25, 1) : 0;
+  shakeKick *= Math.exp(-dt * 7);
+  car.squash = (car.squash || 0) * Math.exp(-dt * 9);
+  rig.shake = active ? (car.air ? 0 : (surface === SURFACES.grass ? 0.05 : 0.012) * Math.min(car.speed / 25, 1)) + shakeKick : 0;
   rig.update(car, dt);
+  world.sky.position.copy(camera.position);
   if (!paused) dust.update(dt);
-  audio.update(car, surface, dt, active);
+  audio.update(car, car.air && car.airTime > 0.06 ? AIR : surface, dt, active);
   if (running) updateHud(dt);
   renderer.render(scene, camera);
 }
+// Boot: build today's stage behind the menu, then start the loop.
+loadStage('daily', dateSeed());
 requestAnimationFrame(frame);
 
 // Exposed for automated smoke tests.
 function stepSim(seconds, inp) {
   for (let t = 0; t < seconds; t += STEP) {
-    const q = road.nearest(car.x, car.z, roadHint);
-    roadHint = q.i;
-    surface = road.surfaceAt(Math.abs(q.lateral));
-    roadLat = q.lateral; roadLx = q.tz; roadLz = -q.tx;
-    car.step(STEP, inp, surface);
-    applyLineAssist(q, STEP);
-    car.y = q.y;
+    stepPhysics(STEP, inp);
     emitDust(STEP);
     layMarks();
     dust.update(STEP);
@@ -406,4 +670,7 @@ function stepSim(seconds, inp) {
   model.update(car, 0.2);
   rig.snap(car);
 }
-window.__sideways = { renderer, scene, camera, lineMesh, marks, assist, setAssist, car, road, input, TUNE, CARS, start, stepSim, placeOnRoad, get surface() { return surface; } };
+window.__sideways = {
+  onLanding, renderer, scene, camera, marks, assist, setAssist, car, input, TUNE, CARS, start, stepSim, placeOnRoad, loadStage, run, stage,
+  get road() { return road; }, get terrain() { return terrain; }, get lineMesh() { return lineMesh; }, get surface() { return surface; }, get best() { return best; },
+};

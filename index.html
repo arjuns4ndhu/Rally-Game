@@ -33,8 +33,14 @@
     </div>
   </div>
   <div class="hud-help" id="hud-help">
-    <b>W/S</b> throttle/brake · <b>A/D</b> steer · <b>Space</b> handbrake · <b>C</b> camera · <b>G</b> line assist · <b>R</b> reset · <b>1–4</b> car · <b>?</b> tuning · <b>Esc</b> pause
+    <b>W/S</b> throttle/brake · <b>A/D</b> steer · <b>Space</b> handbrake · <b>C</b> camera · <b>G</b> line assist · <b>R</b> restart · <b>T</b> back to checkpoint · <b>1–4</b> car · <b>?</b> tuning · <b>Esc</b> pause
   </div>
+  <div class="hud-top" id="hud-timing" hidden>
+    <div class="timer" id="hud-time">0:00.00</div>
+    <div class="hud-best">BEST <span id="hud-best">--:--.--</span></div>
+    <div class="sectors" id="hud-sectors"><i>S1</i><i>S2</i><i>S3</i><i>S4</i><i>S5</i></div>
+  </div>
+  <div class="split" id="hud-split"></div>
   <div class="toast" id="toast"></div>
 </div>
 
@@ -61,14 +67,19 @@
   <div class="title-card">
     <div class="eyebrow">Daily gravel rally</div>
     <h1 class="logo">SIDE<span>WAYS</span></h1>
-    <p class="lede">Build 1: driving test. Throw the car into the corners and tell me how it feels.</p>
-    <button id="btn-start" class="btn btn-primary">Drive the test road</button>
+    <p class="lede">A new gravel stage every day. Five sectors, one clock, unlimited attempts.</p>
+    <div class="picks">
+      <button id="btn-daily" class="btn btn-primary">Today's stage<small id="daily-name"></small></button>
+      <button id="btn-random" class="btn">Random stage<small>A brand-new road every time</small></button>
+      <button id="btn-practice" class="btn">Practice loop<small>No clock, just driving</small></button>
+    </div>
     <ul class="tips">
       <li><b>Tap brake</b> while turning to kick the rear out.</li>
       <li><b>Hold throttle</b> to keep the drift going.</li>
       <li><b>Lift off</b> to rotate more, <b>counter-steer</b> to straighten or flick.</li>
       <li><b>Space</b> handbrake for hairpins.</li>
       <li><b>G</b> turns on the racing line assist, a gentle pull toward the ideal line.</li>
+      <li><b>R</b> restarts the stage, <b>T</b> puts you back at the last checkpoint (+5 s).</li>
     </ul>
   </div>
 </div>
@@ -78,7 +89,9 @@
   <div class="title-card small">
     <h2 class="logo">PAUSED</h2>
     <button id="btn-resume" class="btn btn-primary">Resume</button>
-    <button id="btn-reset" class="btn">Reset car</button>
+    <button id="btn-reset" class="btn">Back to checkpoint</button>
+    <button id="btn-restart" class="btn">Restart stage</button>
+    <button id="btn-pmenu" class="btn">Menu</button>
     <label class="check"><input type="checkbox" id="opt-assist"> Racing line assist</label>
     <label class="check select">Assist strength
       <select id="opt-assist-level">
@@ -88,6 +101,25 @@
       </select>
     </label>
     <label class="check"><input type="checkbox" id="opt-scan" checked> Scanlines</label>
+  </div>
+</div>
+
+<!-- Finish -->
+<div id="finish" class="overlay" hidden>
+  <div class="title-card">
+    <div class="eyebrow" id="fin-stage"></div>
+    <h2 class="logo">FINISH</h2>
+    <div class="fin-row">
+      <div class="fin-time" id="fin-time">0:00.00</div>
+      <div class="newbest" id="fin-newbest" hidden>NEW BEST</div>
+    </div>
+    <p class="fin-meta"><span id="fin-prev"></span><br><span id="fin-pen"></span></p>
+    <div class="fin-table"><table id="fin-splits"></table></div>
+    <div class="fin-actions">
+      <button id="btn-retry" class="btn btn-primary">Retry</button>
+      <button id="btn-new" class="btn">Random stage</button>
+      <button id="btn-fmenu" class="btn">Menu</button>
+    </div>
   </div>
 </div>
 

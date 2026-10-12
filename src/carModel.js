@@ -1,27 +1,38 @@
-// Low-poly car meshes built from extruded side profiles.
+// Low-poly rally cars built from extruded side profiles. Each body is an
+// original design that borrows the silhouette of a classic rally era
+// (no real makes, badges or liveries).
 import * as THREE from 'three';
 
-// Side profiles: [z (forward), y (up)] in metres, traced around the outline.
+// Side profiles: [z (forward), y (up)] in metres, traced around the outline:
+// rear-bottom, up and over the top to the front, then front-bottom.
 const PROFILES = {
-  hatch: {
-    body: [[-1.78, 0.3], [-1.82, 0.78], [-1.6, 0.9], [0.9, 0.86], [1.7, 0.7], [1.85, 0.5], [1.82, 0.3]],
-    glass: [[-1.62, 0.88], [-1.45, 1.36], [0.05, 1.4], [0.85, 0.88]],
-    width: 1.66, wing: false, hood: [0.95, 1.65],
+  // 80s rally hatch: boxy, upright tailgate, short bonnet, big arches.
+  hatch80: {
+    body: [[-1.85, 0.3], [-1.88, 0.92], [-1.74, 0.98], [0.72, 0.94], [1.72, 0.84], [1.88, 0.64], [1.86, 0.3]],
+    glass: [[-1.76, 0.96], [-1.6, 1.42], [0.02, 1.46], [0.7, 0.95]],
+    width: 1.7, hood: [0.78, 1.72],
+    wing: 'roof', lamps: 'bar', flares: true,
   },
-  coupe: {
-    body: [[-2.0, 0.32], [-2.05, 0.74], [-1.75, 0.88], [-0.95, 0.9], [1.25, 0.86], [1.95, 0.66], [2.08, 0.46], [2.02, 0.32]],
-    glass: [[-1.05, 0.89], [-0.35, 1.3], [0.45, 1.32], [1.15, 0.87]],
-    width: 1.74, wing: true, hood: [1.2, 1.9],
+  // 70s wedge coupe: pointed nose, high tail, wraparound screen, ducktail.
+  wedge: {
+    body: [[-1.92, 0.32], [-1.96, 0.88], [-1.62, 0.98], [-0.72, 1.0], [0.55, 0.9], [1.88, 0.56], [1.97, 0.42], [1.92, 0.32]],
+    glass: [[-0.78, 0.99], [-0.48, 1.3], [0.02, 1.32], [0.72, 0.88]],
+    width: 1.8, hood: [0.75, 1.75],
+    wing: 'ducktail', lamps: 'pod', flares: true,
   },
-  muscle: {
-    body: [[-2.2, 0.32], [-2.24, 0.8], [-1.9, 0.92], [-1.05, 0.94], [1.35, 0.92], [2.15, 0.78], [2.25, 0.5], [2.18, 0.32]],
-    glass: [[-1.1, 0.93], [-0.45, 1.28], [0.3, 1.3], [1.0, 0.92]],
-    width: 1.84, wing: true, hood: [1.3, 2.1], scoop: true,
+  // Squared-off two-door saloon: long flat bonnet, flat boot, box flares.
+  saloon: {
+    body: [[-2.08, 0.32], [-2.12, 0.88], [-1.95, 0.95], [-1.12, 0.96], [1.22, 0.92], [2.04, 0.86], [2.12, 0.56], [2.08, 0.32]],
+    glass: [[-1.18, 0.95], [-0.84, 1.36], [0.44, 1.38], [1.04, 0.92]],
+    width: 1.74, hood: [1.25, 2.0],
+    wing: 'lip', lamps: 'bar', flares: true,
   },
-  wagon: {
-    body: [[-2.05, 0.34], [-2.1, 0.86], [-1.95, 0.95], [1.2, 0.92], [1.95, 0.72], [2.1, 0.5], [2.05, 0.34]],
-    glass: [[-1.98, 0.94], [-1.88, 1.42], [0.3, 1.45], [1.1, 0.93]],
-    width: 1.78, wing: false, hood: [1.15, 1.95], roofRack: true,
+  // 90s four-door rally saloon: smoother nose, bonnet scoop, roof vent, tall wing.
+  wrc: {
+    body: [[-2.18, 0.33], [-2.22, 0.86], [-2.0, 0.98], [-1.34, 1.0], [1.28, 0.93], [2.08, 0.78], [2.22, 0.52], [2.18, 0.33]],
+    glass: [[-1.4, 0.99], [-0.85, 1.4], [0.34, 1.43], [1.14, 0.94]],
+    width: 1.78, hood: [1.3, 2.05],
+    wing: 'big', lamps: 'pod', flares: true, scoop: true, vent: true,
   },
 };
 
@@ -96,10 +107,26 @@ function buildRim(style, rimMat, darkMat) {
   return g;
 }
 
+
 const RIM_COLORS = { spoke: 0xd8d4c8, dish: 0x2b2d33, mesh: 0xc9a54a, tarmac: 0xf2f2ee };
 
+// Dark sun-strip across the top of the windscreen.
+function bannerTexture() {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#111318'; g.fillRect(0, 0, 512, 64);
+  g.fillStyle = '#f1e9da';
+  g.font = '40px Bungee, Impact, sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('SIDEWAYS', 256, 36);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', number = 7, ghost = false } = {}) {
-  const prof = PROFILES[spec.bodyStyle] || PROFILES.coupe;
+  const prof = PROFILES[spec.bodyStyle] || PROFILES.saloon;
   const root = new THREE.Group();
   const body = new THREE.Group();        // pitches / rolls with weight transfer
   root.add(body);
@@ -111,34 +138,66 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   const lightMat = new THREE.MeshStandardMaterial({ color: 0xfff3c4, emissive: 0xffe9a0, emissiveIntensity: 1.2 });
   const tailMat = new THREE.MeshStandardMaterial({ color: 0x80140f, emissive: 0xff2a1a, emissiveIntensity: 0.6 });
   const mats = [paint, glass, dark, trim, lightMat, tailMat];
+  const add = (geo, mat, x, y, z, shadow = false) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.castShadow = shadow;
+    body.add(m);
+    return m;
+  };
 
   // Scale the profile so its length matches the car spec.
   const xs = prof.body.map((p) => p[0]);
-  const profLen = Math.max(...xs) - Math.min(...xs);
-  const k = spec.length / profLen;
+  const k = spec.length / (Math.max(...xs) - Math.min(...xs));
   const scaled = (pts) => pts.map(([z, y]) => [z * k, y]);
+  const bodyPts = scaled(prof.body), g = scaled(prof.glass);
+  const W = prof.width;
+  const front = Math.max(...bodyPts.map((p) => p[0]));
+  const rear = Math.min(...bodyPts.map((p) => p[0]));
+  // Height of the body's top edge at a given z.
+  const top = bodyPts.slice(1, -1);
+  const topY = (z) => {
+    for (let i = 0; i < top.length - 1; i++) {
+      const [z0, y0] = top[i], [z1, y1] = top[i + 1];
+      if (z >= Math.min(z0, z1) && z <= Math.max(z0, z1)) return y0 + (y1 - y0) * ((z - z0) / ((z1 - z0) || 1));
+    }
+    return top[top.length - 1][1];
+  };
 
-  const bodyMesh = new THREE.Mesh(extrudeProfile(scaled(prof.body), prof.width), paint);
-  const glassMesh = new THREE.Mesh(extrudeProfile(scaled(prof.glass), prof.width - 0.18, 0.04), glass);
+  const bodyMesh = new THREE.Mesh(extrudeProfile(bodyPts, W), paint);
+  const glassMesh = new THREE.Mesh(extrudeProfile(g, W - 0.18, 0.04), glass);
   bodyMesh.castShadow = glassMesh.castShadow = true;
   body.add(bodyMesh, glassMesh);
 
-  // Roof panel over the glass so it reads as a car rather than a fishbowl.
-  const g = scaled(prof.glass);
-  const roofLen = (g[2][0] - g[1][0]) * 0.92;
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(prof.width - 0.22, 0.05, roofLen), paint);
-  roof.position.set(0, Math.max(g[1][1], g[2][1]) + 0.02, (g[1][0] + g[2][0]) / 2);
-  body.add(roof);
+  // Roof panel over the glass.
+  const roofY = Math.max(g[1][1], g[2][1]) + 0.02;
+  const roofZ = (g[1][0] + g[2][0]) / 2, roofLen = (g[2][0] - g[1][0]) * 0.92;
+  add(new THREE.BoxGeometry(W - 0.22, 0.05, roofLen), paint, 0, roofY, roofZ);
 
-  // Livery stripe over hood + roof.
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.012, (prof.hood[1] - prof.hood[0]) * k), trim);
-  const hoodTop = scaled(prof.body).find((p) => p[0] > prof.hood[0] * k)?.[1] ?? 0.86;
-  stripe.position.set(0, hoodTop + 0.01, ((prof.hood[0] + prof.hood[1]) / 2) * k);
-  stripe.rotation.x = -0.12;
-  body.add(stripe);
-  const roofStripe = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.012, roofLen), trim);
-  roofStripe.position.copy(roof.position); roofStripe.position.y += 0.03;
-  body.add(roofStripe);
+  // Livery: twin bonnet stripes, matching roof stripes and a side band.
+  const hz0 = prof.hood[0] * k, hz1 = prof.hood[1] * k;
+  for (const sx of [-0.13, 0.13]) {
+    const st = add(new THREE.BoxGeometry(0.16, 0.012, hz1 - hz0), trim, sx, (topY(hz0) + topY(hz1)) / 2 + 0.012, (hz0 + hz1) / 2);
+    st.rotation.x = Math.atan2(topY(hz0) - topY(hz1), hz1 - hz0);
+    add(new THREE.BoxGeometry(0.16, 0.012, roofLen), trim, sx, roofY + 0.032, roofZ);
+  }
+  for (const side of [-1, 1]) {
+    add(new THREE.BoxGeometry(0.01, 0.1, (front - rear) * 0.82), trim, side * (W / 2 + 0.003), 0.5, (front + rear) / 2 + 0.05);
+  }
+
+  // Windscreen sun-strip.
+  if (!ghost) {
+    const [tz, ty] = g[2], [bz, by] = g[3];
+    const uy = ty - by, uz = tz - bz, ul = Math.hypot(uy, uz);
+    const strip = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.32, 0.16), new THREE.MeshBasicMaterial({ map: bannerTexture() }));
+    mats.push(strip.material);
+    const t = 0.16;   // near the top of the screen
+    // Tilt to the screen's rake and sit just proud of the glass (outward normal).
+    const ny = -uz / ul, nz = uy / ul;
+    strip.position.set(0, ty - uy * t + ny * 0.05, tz - uz * t + nz * 0.05);
+    strip.rotation.x = Math.atan2(uz, uy);
+    body.add(strip);
+  }
 
   // Door number roundels.
   if (!ghost) {
@@ -147,63 +206,73 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     mats.push(roundMat);
     for (const side of [-1, 1]) {
       const r = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), roundMat);
-      r.position.set(side * (prof.width / 2 + 0.006), 0.6, -0.05);
+      r.position.set(side * (W / 2 + 0.008), 0.68, (g[1][0] + g[3][0]) / 2);
       r.rotation.y = side * Math.PI / 2;
       body.add(r);
     }
   }
 
-  // Lights.
-  const front = Math.max(...scaled(prof.body).map((p) => p[0]));
-  const rear = Math.min(...scaled(prof.body).map((p) => p[0]));
+  // Head and tail lights.
   for (const side of [-1, 1]) {
-    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.05), lightMat);
-    hl.position.set(side * (prof.width / 2 - 0.3), 0.62, front - 0.02);
-    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.05), tailMat);
-    tl.position.set(side * (prof.width / 2 - 0.28), 0.7, rear + 0.01);
-    body.add(hl, tl);
-    // Rally spot lamps on the bumper.
-    const spot = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.06, 8), lightMat);
-    spot.rotation.x = Math.PI / 2;
-    spot.position.set(side * 0.28, 0.48, front + 0.04);
-    body.add(spot);
+    add(new THREE.BoxGeometry(0.3, 0.1, 0.05), lightMat, side * (W / 2 - 0.3), topY(front - 0.1) - 0.16, front + 0.05);
+    add(new THREE.BoxGeometry(0.34, 0.1, 0.05), tailMat, side * (W / 2 - 0.28), topY(rear + 0.05) - 0.14, rear - 0.05);
   }
   root.userData.tailMat = tailMat;
 
-  // Bumpers / mud flaps.
-  const bump = new THREE.Mesh(new THREE.BoxGeometry(prof.width + 0.02, 0.14, 0.12), dark);
-  bump.position.set(0, 0.36, front - 0.02);
-  const bumpR = bump.clone(); bumpR.position.z = rear + 0.02;
-  body.add(bump, bumpR);
-  for (const side of [-1, 1]) {
-    const flap = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.02), dark);
-    flap.position.set(side * (spec.track / 2), 0.22, -spec.b - 0.42);
-    body.add(flap);
+  // Rally lamps: a four-lamp bar on the bumper, or a pod on the bonnet.
+  const lampZ = prof.lamps === 'pod' ? hz1 - 0.35 : front + 0.07;
+  const lampY = prof.lamps === 'pod' ? topY(hz1 - 0.35) + 0.14 : 0.66;
+  add(new THREE.BoxGeometry(1.2, 0.06, 0.12), dark, 0, lampY - 0.11, lampZ - 0.02);
+  for (let n = 0; n < 4; n++) {
+    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.09, 10), dark);
+    lamp.rotation.x = Math.PI / 2;
+    lamp.position.set(-0.45 + n * 0.3, lampY, lampZ);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.085, 10), lightMat);
+    lens.position.set(-0.45 + n * 0.3, lampY, lampZ + 0.05);
+    body.add(lamp, lens);
   }
 
-  if (prof.wing) {
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(prof.width - 0.1, 0.04, 0.32), dark);
-    wing.position.set(0, 1.08, rear + 0.25);
-    body.add(wing);
+  // Bumpers.
+  add(new THREE.BoxGeometry(W + 0.04, 0.16, 0.14), dark, 0, 0.38, front - 0.03);
+  add(new THREE.BoxGeometry(W + 0.04, 0.16, 0.14), dark, 0, 0.38, rear + 0.03);
+
+  // Box-flared wheel arches and mud flaps.
+  if (prof.flares) {
+    for (const side of [-1, 1]) for (const wz of [spec.a, -spec.b]) {
+      add(new THREE.BoxGeometry(0.14, 0.2, 0.98), paint, side * (W / 2 + 0.03), 0.62, wz, true);
+      add(new THREE.BoxGeometry(0.15, 0.05, 1.0), dark, side * (W / 2 + 0.035), 0.5, wz);
+    }
+  }
+  for (const side of [-1, 1]) for (const wz of [spec.a + 0.42, -spec.b - 0.45]) {
+    add(new THREE.BoxGeometry(0.3, 0.24, 0.02), dark, side * (spec.track / 2), 0.2, wz);
+  }
+
+  // Wings.
+  if (prof.wing === 'roof') {
+    add(new THREE.BoxGeometry(W - 0.3, 0.04, 0.3), paint, 0, g[1][1] + 0.05, g[1][0] - 0.08, true);
+  } else if (prof.wing === 'ducktail') {
+    const d = add(new THREE.BoxGeometry(W - 0.12, 0.05, 0.4), dark, 0, topY(rear + 0.3) + 0.12, rear + 0.3, true);
+    d.rotation.x = -0.25;
+  } else if (prof.wing === 'lip') {
+    add(new THREE.BoxGeometry(W - 0.1, 0.06, 0.16), dark, 0, topY(rear + 0.2) + 0.05, rear + 0.16, true);
+  } else if (prof.wing === 'big') {
+    const wy = Math.max(topY(rear + 0.35), 0.95) + 0.42;
+    add(new THREE.BoxGeometry(W - 0.04, 0.07, 0.44), dark, 0, wy, rear + 0.32, true);
     for (const side of [-1, 1]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.2, 0.12), dark);
-      post.position.set(side * 0.55, 0.97, rear + 0.27);
-      body.add(post);
+      add(new THREE.BoxGeometry(0.05, 0.36, 0.22), dark, side * 0.62, wy - 0.18, rear + 0.34);
+      add(new THREE.BoxGeometry(0.03, 0.22, 0.5), paint, side * (W / 2 - 0.02), wy + 0.04, rear + 0.32);
     }
   }
   if (prof.scoop) {
-    const scoop = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.6), dark);
-    scoop.position.set(0, 0.97, 1.2 * k);
-    body.add(scoop);
+    const sz = (hz0 + hz1) / 2 - 0.15;
+    add(new THREE.BoxGeometry(0.5, 0.09, 0.45), dark, 0, topY(sz) + 0.05, sz);
   }
-  if (prof.roofRack) {
-    const rack = new THREE.Mesh(new THREE.BoxGeometry(prof.width - 0.4, 0.06, 1.3), dark);
-    rack.position.copy(roof.position); rack.position.y += 0.1;
-    body.add(rack);
-  }
+  if (prof.vent) add(new THREE.BoxGeometry(0.34, 0.07, 0.3), dark, 0, roofY + 0.05, roofZ + roofLen * 0.3);
+  // Roof aerial.
+  add(new THREE.CylinderGeometry(0.01, 0.01, 0.5, 4), dark, 0.4, roofY + 0.25, roofZ - roofLen * 0.3);
 
   // Wheels: pivot (steers) -> spinner (rolls) -> tyre + rim.
-  const tyreGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.24, 14);
+  const tyreGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.25, 14);
   tyreGeo.rotateZ(Math.PI / 2);
   const rimMat = new THREE.MeshStandardMaterial({ color: RIM_COLORS[wheelStyle], roughness: 0.4, metalness: 0.5, flatShading: true });
   mats.push(rimMat);
@@ -220,7 +289,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     tyre.castShadow = true;
     spin.add(tyre);
     const rim = buildRim(wheelStyle, rimMat, dark);
-    rim.position.x = Math.sign(x) * 0.115;
+    rim.position.x = Math.sign(x) * 0.12;
     spin.add(rim);
     spin.userData.rim = rim;
     pivot.add(spin);
@@ -241,7 +310,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
       for (const w of wheels) {
         w.spin.remove(w.spin.userData.rim);
         const rim = buildRim(style, rimMat, dark);
-        rim.position.x = w.side * 0.115;
+        rim.position.x = w.side * 0.12;
         w.spin.add(rim);
         w.spin.userData.rim = rim;
       }
@@ -249,16 +318,23 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     // Pose the model from the physics state.
     update(car, dt) {
       root.position.set(car.x, car.y ?? 0, car.z);
+      // Follow the ground: pitch up hills, roll across slopes.
+      root.rotation.order = 'YXZ';
       root.rotation.y = car.yaw;
+      const k = Math.min(1, dt * 12);
+      root.rotation.x += (-(car.groundPitch || 0) - root.rotation.x) * k;
+      root.rotation.z += ((car.groundRoll || 0) - root.rotation.z) * k;
       // Body pitch from longitudinal accel, roll from lateral accel.
       const pitch = THREE.MathUtils.clamp(-car.axSmooth * 0.008, -0.07, 0.07);
       const roll = THREE.MathUtils.clamp(car.aySmooth * 0.009, -0.08, 0.08);
       body.rotation.x = THREE.MathUtils.lerp(body.rotation.x, pitch, Math.min(1, dt * 10));
       body.rotation.z = THREE.MathUtils.lerp(body.rotation.z, roll, Math.min(1, dt * 10));
-      body.position.y = 0.02 + Math.sin(performance.now() * 0.03) * 0.004 * Math.min(1, car.speed / 20);
+      body.position.y = 0.02 - (car.squash || 0) + (car.air ? 0 : Math.sin(performance.now() * 0.03) * 0.004 * Math.min(1, car.speed / 20));
       const roll2 = car.vF / 0.32 * dt;
       for (const w of wheels) {
         if (w.isFront) w.pivot.rotation.y = car.steer;
+        // Suspension droops when the car is airborne.
+        w.pivot.position.y += ((car.air && car.airTime > 0.06 ? 0.2 : 0.32) - w.pivot.position.y) * Math.min(1, dt * 14);
         // Rear wheels spin faster when the tyres are lit up.
         w.spin.rotation.x += w.isFront ? roll2 : roll2 * (1 + car.wheelSpin * 2);
       }

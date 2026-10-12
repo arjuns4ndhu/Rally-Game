@@ -93,10 +93,11 @@ export class AudioEngine {
 
     const sp = Math.min(car.speed / 30, 1);
     const offroad = surface.name === 'grass';
-    const slide = active ? Math.min(1, car.rearSlide * 0.9 + car.frontSlide * 0.4) * Math.min(1, car.speed / 6) : 0;
+    const inAir = surface.name === 'air';
+    const slide = active && !inAir ? Math.min(1, car.rearSlide * 0.9 + car.frontSlide * 0.4) * Math.min(1, car.speed / 6) : 0;
     this.slideGain.gain.setTargetAtTime(slide * 0.55, t, 0.05);
     this.slideFilter.frequency.setTargetAtTime(offroad ? 500 : 750 + sp * 600, t, 0.1);
-    this.rollGain.gain.setTargetAtTime(active ? sp * (offroad ? 0.5 : 0.22) : 0, t, 0.08);
+    this.rollGain.gain.setTargetAtTime(active && !inAir ? sp * (offroad ? 0.5 : 0.22) : 0, t, 0.08);
     this.rollFilter.frequency.setTargetAtTime(offroad ? 180 : 260 + sp * 250, t, 0.1);
   }
 

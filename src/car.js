@@ -13,7 +13,7 @@ const G = 9.81;
 
 export const CARS = {
   kestrel: {
-    id: 'kestrel', name: 'Kestrel K1', tag: 'Light & nimble',
+    id: 'kestrel', name: 'Kestrel K1', tag: '80s rally hatch · light & nimble',
     mass: 920, a: 1.08, b: 1.22, h: 0.46, inertia: 1.0,
     drive: 'RWD', frontDrive: 0,
     torque: 175, peakRpm: 5600, idleRpm: 950, redline: 8000,
@@ -21,10 +21,10 @@ export const CARS = {
     muF: 1.12, muR: 1.04, peakF: 0.13, peakR: 0.14, slideF: 0.82, slideR: 0.74,
     maxSteer: 0.62, steerSpeed: 5.2, counterSteer: 0.55,
     driftAssist: 1.0, throttleOversteer: 0.55, driftBoost: 2.4, dragCoef: 0.46,
-    track: 1.52, length: 3.7, bodyStyle: 'hatch', cyl: 4,
+    track: 1.52, length: 3.7, bodyStyle: 'hatch80', cyl: 4,
   },
   vanta: {
-    id: 'vanta', name: 'Vanta GT', tag: 'Balanced',
+    id: 'vanta', name: 'Vanta GT', tag: '70s wedge coupé · balanced',
     mass: 1150, a: 1.20, b: 1.34, h: 0.50, inertia: 1.0,
     drive: 'RWD', frontDrive: 0,
     torque: 235, peakRpm: 5200, idleRpm: 900, redline: 7600,
@@ -32,10 +32,10 @@ export const CARS = {
     muF: 1.10, muR: 1.02, peakF: 0.13, peakR: 0.14, slideF: 0.80, slideR: 0.72,
     maxSteer: 0.6, steerSpeed: 4.6, counterSteer: 0.55,
     driftAssist: 1.0, throttleOversteer: 0.6, driftBoost: 2.4, dragCoef: 0.46,
-    track: 1.58, length: 4.1, bodyStyle: 'coupe', cyl: 6,
+    track: 1.6, length: 3.9, bodyStyle: 'wedge', cyl: 6,
   },
   brutus: {
-    id: 'brutus', name: 'Brutus V8', tag: 'Powerful, tail-happy',
+    id: 'brutus', name: 'Brutus V8', tag: 'Boxy V8 saloon · powerful, tail-happy',
     mass: 1280, a: 1.22, b: 1.40, h: 0.52, inertia: 1.05,
     drive: 'RWD', frontDrive: 0,
     torque: 360, peakRpm: 4600, idleRpm: 800, redline: 7000,
@@ -43,10 +43,10 @@ export const CARS = {
     muF: 1.08, muR: 0.98, peakF: 0.13, peakR: 0.13, slideF: 0.80, slideR: 0.70,
     maxSteer: 0.6, steerSpeed: 4.4, counterSteer: 0.6,
     driftAssist: 0.7, throttleOversteer: 0.7, driftBoost: 2.6, dragCoef: 0.52,
-    track: 1.62, length: 4.4, bodyStyle: 'muscle', cyl: 8,
+    track: 1.6, length: 4.2, bodyStyle: 'saloon', cyl: 8,
   },
   tundra: {
-    id: 'tundra', name: 'Tundra 4X', tag: 'Grippy 4WD',
+    id: 'tundra', name: 'Tundra 4X', tag: '90s 4WD saloon · grippy',
     mass: 1240, a: 1.25, b: 1.30, h: 0.54, inertia: 1.0,
     drive: 'AWD', frontDrive: 0.4,
     torque: 280, peakRpm: 4800, idleRpm: 850, redline: 7200,
@@ -54,7 +54,7 @@ export const CARS = {
     muF: 1.18, muR: 1.14, peakF: 0.14, peakR: 0.15, slideF: 0.86, slideR: 0.80,
     maxSteer: 0.58, steerSpeed: 4.4, counterSteer: 0.5,
     driftAssist: 1.1, throttleOversteer: 0.35, driftBoost: 2.0, dragCoef: 0.48,
-    track: 1.6, length: 4.2, bodyStyle: 'wagon', cyl: 5,
+    track: 1.6, length: 4.2, bodyStyle: 'wrc', cyl: 5,
   },
 };
 

@@ -41,6 +41,35 @@ export class Road {
     this.q = { i: 0, along: 0, lateral: 0, y: 0, tx: 0, tz: 1, dist: 0 };
   }
 
+  // Reshape the road's height profile with jumps and crests.
+  //   jump:  a ramp up to a lip, then a short sharp drop (kicker)
+  //   crest: a smooth symmetric hump that lifts the car at speed
+  applyBumps(bumps) {
+    this.bumps = bumps;
+    for (let i = 0; i < this.n; i++) {
+      const a = this.cum[i];
+      let dy = 0;
+      for (const b of bumps) {
+        const rel = a - b.at;
+        if (b.kind === 'jump') {
+          const up = b.up || 20, down = b.down || 9;
+          if (rel > -up && rel <= 0) { const t = 1 + rel / up; dy += b.h * t * t; }
+          else if (rel > 0 && rel < down) { const u = rel / down; dy += b.h * (1 - u * u * (3 - 2 * u)); }
+        } else if (Math.abs(rel) < b.len / 2) {
+          dy += b.h * 0.5 * (1 + Math.cos(Math.PI * rel / (b.len / 2)));
+        }
+      }
+      this.py[i] += dy;
+    }
+  }
+
+  // Sample index at a distance along the road (binary search).
+  indexAt(along) {
+    let lo = 0, hi = this.n - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (this.cum[mid] < along) lo = mid + 1; else hi = mid; }
+    return lo;
+  }
+
   idx(i) { return this.closed ? ((i % this.n) + this.n) % this.n : Math.max(0, Math.min(this.n - 1, i)); }
 
   // Nearest centreline point. `hint` is the last known index (or -1).

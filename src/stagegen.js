@@ -1,0 +1,243 @@
+// Seeded point-to-point stage generator.
+//
+// A "turtle" walks the road 2 m at a time, laying down segments (straights,
+// sweepers, corners, hairpins, chicanes, esses). Each candidate segment is
+// checked against everything already laid using a spatial hash; if it would
+// come too close to earlier road, it is re-rolled, and if that keeps failing
+// the generator backtracks. Elevation comes from a seeded terrain field that
+// the scenery also uses, smoothed along the road and grade-limited.
+import { mulberry32 } from './rng.js';
+
+const DS = 2;              // metres per sample
+const CLEAR = 34;          // min distance between non-neighbouring road parts
+const NEIGHBOUR = 48;      // samples (~96 m) that count as "the same bit of road"
+const CELL = 24;
+
+// ---------- Seeded 2D value noise (stateless hash, so any point is cheap) ----------
+function hash2(ix, iz, seed) {
+  let h = Math.imul(ix, 374761393) ^ Math.imul(iz, 668265263) ^ Math.imul(seed, 2246822519);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function valueNoise(x, z, seed) {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  const fx = x - ix, fz = z - iz;
+  const sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz);
+  const a = hash2(ix, iz, seed), b = hash2(ix + 1, iz, seed);
+  const c = hash2(ix, iz + 1, seed), d = hash2(ix + 1, iz + 1, seed);
+  return (a + (b - a) * sx) + ((c + (d - c) * sx) - (a + (b - a) * sx)) * sz; // 0..1
+}
+
+// Broad landform height (metres). Shared by the road and the terrain.
+export function makeBaseHeight(seed, amp = 1) {
+  const s = seed | 0;
+  return (x, z) => amp * (
+    (valueNoise(x / 420, z / 420, s) - 0.5) * 36 +
+    (valueNoise(x / 160, z / 160, s + 17) - 0.5) * 10
+  );
+}
+
+// Rolling hills away from the road (always >= 0 so the road sits in valleys).
+export function makeHillHeight(seed) {
+  const s = (seed | 0) + 101;
+  return (x, z) => {
+    const n = valueNoise(x / 120, z / 120, s) * 0.65 + valueNoise(x / 45, z / 45, s + 9) * 0.35;
+    return Math.max(0, n - 0.3) * 40;
+  };
+}
+
+// ---------- Names ----------
+const NAME_A = ['Kar', 'Vel', 'Ost', 'Mira', 'Tal', 'Bru', 'Sen', 'Alt', 'Kor', 'Lun', 'Fen', 'Var', 'Hol', 'Rav', 'Esk', 'Dun', 'Sol', 'Mar', 'Tor', 'Ash'];
+const NAME_B = ['vik', 'berg', 'dal', 'moor', 'by', 'wald', 'stad', 'ford', 'heim', 'holt', 'mere', 'lund', 'ness', 'rock'];
+const NAME_C = ['Ridge', 'Forest', 'Pass', 'Valley', 'Hills', 'Woods', 'Descent', 'Climb', 'Gorge', 'Heath'];
+export function stageName(seed) {
+  const r = mulberry32((seed * 2654435761) >>> 0);
+  return `${r.pick(NAME_A)}${r.pick(NAME_B)} ${r.pick(NAME_C)}`;
+}
+
+// ---------- Segment library ----------
+// Each returns an array of curvatures (1/m, + = left), one per 2 m sample.
+function arc(R, angleDeg, dir) {
+  const n = Math.max(2, Math.round((R * angleDeg * Math.PI / 180) / DS));
+  const ease = Math.min(6, Math.floor(n / 3));
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    let k = dir / R;
+    if (i < ease) k *= (i + 1) / (ease + 1);
+    else if (i >= n - ease) k *= (n - i) / (ease + 1);
+    out.push(k);
+  }
+  return out;
+}
+const straight = (len) => new Array(Math.max(1, Math.round(len / DS))).fill(0);
+
+function makeSegment(rand, type, dir) {
+  switch (type) {
+    case 'straight': return { type, ks: straight(rand.range(30, 110)) };
+    case 'sweeper': return { type, ks: arc(rand.range(70, 160), rand.range(25, 70), dir) };
+    case 'corner': return { type, ks: arc(rand.range(26, 48), rand.range(50, 105), dir) };
+    case 'hairpin': return { type, ks: [...straight(rand.range(50, 80)), ...arc(rand.range(11, 15), rand.range(160, 185), dir), ...straight(rand.range(16, 30))] };
+    case 'chicane': {
+      const R = rand.range(24, 38), A = rand.range(35, 55);
+      return { type, ks: [...arc(R, A, dir), ...straight(rand.range(4, 12)), ...arc(R, A, -dir)] };
+    }
+    case 'esses': {
+      const ks = [];
+      for (let i = 0; i < 3; i++) ks.push(...arc(rand.range(40, 70), rand.range(35, 60), i % 2 ? -dir : dir));
+      return { type, ks };
+    }
+  }
+}
+const TYPES = [['straight', 0.2], ['sweeper', 0.24], ['corner', 0.22], ['hairpin', 0.1], ['chicane', 0.12], ['esses', 0.12]];
+function pickType(rand, prev) {
+  for (;;) {
+    let r = rand(), t = TYPES[0][0];
+    for (const [name, w] of TYPES) { if ((r -= w) <= 0) { t = name; break; } }
+    if (t === prev && (t === 'hairpin' || t === 'straight')) continue;   // no back-to-back
+    return t;
+  }
+}
+
+// ---------- Generator ----------
+function tryGenerate(seed, salt) {
+  const rand = mulberry32((seed * 7919 + salt * 104729 + 1) >>> 0);
+  const target = 2000 + rand() * 1000;
+  const xs = [0], zs = [0], hs = [0];
+  const grid = new Map();
+  const key = (x, z) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
+  const addToGrid = (i) => {
+    const k = key(xs[i], zs[i]);
+    if (!grid.has(k)) grid.set(k, []);
+    grid.get(k).push(i);
+  };
+  addToGrid(0);
+
+  // Would a point at (x, z) placed as sample `idx` clash with earlier road?
+  const clashes = (x, z, idx) => {
+    const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+      const list = grid.get(`${cx + dx},${cz + dz}`);
+      if (!list) continue;
+      for (const j of list) {
+        if (idx - j < NEIGHBOUR) continue;
+        if (Math.hypot(xs[j] - x, zs[j] - z) < CLEAR) return true;
+      }
+    }
+    return false;
+  };
+
+  const segs = [];       // {type, start} so we can backtrack
+  let goal = 0;          // wandering goal heading keeps the stage from spiralling
+  let prevType = 'straight';
+  let failures = 0;
+
+  const lay = (ks) => {
+    // Simulate first; commit only if clear.
+    let x = xs[xs.length - 1], z = zs[zs.length - 1], h = hs[hs.length - 1];
+    const nx = [], nz = [], nh = [];
+    const base = xs.length;
+    for (let i = 0; i < ks.length; i++) {
+      h += ks[i] * DS;
+      x += Math.sin(h) * DS; z += Math.cos(h) * DS;
+      if (clashes(x, z, base + i)) return false;
+      // Also check against this segment's own earlier points.
+      for (let j = 0; j < i - NEIGHBOUR; j++) if (Math.hypot(nx[j] - x, nz[j] - z) < CLEAR) return false;
+      nx.push(x); nz.push(z); nh.push(h);
+    }
+    for (let i = 0; i < nx.length; i++) { xs.push(nx[i]); zs.push(nz[i]); hs.push(nh[i]); addToGrid(xs.length - 1); }
+    return true;
+  };
+  const removeFrom = (start) => {
+    xs.length = zs.length = hs.length = start;
+    grid.clear();
+    for (let i = 0; i < xs.length; i++) addToGrid(i);
+  };
+
+  lay(straight(60));
+  segs.push({ type: 'straight', start: 1 });
+  while ((xs.length - 1) * DS < target) {
+    goal += (rand() - 0.5) * 0.9;
+    const h = hs[hs.length - 1];
+    const towardGoal = Math.sign(((goal - h + Math.PI * 3) % (Math.PI * 2)) - Math.PI) || 1;
+    let placed = false;
+    for (let attempt = 0; attempt < 8 && !placed; attempt++) {
+      const type = pickType(rand, prevType);
+      const dir = rand() < 0.68 ? towardGoal : -towardGoal;
+      const seg = makeSegment(rand, type, attempt % 2 ? -dir : dir);
+      const start = xs.length;
+      if (lay(seg.ks)) { segs.push({ type, start }); prevType = type; placed = true; }
+    }
+    if (!placed) {
+      if (++failures > 60 || segs.length < 2) return null;
+      const last = segs.pop();
+      removeFrom(last.start);
+      prevType = segs[segs.length - 1].type;
+    }
+  }
+  if (!lay(straight(70))) return null;   // run-out past the finish
+
+  return { xs, zs, segs };
+}
+
+// Public: build a stage definition from a seed.
+export function generateStage(seed) {
+  let raw = null;
+  for (let salt = 0; salt < 20 && !raw; salt++) raw = tryGenerate(seed, salt);
+  if (!raw) throw new Error(`Stage generation failed for seed ${seed}`);
+  const { xs, zs, segs } = raw;
+
+  // Elevation from the shared landform, smoothed and grade-limited.
+  const base = makeBaseHeight(seed);
+  let ys = xs.map((x, i) => base(x, zs[i]));
+  for (let pass = 0; pass < 3; pass++) {
+    const out = ys.slice();
+    for (let i = 0; i < ys.length; i++) {
+      let s = 0, c = 0;
+      for (let d = -15; d <= 15; d++) { const j = i + d; if (j >= 0 && j < ys.length) { s += ys[j]; c++; } }
+      out[i] = s / c;
+    }
+    ys = out;
+  }
+  const maxStep = 0.1 * DS;     // 10% grade
+  for (let i = 1; i < ys.length; i++) ys[i] = Math.max(ys[i - 1] - maxStep, Math.min(ys[i - 1] + maxStep, ys[i]));
+  for (let i = ys.length - 2; i >= 0; i--) ys[i] = Math.max(ys[i + 1] - maxStep, Math.min(ys[i + 1] + maxStep, ys[i]));
+
+  const pts = xs.map((x, i) => [x, ys[i], zs[i]]);
+
+  // Jumps on straights (not the opening one), crests on fast sweepers.
+  const brand = mulberry32((seed * 31 + 7) >>> 0);
+  const bumps = [];
+  const total = (xs.length - 1) * DS;
+  const farFrom = (at, gap) => bumps.every((b) => Math.abs(b.at - at) > gap);
+  const straights = segs.filter((sg, k) => k > 0 && sg.type === 'straight');
+  const sweepers = segs.filter((sg) => sg.type === 'sweeper' || sg.type === 'esses');
+  // Seeded Fisher-Yates (a random sort comparator differs between browsers).
+  const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(brand() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+  const segLen = (sg) => { const k = segs.indexOf(sg); const end = k + 1 < segs.length ? segs[k + 1].start : xs.length; return (end - sg.start) * DS; };
+  for (const sg of shuffle(straights)) {
+    if (bumps.filter((b) => b.kind === 'jump').length >= 3) break;
+    const len = segLen(sg);
+    if (len < 55) continue;
+    const at = sg.start * DS + len * brand.range(0.55, 0.75);
+    if (at < 120 || at > total - 160 || !farFrom(at, 120)) continue;
+    bumps.push({ kind: 'jump', at, h: brand.range(1.1, 1.7), up: brand.range(18, 24), down: brand.range(8, 11) });
+  }
+  for (const sg of shuffle(sweepers)) {
+    if (bumps.filter((b) => b.kind === 'crest').length >= 3) break;
+    const len = segLen(sg);
+    if (len < 50) continue;
+    const at = sg.start * DS + len * 0.5;
+    if (at < 120 || at > total - 160 || !farFrom(at, 110)) continue;
+    bumps.push({ kind: 'crest', at, h: brand.range(1.0, 1.6), len: brand.range(26, 34) });
+  }
+  bumps.sort((a, b) => a.at - b.at);
+
+  const counts = {};
+  segs.forEach((s) => (counts[s.type] = (counts[s.type] || 0) + 1));
+  return {
+    seed, name: stageName(seed), points: pts, width: 7.5,
+    runout: 70,   // metres of road after the finish line
+    counts, bumps,
+  };
+}

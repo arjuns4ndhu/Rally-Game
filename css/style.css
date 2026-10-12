@@ -163,3 +163,54 @@ body.touch .hud-br { bottom: auto; top: calc(56px + env(safe-area-inset-top, 0px
   font-family: var(--font-ui); font-weight: 600; font-size: 14px; color: var(--text);
   background: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px;
 }
+
+/* ---------- Stage timing HUD ---------- */
+.hud-top {
+  position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.timer {
+  font-family: var(--font-display); font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums;
+  text-shadow: 0 3px 0 rgba(0,0,0,0.55);
+}
+.hud-best { font-size: 12px; font-weight: 700; letter-spacing: 0.18em; color: var(--muted); }
+.hud-best span { color: var(--text); font-variant-numeric: tabular-nums; }
+.sectors { display: flex; gap: 4px; margin-top: 2px; }
+.sectors i {
+  font-style: normal; font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  padding: 2px 8px; border-radius: 3px; background: rgba(11,13,18,0.6); color: var(--muted); border: 1px solid var(--line);
+}
+.sectors i.done { background: var(--accent); color: var(--ink); border-color: var(--accent); }
+.sectors i.now { color: var(--text); border-color: var(--accent); }
+.split {
+  position: absolute; top: calc(118px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+  font-family: var(--font-display); font-size: 24px; font-variant-numeric: tabular-nums; white-space: nowrap;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 14px;
+  opacity: 0; transition: opacity 0.2s;
+}
+.split.on { opacity: 1; }
+.split .lbl { color: var(--accent); }
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+body.touch .hud-top { transform: translateX(-50%) scale(0.85); transform-origin: top center; }
+
+/* ---------- Title picks ---------- */
+.picks { display: flex; flex-direction: column; gap: 10px; }
+.btn small { display: block; font-family: var(--font-ui); font-size: 13px; font-weight: 600; letter-spacing: 0.02em; opacity: 0.75; margin-top: 2px; }
+
+/* ---------- Finish ---------- */
+.fin-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.fin-time { font-family: var(--font-display); font-size: clamp(44px, 9vw, 64px); line-height: 1; font-variant-numeric: tabular-nums; }
+.newbest {
+  font-family: var(--font-display); font-size: 18px; color: var(--ink); background: var(--good);
+  padding: 6px 10px; border-radius: 4px; transform: rotate(-4deg);
+}
+.fin-meta { margin: 0; color: var(--muted); line-height: 1.5; }
+.fin-table { overflow-x: auto; }
+#fin-splits { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+#fin-splits th { text-align: left; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); }
+#fin-splits td { padding: 5px 6px; border-bottom: 1px solid var(--line); }
+.fin-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.fin-actions .btn { flex: 1 1 140px; text-align: center; }
+
+.overlay { overflow-y: auto; }
