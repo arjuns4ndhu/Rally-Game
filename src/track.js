@@ -5,8 +5,8 @@ import * as THREE from 'three';
 
 export const SURFACES = {
   gravel: { name: 'gravel', grip: 1.0, drag: 0.0, dust: [0.74, 0.64, 0.5] },
-  verge: { name: 'verge', grip: 0.85, drag: 0.12, dust: [0.62, 0.55, 0.42] },
-  grass: { name: 'grass', grip: 0.62, drag: 0.55, dust: [0.45, 0.42, 0.3] },
+  verge: { name: 'verge', grip: 0.92, drag: 0.04, dust: [0.62, 0.55, 0.42] },
+  grass: { name: 'grass', grip: 0.8, drag: 0.15, dust: [0.45, 0.42, 0.3] },
 };
 
 export class Road {
