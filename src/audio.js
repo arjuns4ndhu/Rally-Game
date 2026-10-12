@@ -65,6 +65,11 @@ export class AudioEngine {
     this.sfxBus.gain.value = this.volumes.sfx;
   }
 
+  setVolume(v) {
+    this.volumes.master = v;
+    if (this.ctx && !this.muted) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
+  }
+
   setMuted(m) {
     this.muted = m;
     if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : this.volumes.master, this.ctx.currentTime, 0.02);

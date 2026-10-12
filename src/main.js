@@ -16,6 +16,8 @@ import { TyreMarks, buildRacingMarks } from './tyremarks.js';
 import { GhostRecorder, saveGhost, loadGhost, samplePose } from './ghost.js';
 import { buildPaceNotes, CoDriver } from './pacenotes.js';
 import { notesHTML } from './paceicons.js';
+import { Drone } from './drone.js';
+import { buildHazards, HAZARD_DEBUG } from './hazards.js';
 
 const $ = (id) => document.getElementById(id);
 document.body.classList.add('scanlines');
@@ -35,6 +37,9 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, 1, 0.2, 480);
 const world = setupWorld(scene);
 const rig = new CameraRig(camera);
+const drone = new Drone(scene);
+rig.drone = drone;
+rig.groundAt = (x, z) => worldGround(x, z);
 const dust = new Dust(scene);
 const marks = new TyreMarks(scene);
 const audio = new AudioEngine();
@@ -60,8 +65,9 @@ const vergeMat = new THREE.MeshStandardMaterial({ color: 0x6e6340, roughness: 1 
 let roadTheme = 'forest';
 const SECTORS = 5;
 const PENALTY = 5;            // seconds added for a respawn
-const RESPAWN_DIST = 25;      // metres off the road before you're put back
+const RESPAWN_DIST = 50;      // metres off the road before you're put back
 let road = null, terrain = null, stageGroup = null, lineMesh = null;
+let hazards = null;  // rare fallen trees / landslides
 let shortcuts = [];   // Road objects for rough cut-through tracks
 const trackMat = new THREE.MeshStandardMaterial({ roughness: 1 });
 const stage = { kind: 'practice', seed: 0, name: '', start: 0, finish: 0, cps: [] };
@@ -165,6 +171,10 @@ function loadStage(kind, seed = 0) {
     for (let k = 0; k < SECTORS - 1; k++) stageGroup.add(buildGate(road, stage.cps[k], `S${k + 2}`, 'sector'));
     stageGroup.add(buildGate(road, stage.finish, 'FINISH', 'finish'));
   }
+  hazards = kind === 'practice' ? null : buildHazards(road, {
+    seed, theme, groundY: worldGround, start: stage.start, finish: stage.finish, cps: stage.cps, corners: road.findSharpCorners(),
+  });
+  if (hazards) stageGroup.add(hazards.group);
   scene.add(stageGroup);
   codriver.load(buildPaceNotes(road, { start: stage.start, finish: stage.kind === 'practice' ? road.length : stage.finish }));
   marks.clear();
@@ -221,6 +231,7 @@ function placeOnRoad(i) {
   codriver.seek(roadAlong);
   dust.clear();
   marks.cut();
+  drone.snap(car, worldGround);
   rig.snap(car);
 }
 
@@ -270,6 +281,8 @@ function restartRun() {
   run.state = stage.kind === 'practice' ? 'free' : 'ready';
   run.t = 0; run.next = 0; run.splits = []; run.penalty = 0; run.respawns = 0;
   best = loadBest();
+  hazards?.reset();
+  model.repair();
   placeOnRoad(stage.kind === 'practice' ? 0 : road.indexAt(stage.start - 14));
   $('finish').hidden = true;
   refreshGhost();
@@ -552,6 +565,17 @@ function setMuted(m) {
 setMuted(muted);
 $('btn-mute').addEventListener('click', (e) => { audio.init(); setMuted(!muted); e.currentTarget.blur(); });
 $('opt-mute').addEventListener('change', (e) => setMuted(e.target.checked));
+// Master volume (pause menu), remembered between visits.
+function setVolume(pct) {
+  audio.setVolume(pct / 100);
+  $('opt-volume').value = pct;
+  $('opt-volume-val').textContent = `${pct}%`;
+  try { localStorage.setItem('sideways.volume', String(pct)); } catch { /* ignore */ }
+}
+let volume = 80;
+try { const v = parseInt(localStorage.getItem('sideways.volume'), 10); if (v >= 0 && v <= 100) volume = v; } catch { /* ignore */ }
+setVolume(volume);
+$('opt-volume').addEventListener('input', (e) => { audio.init(); setVolume(+e.target.value); });
 $('opt-codriver').value = codriver.mode;
 $('opt-codriver').addEventListener('change', (e) => {
   codriver.mode = e.target.value;
@@ -564,6 +588,14 @@ $('opt-ghost').addEventListener('change', (e) => {
   ghostOn = e.target.checked;
   try { localStorage.setItem('sideways.ghostOn', ghostOn ? '1' : '0'); } catch { /* ignore */ }
   refreshGhost(); refreshStageHud();
+});
+let droneOn = true;
+try { droneOn = localStorage.getItem('sideways.drone') !== '0'; } catch { /* ignore */ }
+drone.enabled = droneOn;
+$('opt-drone').checked = droneOn;
+$('opt-drone').addEventListener('change', (e) => {
+  drone.enabled = e.target.checked;
+  try { localStorage.setItem('sideways.drone', e.target.checked ? '1' : '0'); } catch { /* ignore */ }
 });
 $('opt-scan').addEventListener('change', (e) => document.body.classList.toggle('scanlines', e.target.checked));
 
@@ -665,7 +697,7 @@ function layMarks() {
 // and a big loss of speed, but you keep going. Light knocks just bounce you
 // off. R still restarts from the start.
 const OB_CELL = 10, CAR_R = 0.85, CRASH_SPEED = 8.5;   // m/s into the obstacle (~30 km/h)
-let obGrid = new Map(), stuckTime = 0;
+let obGrid = new Map(), stuckTime = 0, hazardObs = [];
 function buildObstacleGrid(list) {
   obGrid = new Map();
   for (const o of list) {
@@ -679,9 +711,12 @@ function collide() {
   for (const k of [off, 0, -off]) {
     const cx = car.x + fx * k, cz = car.z + fz * k;
     const gx = Math.floor(cx / OB_CELL), gz = Math.floor(cz / OB_CELL);
+    const lists = hazardObs.length ? [hazardObs] : [];
     for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
-      const list = obGrid.get(`${gx + dx},${gz + dz}`);
-      if (!list) continue;
+      const l = obGrid.get(`${gx + dx},${gz + dz}`);
+      if (l) lists.push(l);
+    }
+    for (const list of lists) {
       for (const o of list) {
         const ex = cx - o.x, ez = cz - o.z, d = Math.hypot(ex, ez), min = CAR_R + o.r;
         if (d >= min || d < 1e-4) continue;
@@ -693,6 +728,7 @@ function collide() {
         // Bounce: kill the speed into it, scrub some along it, add a little spin.
         // A hard hit is a crash: much bigger speed loss, but you carry on.
         const hard = impact > CRASH_SPEED;
+        if (impact > 3) dentAt(cx - nx * CAR_R, cz - nz * CAR_R, Math.min(hard ? 0.26 : 0.12, impact * 0.013));
         car.vx -= 1.15 * vn * nx; car.vz -= 1.15 * vn * nz;
         const keep = hard ? 0.35 : 0.8;
         car.vx *= keep; car.vz *= keep;
@@ -703,6 +739,11 @@ function collide() {
       }
     }
   }
+}
+// Cosmetic dent where the car touched something (world x/z).
+function dentAt(wx, wz, depth) {
+  const dx = wx - car.x, dz = wz - car.z, c = Math.cos(car.yaw), sn = Math.sin(car.yaw);
+  model.dent(dx * c - dz * sn, 0.5 + Math.random() * 0.3, dx * sn + dz * c, depth);
 }
 function crash(impact) {
   car.yawRate += (Math.random() - 0.5) * Math.min(3, impact * 0.15);
@@ -748,8 +789,13 @@ function stepPhysics(dt, inp) {
     if (qs.dist < sc.width / 2 + 0.8) { onShortcut = true; break; }
   }
   // Far off the road: put the car back (at the last checkpoint on a stage).
-  if (!onShortcut && offDist > (stage.kind === 'practice' ? 40 : RESPAWN_DIST)) { resetCar(); return; }
+  if (!onShortcut && offDist > (stage.kind === 'practice' ? 80 : RESPAWN_DIST)) { resetCar(); return; }
   surface = onShortcut ? SHORTCUT : road.surfaceAt(Math.abs(lat));
+  if (hazards) {
+    if (run.state !== 'finished') hazards.update(dt, roadAlong, hazardFx);
+    hazardObs = hazards.obstacles();
+    if (hazards.rubbleAt(car.x, car.z)) surface = RUBBLE;
+  } else hazardObs = [];
   roadLat = lat; roadLx = tz; roadLz = -tx;
   if (run.state === 'finished') { inp = { throttle: 0, brake: 0.35, steer: 0, handbrake: false }; }
   // Tiny hops over kinks in the ground keep their grip; real flights don't.
@@ -769,50 +815,47 @@ function stepPhysics(dt, inp) {
   updateRun(q, dt);
   if (run.state === 'running') recorder.record(run.t, car);
 
-  // Height and slope. Sample the ground ahead/behind and to the sides.
+  // Height and slope.
   const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
   const latAbs = Math.abs(lat);
   const h0 = groundAt(car.x, car.z, latAbs, roadY);
   const along1 = fx * tx + fz * tz;    // how much the car points along the road
   const offT = shoulderT(latAbs);
-  // Ground profile along the car's heading, 4 m behind and ahead. Using a
-  // real distance (not one physics step) keeps slope and take-off smooth.
-  const roadHeightAlong = (sAlong) => {
-    if (road.closed) sAlong = ((sAlong % road.length) + road.length) % road.length;
-    sAlong = Math.max(0, Math.min(road.length - 0.01, sAlong));
-    const i = Math.max(1, road.indexAt(sAlong));
-    const s0 = road.cum[i - 1], s1 = road.cum[i];
-    const t = s1 > s0 ? (sAlong - s0) / (s1 - s0) : 0;
-    return road.py[i - 1] + (road.py[i] - road.py[i - 1]) * Math.max(0, Math.min(1, t));
+  const lx = tz, lz = -tx;
+  // Ground height near the car, using the road frame found above so it
+  // matches the road surface and shoulders exactly.
+  const groundNear = (dx, dz) => {
+    const la = lat + dx * lx + dz * lz;
+    return groundAt(car.x + dx, car.z + dz, Math.abs(la), roadHeightAlong(roadAlong + dx * tx + dz * tz));
   };
-  const profile = (d) => {
-    const yr = offT < 1 ? roadHeightAlong(roadAlong + d * along1) : 0;
-    const yt = offT > 0 ? terrain.heightAt(car.x + fx * d, car.z + fz * d) : 0;
-    return yr * (1 - offT) + yt * offT;
-  };
-  const W = 4;
-  const yBack = profile(-W), yMid = profile(0), yFwd = profile(W);
-  const pitch = (yFwd - yBack) / (2 * W);
-  const curv = (yBack - 2 * yMid + yFwd) / (W * W);   // vertical curvature (1/m)
-  let roll = 0;
-  if (offT > 0) {
-    const hl = terrain.heightAt(car.x + fz * 0.9, car.z - fx * 0.9), hr = terrain.heightAt(car.x - fz * 0.9, car.z + fx * 0.9);
-    roll = ((hl - hr) / 1.8) * offT;
-  }
-  // Vertical motion: stick to the ground until it curves away faster than
-  // gravity can follow (speed^2 x curvature > g), then fly.
+  // Ground gradient (rise per metre in x and z), from central differences.
+  const E = 1.2;
+  const gx = (groundNear(E, 0) - groundNear(-E, 0)) / (2 * E);
+  const gz = (groundNear(0, E) - groundNear(0, -E)) / (2 * E);
+  const pitch = gx * fx + gz * fz;            // uphill along the nose
+  const rollT = gx * fz - gz * fx;            // rise toward the car's left
   const G = 9.81;
-  if (!car.air) {
-    const vyGround = pitch * car.vF;
-    // A bit over 1 g of 'lift' needed, so ordinary rises at speed keep the
-    // wheels down; jumps and crests are far sharper and still launch you.
-    if (curv * car.vF * car.vF < -G * 1.7 && car.speed > 6) {
-      car.air = true; car.airTime = 0;
-      car.vy = vyGround;
-    } else {
-      car.vy = vyGround;
-      car.y = h0;
+  // Only real jumps and crests on the road can launch the car; everywhere
+  // else it stays planted, however steep or lumpy the ground is.
+  let launchZone = false;
+  if (offT < 0.5 && !onShortcut) {
+    for (const bp of road.bumps || []) {
+      const rel = roadAlong - bp.at;
+      if (bp.kind === 'jump' ? rel > -4 && rel < 7 : Math.abs(rel) < bp.len / 2 + 3) { launchZone = true; break; }
     }
+  }
+  if (!car.air) {
+    const vyGround = gx * car.vx + gz * car.vz;
+    let launch = false;
+    if (launchZone && car.speed > 6) {
+      const W = 4;
+      const yBack = roadHeightAlong(roadAlong - W * along1), yMid = roadHeightAlong(roadAlong), yFwd = roadHeightAlong(roadAlong + W * along1);
+      const curv = (yBack - 2 * yMid + yFwd) / (W * W);
+      launch = curv * car.vF * car.vF < -G * 1.7;
+    }
+    car.vy = vyGround;
+    if (launch) { car.air = true; car.airTime = 0; }
+    else car.y = h0;
   }
   if (car.air) {
     car.airTime += dt;
@@ -822,19 +865,48 @@ function stepPhysics(dt, inp) {
     car.groundPitch = Math.atan2(car.vy, Math.max(car.speed, 1)) * 0.8;
     car.groundRoll *= 1 - 2 * dt;
     if (car.y <= h0) {
-      const vyGround = pitch * car.vF;
+      const vyGround = gx * car.vx + gz * car.vz;
       const impact = Math.max(0, vyGround - car.vy);
       car.y = h0; car.vy = vyGround; car.air = false;
       if (car.airTime > 0.12) { settleLanding(inp); onLanding(impact); }
     }
     return;
   }
-  car.groundPitch = Math.atan(pitch);
-  car.groundRoll = Math.atan(roll);
-  // Gravity along the slope: uphill slows you, downhill speeds you up.
-  const g = G * pitch / Math.sqrt(1 + pitch * pitch);
-  car.vx -= fx * g * dt;
-  car.vz -= fz * g * dt;
+  // Body follows the slope, smoothed so lumpy ground doesn't make it shake.
+  const kS = 1 - Math.exp(-dt * 14);
+  car.groundPitch += (Math.atan(pitch) - car.groundPitch) * kS;
+  car.groundRoll += (Math.atan(rollT) - car.groundRoll) * kS;
+  // Gravity pulls straight down the slope (not along the nose), so a car
+  // sliding sideways on a hill drifts downhill naturally.
+  const gg = G / Math.sqrt(1 + gx * gx + gz * gz);
+  car.vx -= gx * gg * dt;
+  car.vz -= gz * gg * dt;
+}
+// Road surface height at a distance along the centreline.
+function roadHeightAlong(sAlong) {
+  if (road.closed) sAlong = ((sAlong % road.length) + road.length) % road.length;
+  sAlong = Math.max(0, Math.min(road.length - 0.01, sAlong));
+  const i = Math.max(1, road.indexAt(sAlong));
+  const s0 = road.cum[i - 1], s1 = road.cum[i];
+  const t = s1 > s0 ? (sAlong - s0) / (s1 - s0) : 0;
+  return road.py[i - 1] + (road.py[i] - road.py[i - 1]) * Math.max(0, Math.min(1, t));
+}
+// Landslide dirt: loose and draggy.
+const RUBBLE = { name: 'rubble', grip: 0.7, drag: 0.35, dust: [0.6, 0.52, 0.42] };
+const hazardFx = {
+  dust: (...a) => dust.emit(...a),
+  thud: (v) => audio.thud(v),
+  shake: (v) => { shakeKick = Math.max(shakeKick, v); },
+  creak: () => { audio.thud(0.25); toast('TREE DOWN!', 1200); },
+  rumble: () => { audio.thud(0.7); setTimeout(() => audio.thud(0.5), 250); setTimeout(() => audio.thud(0.6), 600); toast('LANDSLIDE!', 1200); },
+};
+// Ground height anywhere (road, shoulders or terrain), for the camera,
+// drone and hazards.
+function worldGround(x, z) {
+  if (!terrain) return 0;
+  const nr = terrain.nearestRoad(x, z);
+  if (!nr) return terrain.heightAt(x, z);
+  return groundAt(x, z, nr.d, road.py[nr.i]);
 }
 const AIR = { name: 'air', grip: 0.02, drag: 0, dust: [0.7, 0.6, 0.5] };
 // Shortcut tracks: rough and loose, a gamble against the distance saved.
@@ -898,6 +970,8 @@ function frame(now) {
   shakeKick *= Math.exp(-dt * 7);
   car.squash = (car.squash || 0) * Math.exp(-dt * 9);
   rig.shake = active ? (car.air ? 0 : (surface.name === 'grass' ? 0.05 : 0.012) * Math.min(car.speed / 25, 1)) + shakeKick : 0;
+  drone.hidden = rig.mode === 'drone';
+  if (!paused) drone.update(car, dt, worldGround);
   rig.update(car, dt);
   world.sky.position.copy(camera.position);
   if (!paused) dust.update(dt);
@@ -919,9 +993,11 @@ function stepSim(seconds, inp) {
   }
   marks.flush();
   model.update(car, 0.2);
+  drone.snap(car, worldGround);
   rig.snap(car);
 }
 window.__sideways = {
+  drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver,

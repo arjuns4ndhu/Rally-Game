@@ -44,13 +44,25 @@ const PROFILES = {
   },
 };
 
+// Split long edges so the body has enough vertices to take dents.
+function resample(pts, maxSeg = 0.3) {
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const [z0, y0] = pts[i], [z1, y1] = pts[(i + 1) % pts.length];
+    const n = Math.max(1, Math.ceil(Math.hypot(z1 - z0, y1 - y0) / maxSeg));
+    for (let k = 0; k < n; k++) out.push([z0 + (z1 - z0) * k / n, y0 + (y1 - y0) * k / n]);
+  }
+  return out;
+}
+
 function extrudeProfile(pts, width, bevel = 0.05) {
+  pts = resample(pts);
   const shape = new THREE.Shape();
   shape.moveTo(pts[0][0], pts[0][1]);
   for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1]);
   shape.closePath();
   const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: width - bevel * 2, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 1,
+    depth: width - bevel * 2, steps: 5, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 1,
   });
   // Shape is in XY; extrusion goes along +Z. Rotate so profile x -> world z.
   geo.translate(0, 0, -(width - bevel * 2) / 2);
@@ -360,6 +372,53 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   const api = {
     root, body, wheels, paint,
     setColor(c) { paint.color.set(c); },
+    // Purely cosmetic crash damage: push the bodywork in around a point
+    // (body space: x right, y up, z forward). `depth` in metres.
+    dent(x, y, z, depth) {
+      const R = 0.75;
+      const hit = new THREE.Vector3(x, y, z);
+      const push = new THREE.Vector3(-x * 0.8, 0.55 - y, -z).normalize();   // toward the middle
+      const inv = new THREE.Matrix4(), p = new THREE.Vector3(), dir = new THREE.Vector3(), v = new THREE.Vector3();
+      const done = new Set();
+      for (const m of body.children) {
+        if (!m.isMesh || done.has(m.geometry)) continue;
+        done.add(m.geometry);
+        m.updateMatrix();
+        inv.copy(m.matrix).invert();
+        p.copy(hit).applyMatrix4(inv);
+        dir.copy(push).transformDirection(inv);
+        const pos = m.geometry.attributes.position;
+        if (!m.geometry.userData.orig) m.geometry.userData.orig = pos.array.slice();
+        const orig = m.geometry.userData.orig;
+        let moved = false;
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i);
+          const d = v.distanceTo(p);
+          if (d >= R) continue;
+          const f = (1 - d / R) ** 2;
+          // A little noise so it crumples rather than pressing in smoothly.
+          const n = 0.7 + 0.6 * Math.abs(Math.sin(orig[i * 3] * 91.7 + orig[i * 3 + 1] * 47.3 + orig[i * 3 + 2] * 13.1));
+          v.addScaledVector(dir, depth * f * n);
+          // Never more than 0.22 m from the original shape.
+          const ox = orig[i * 3], oy = orig[i * 3 + 1], oz = orig[i * 3 + 2];
+          const dx = v.x - ox, dy = v.y - oy, dz = v.z - oz, dl = Math.hypot(dx, dy, dz);
+          if (dl > 0.22) v.set(ox + dx * 0.22 / dl, oy + dy * 0.22 / dl, oz + dz * 0.22 / dl);
+          pos.setXYZ(i, v.x, v.y, v.z);
+          moved = true;
+        }
+        if (moved) { pos.needsUpdate = true; m.geometry.computeVertexNormals(); }
+      }
+    },
+    // Back to showroom condition.
+    repair() {
+      for (const m of body.children) {
+        const o = m.geometry?.userData.orig;
+        if (!o) continue;
+        m.geometry.attributes.position.array.set(o);
+        m.geometry.attributes.position.needsUpdate = true;
+        m.geometry.computeVertexNormals();
+      }
+    },
     setWheelStyle(style) {
       rimMat.color.setHex(RIM_COLORS[style]);
       for (const w of wheels) {
