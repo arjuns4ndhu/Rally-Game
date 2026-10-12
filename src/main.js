@@ -182,7 +182,7 @@ function loadStage(kind, seed = 0) {
   scene.add(stageGroup);
   minimap.build(road, kind === 'practice'
     ? { closed: true }
-    : { start: stage.start, finish: stage.finish, cps: stage.cps, shortcuts });
+    : { start: stage.start, finish: stage.finish, cps: stage.cps });   // shortcuts stay a secret
   codriver.load(buildPaceNotes(road, { start: stage.start, finish: stage.kind === 'practice' ? road.length : stage.finish }));
   marks.clear();
   restartRun();

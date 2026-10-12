@@ -14,6 +14,7 @@ const clamp01 = (t) => Math.max(0, Math.min(1, t));
 // Which hazards a stage gets (usually none).
 // Special days with hand-picked events.
 const FORCED = {
+  20261012: [{ kind: 'tree', mid: true }, { kind: 'slide', mid: true }],
   20261013: [{ kind: 'tree', mid: true }, { kind: 'slide', mid: true }],
 };
 
@@ -22,8 +23,8 @@ function pickHazards(seed, theme) {
   if (FORCED[seed]) return FORCED[seed].map((h) => ({ ...h }));
   const r = mulberry32(((seed * 2654435761) ^ 0x7f4a7c15) >>> 0);
   const out = [];
-  const treeChance = theme.id === 'desert' ? 0 : 0.14;
-  const slideChance = theme.id === 'alpine' || theme.id === 'desert' ? 0.14 : 0.06;
+  const treeChance = theme.id === 'desert' ? 0 : 0.2;
+  const slideChance = theme.id === 'alpine' || theme.id === 'desert' ? 0.2 : 0.1;
   if (r() < treeChance) out.push({ kind: 'tree', mid: r() < 0.5 });
   if (r() < slideChance) out.push({ kind: 'slide', mid: r() < 0.5 });
   return out;

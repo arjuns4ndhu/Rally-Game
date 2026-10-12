@@ -249,53 +249,33 @@ export function buildShortcutMarkers(road, sc) {
   const qi = road.nearest(sc.px[kIn], sc.pz[kIn], -1);
   const side = qi.lateral >= 0 ? 1 : -1;          // +1 = left of the road
   const dir = side > 0 ? -1 : 1;                  // arrow bends left or right on the board
-  const place = (obj, along, lat) => {
-    const i = road.indexAt(Math.max(0, along));
-    obj.position.set(road.px[i] + road.tz[i] * lat, road.py[i], road.pz[i] - road.tx[i] * lat);
-    obj.rotation.y = Math.atan2(road.tx[i], road.tz[i]) + Math.PI;   // face oncoming cars
-    return obj;
-  };
-  // Advance warning and the board at the turn-off.
-  const edge = side * (road.width / 2 + 2.4);
-  grp.add(place(signPost(shortcutTexture(dir, 'SHORTCUT'), 2.3, 1.45, 2.6), entryAlong - 70, edge));
-  grp.add(place(signPost(shortcutTexture(dir, 'SHORTCUT'), 2.3, 1.45, 2.6), entryAlong - 25, edge));
-  const at = signPost(shortcutTexture(dir, 'THIS WAY'), 2.0, 1.25, 2.0);
-  grp.add(place(at, entryAlong + 6, side * (road.width / 2 + 5)));
-  // Flags either side of the mouth of the track.
-  const flagMat = new THREE.MeshStandardMaterial({ color: 0x2bd47a, emissive: 0x0f5a32, emissiveIntensity: 0.5, side: THREE.DoubleSide });
-  const poleMat = new THREE.MeshStandardMaterial({ color: 0xe9e4d8 });
-  const poleGeo = new THREE.CylinderGeometry(0.05, 0.06, 4.2, 5);
-  const flagGeo = new THREE.PlaneGeometry(1.4, 0.85);
+  // Just a small, weathered arrow by the mouth of the track, and a few
+  // plain wooden stakes along it: easy to miss unless you're looking.
+  const at = signPost(shortcutTexture(dir, ''), 0.7, 0.45, 0.9);
+  at.children[1].material.emissiveIntensity = 0;
+  at.children[1].material.color.setHex(0x9a9a8a);
+  // Beside the track mouth, on whichever side is further from the road.
+  const k = fwd ? 4 : sc.n - 5;
   const tx = sc.px[kIn] - sc.px[k0], tz = sc.pz[kIn] - sc.pz[k0], tl = Math.hypot(tx, tz) || 1;
-  const nx = tz / tl, nz = -tx / tl;
-  for (const s of [-1, 1]) {
-    const k = fwd ? 2 : sc.n - 3;
-    const x = sc.px[k] + nx * s * (sc.width / 2 + 0.6), z = sc.pz[k] + nz * s * (sc.width / 2 + 0.6);
-    const pole = new THREE.Mesh(poleGeo, poleMat);
-    pole.position.set(x, sc.py[k] + 2.1, z);
-    const flag = new THREE.Mesh(flagGeo, flagMat);
-    flag.position.set(x, sc.py[k] + 3.75, z);
-    flag.rotation.y = Math.atan2(tx, tz) + Math.PI / 2;
-    flag.translateX(0.7);
-    grp.add(pole, flag);
-  }
-  // Marker posts down both sides of the track: white with a green reflector.
-  const postGeo = new THREE.BoxGeometry(0.1, 0.9, 0.1), capGeo = new THREE.BoxGeometry(0.12, 0.18, 0.12);
-  const postMat = new THREE.MeshStandardMaterial({ color: 0xf2efe6 });
-  const capMat = new THREE.MeshStandardMaterial({ color: 0x2bd47a, emissive: 0x2bd47a, emissiveIntensity: 0.6 });
-  for (let k = 6; k < sc.n - 6; k += 6) {
+  const off = sc.width / 2 + 0.7;
+  const cand = [1, -1].map((s2) => [sc.px[k] + (tz / tl) * s2 * off, sc.pz[k] - (tx / tl) * s2 * off]);
+  const [px, pz] = road.nearest(cand[0][0], cand[0][1], -1).dist > road.nearest(cand[1][0], cand[1][1], -1).dist ? cand[0] : cand[1];
+  at.position.set(px, sc.py[k], pz);
+  const ri = road.indexAt(entryAlong);
+  at.rotation.y = Math.atan2(road.tx[ri], road.tz[ri]) + Math.PI;
+  grp.add(at);
+  const postGeo = new THREE.BoxGeometry(0.09, 0.7, 0.09);
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x6b5236, roughness: 1 });
+  for (let k = 10; k < sc.n - 10; k += 14) {
     const k1 = Math.min(sc.n - 1, k + 1);
     const dx = sc.px[k1] - sc.px[k], dz = sc.pz[k1] - sc.pz[k], dl = Math.hypot(dx, dz) || 1;
-    for (const s of [-1, 1]) {
-      const x = sc.px[k] + (dz / dl) * s * (sc.width / 2 + 0.5), z = sc.pz[k] - (dx / dl) * s * (sc.width / 2 + 0.5);
-      // Skip posts standing on the main road.
-      if (road.nearest(x, z, -1).dist < road.width / 2 + 0.8) continue;
-      const p = new THREE.Mesh(postGeo, postMat);
-      p.position.set(x, sc.py[k] + 0.45, z);
-      const c = new THREE.Mesh(capGeo, capMat);
-      c.position.set(x, sc.py[k] + 0.85, z);
-      grp.add(p, c);
-    }
+    const s2 = (k / 14) % 2 ? 1 : -1;
+    const x = sc.px[k] + (dz / dl) * s2 * (sc.width / 2 + 0.4), z = sc.pz[k] - (dx / dl) * s2 * (sc.width / 2 + 0.4);
+    if (road.nearest(x, z, -1).dist < road.width / 2 + 0.8) continue;
+    const p = new THREE.Mesh(postGeo, postMat);
+    p.position.set(x, sc.py[k] + 0.3, z);
+    p.rotation.z = (Math.sin(k) * 0.15);
+    grp.add(p);
   }
   return grp;
 }
