@@ -43,9 +43,9 @@ export const CARS = {
     drive: 'AWD', frontDrive: 0.5,
     torque: 400, peakRpm: 4800, idleRpm: 900, redline: 7000,
     gears: [3.0, 2.0, 1.45, 1.15, 0.92], finalDrive: 4.6,
-    muF: 1.1, muR: 1.1, peakF: 0.14, peakR: 0.15, slideF: 0.82, slideR: 0.78,
+    muF: 1.1, muR: 1.0, peakF: 0.14, peakR: 0.15, slideF: 0.82, slideR: 0.72,
     maxSteer: 0.58, steerSpeed: 4.2, counterSteer: 0.5,
-    driftAssist: 1.0, throttleOversteer: 0.35, driftBoost: 2.4, dragCoef: 0.6,
+    driftAssist: 1.0, throttleOversteer: 0.55, driftBoost: 2.4, dragCoef: 0.6,
     track: 1.5, length: 4.4, wheelR: 0.33, offroad: 0, bodyStyle: 'quattro', cyl: 5,
   },
   vector: {
@@ -65,9 +65,9 @@ export const CARS = {
     drive: 'AWD', frontDrive: 0.45,
     torque: 480, peakRpm: 4200, idleRpm: 800, redline: 6600,
     gears: [3.6, 2.3, 1.6, 1.2, 0.95], finalDrive: 5.7,
-    muF: 1.02, muR: 0.94, peakF: 0.16, peakR: 0.17, slideF: 0.84, slideR: 0.78,
+    muF: 1.02, muR: 0.88, peakF: 0.16, peakR: 0.17, slideF: 0.84, slideR: 0.72,
     maxSteer: 0.55, steerSpeed: 3.8, counterSteer: 0.5,
-    driftAssist: 1.1, throttleOversteer: 0.55, driftBoost: 2.2, dragCoef: 1.0,
+    driftAssist: 1.1, throttleOversteer: 0.65, driftBoost: 2.2, dragCoef: 1.0,
     track: 1.7, length: 4.7, wheelR: 0.42, offroad: 0.7, bodyStyle: 'dakar', cyl: 8,
   },
 };
@@ -81,7 +81,10 @@ export const TUNE = {
   transfer: 1.6,       // weight transfer multiplier
   driftGain: 3.0,      // how hard the drift controller chases its target angle
   driftAssist: 4.0,    // yaw-rate tracking strength while drifting
-  driftEnter: 0.15,    // slip angle (rad) that counts as "now drifting"
+  driftEnter: 0.12,    // slip angle (rad) that counts as "now drifting"
+  tractionPull: 0.4,   // g of sideways pull the driven wheels add toward the nose
+  driftBase: 0.18,     // drift angle (rad) held with the wheel centred
+  driftSteer: 0.5,    // extra angle when steering fully into the corner
 };
 
 const REVERSE_RATIO = 3.2;
@@ -337,9 +340,11 @@ export class CarPhysics {
     if (this.drifting) {
       const d = -Math.sign(beta);                 // +1 = rotating left
       const into = this.steerInput * d;           // +1 into the corner, -1 counter
-      // Lifting rotates the car; braking does the opposite and straightens it up.
-      let target = 0.40 + 0.22 * into + 0.2 * (1 - throttle) * (1 - brake) - 0.3 * brake + (input.handbrake ? 0.25 : 0);
-      if (into < -0.4) target *= clamp(1 - (-into - 0.4) * 1.8, 0, 1);
+      // The angle comes from your hands: steer into the corner to hold it,
+      // centre the wheel and the car straightens up under power. Lifting
+      // rotates it more; braking straightens it.
+      let target = TUNE.driftBase + TUNE.driftSteer * Math.max(0, into) + 0.18 * (1 - throttle) * (1 - brake) - 0.3 * brake + (input.handbrake ? 0.25 : 0);
+      if (into < 0) target *= clamp(1 + into * 1.6, 0, 1);
       target = clamp(target, 0, 0.85);
       const desired = this.velHeadRate + d * (target - absBeta) * TUNE.driftGain;
       // Fade out near a full spin so a big mistake can still spin you.
@@ -372,6 +377,22 @@ export class CarPhysics {
     // Come to a full stop rather than creeping.
     if (throttle < 0.02 && Math.hypot(this.vx, this.vz) < 0.15) {
       this.vx *= 0.8; this.vz *= 0.8; this.yawRate *= 0.8;
+    }
+
+    // Traction pull: under power the driven wheels drive along the nose, so
+    // the direction of travel swings toward where the car points. Speed is
+    // kept, so a slide turns into forward drive instead of just scrubbing.
+    if (this.gear > 0 && throttle > 0.05 && speed > 3 && !input.handbrake) {
+      const vh = Math.atan2(this.vx, this.vz);
+      let b = vh - this.yaw;
+      b = Math.atan2(Math.sin(b), Math.cos(b));
+      const driveK = s.drive === 'AWD' ? 1.25 : s.drive === 'FWD' ? 1.4 : 1.0;
+      const v = Math.hypot(this.vx, this.vz);
+      // Bounded like a real force: at most ~0.5 g, more at bigger slip angles.
+      const aPull = TUNE.tractionPull * G * driveK * throttle * grip * Math.min(1, Math.abs(b) / 0.35);
+      const turn = -Math.sign(b) * Math.min(Math.abs(b), (aPull / v) * dt);
+      const nh = vh + turn;
+      this.vx = Math.sin(nh) * v; this.vz = Math.cos(nh) * v;
     }
 
     this.yaw += this.yawRate * dt;
