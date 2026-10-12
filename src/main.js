@@ -259,19 +259,44 @@ const ghostPose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, done: false };
 let ghostOn = true;
 try { ghostOn = localStorage.getItem('sideways.ghostOn') !== '0'; } catch { /* ignore */ }
 function refreshGhost() {
+  ghostHint = -1;
   if (ghostModel) { scene.remove(ghostModel.root); ghostModel.dispose(); ghostModel = null; }
   ghost = stage.kind !== 'practice' ? loadGhost(stage.seed) : null;
+  if (ghost) ghostToLift(ghost.samples);
   if (ghost && ghostOn) {
     ghostModel = buildCarModel(CARS[ghost.car] || CARS[carId], { ghost: true, color: ghost.color || '#9fe3ff' });
     scene.add(ghostModel.root);
   }
 }
+// Replace each sample's height with its lift above today's ground. Ghosts
+// recorded before the road heights changed are off by a slowly varying
+// amount; subtracting the lowest offset nearby removes that and keeps the
+// quick rises from jumps and crests.
+function ghostToLift(samples) {
+  let hint = -1;
+  const off = samples.map((sm) => {
+    const q = road.nearest(sm[1], sm[3], hint);
+    hint = q.i;
+    return sm[2] - groundAt(sm[1], sm[3], Math.abs(q.lateral), q.y);
+  });
+  const WIN = 30;   // samples either side (1.5 s at 20 Hz)
+  for (let i = 0; i < samples.length; i++) {
+    let base = Infinity;
+    for (let j = Math.max(0, i - WIN); j <= Math.min(samples.length - 1, i + WIN); j++) base = Math.min(base, off[j]);
+    samples[i][2] = Math.max(0, off[i] - base);
+  }
+}
+let ghostHint = -1;
 function updateGhost() {
   if (!ghostModel) return;
   const t = run.state === 'running' || run.state === 'finished' ? run.t : 0;
   samplePose(ghost.samples, t, ghostPose);
   const r = ghostModel.root;
-  r.position.set(ghostPose.x, ghostPose.y, ghostPose.z);
+  // Today's ground plus the recorded lift (see ghostToLift).
+  const q = road.nearest(ghostPose.x, ghostPose.z, ghostHint);
+  ghostHint = q.i;
+  const ground = groundAt(ghostPose.x, ghostPose.z, Math.abs(q.lateral), q.y);
+  r.position.set(ghostPose.x, ground + ghostPose.y, ghostPose.z);
   r.rotation.order = 'YXZ';
   r.rotation.set(-Math.atan(ghostPose.pitch), ghostPose.yaw, ghostPose.roll);
 }
