@@ -12,6 +12,7 @@ import { Dust } from './particles.js';
 import { AudioEngine } from './audio.js';
 import { Input } from './input.js';
 import { TyreMarks, buildRacingMarks } from './tyremarks.js';
+import { GhostRecorder, saveGhost, loadGhost, samplePose } from './ghost.js';
 
 const $ = (id) => document.getElementById(id);
 document.body.classList.add('scanlines');
@@ -133,7 +134,7 @@ function applyLineAssist(q, dt) {
   car.vz += lz * a * dt;
 }
 // ---------- Car ----------
-let carId = 'vanta';
+let carId = 'stiletto';
 const car = new CarPhysics(CARS[carId]);
 let model = buildCarModel(CARS[carId], { color: '#e8542a', wheelStyle: 'spoke', number: 7 });
 scene.add(model.root);
@@ -170,12 +171,38 @@ function fmt(t) {
 }
 function fmtDelta(d) { return `${d < 0 ? '−' : '+'}${Math.abs(d).toFixed(2)}`; }
 
+// ---------- Ghost ----------
+const recorder = new GhostRecorder();
+let ghost = null, ghostModel = null;
+const ghostPose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, done: false };
+let ghostOn = true;
+try { ghostOn = localStorage.getItem('sideways.ghostOn') !== '0'; } catch { /* ignore */ }
+function refreshGhost() {
+  if (ghostModel) { scene.remove(ghostModel.root); ghostModel.dispose(); ghostModel = null; }
+  ghost = stage.kind !== 'practice' ? loadGhost(stage.seed) : null;
+  if (ghost && ghostOn) {
+    ghostModel = buildCarModel(CARS[ghost.car] || CARS[carId], { ghost: true, color: ghost.color || '#9fe3ff' });
+    scene.add(ghostModel.root);
+  }
+}
+function updateGhost() {
+  if (!ghostModel) return;
+  const t = run.state === 'running' || run.state === 'finished' ? run.t : 0;
+  samplePose(ghost.samples, t, ghostPose);
+  const r = ghostModel.root;
+  r.position.set(ghostPose.x, ghostPose.y, ghostPose.z);
+  r.rotation.order = 'YXZ';
+  r.rotation.set(-Math.atan(ghostPose.pitch), ghostPose.yaw, ghostPose.roll);
+}
+
 function restartRun() {
+  recorder.reset();
   run.state = stage.kind === 'practice' ? 'free' : 'ready';
   run.t = 0; run.next = 0; run.splits = []; run.penalty = 0; run.respawns = 0;
   best = loadBest();
   placeOnRoad(stage.kind === 'practice' ? 0 : road.indexAt(stage.start - 14));
   $('finish').hidden = true;
+  refreshGhost();
   refreshStageHud();
 }
 
@@ -219,7 +246,12 @@ function finishRun() {
   run.state = 'finished';
   const isBest = !best || run.t < best.time;
   const prev = best;
-  if (isBest) { best = { time: run.t, splits: run.splits.slice(), car: carId, date: Date.now() }; saveBest(best); }
+  if (isBest) {
+    best = { time: run.t, splits: run.splits.slice(), car: carId, date: Date.now() };
+    saveBest(best);
+    recorder.nextT = 0; recorder.record(run.t, car);   // final pose on the line
+    saveGhost(stage.seed, { car: carId, color: model.paint.color.getStyle(), time: run.t, samples: recorder.samples });
+  }
   audio.beep(660, 0.12); setTimeout(() => audio.beep(990, 0.25), 140);
   $('fin-stage').textContent = stageLabel();
   $('fin-time').textContent = fmt(run.t);
@@ -280,7 +312,7 @@ function refreshStageHud() {
   const timed = stage.kind !== 'practice';
   $('hud-stage').textContent = stageLabel();
   $('hud-timing').hidden = !timed;
-  $('hud-best').textContent = fmt(best?.time);
+  $('hud-best').textContent = fmt(best?.time) + (ghostModel ? ' · GHOST' : '');
   [...$('hud-sectors').children].forEach((el, k) => {
     el.classList.toggle('done', k < run.next);
     el.classList.toggle('now', run.state === 'running' && k === run.next);
@@ -431,18 +463,39 @@ function setAssist(on, level = assist.level) {
 setAssist(assist.on, assist.level);
 $('opt-assist').addEventListener('change', (e) => setAssist(e.target.checked));
 $('opt-assist-level').addEventListener('change', (e) => { setAssist(true, e.target.value); e.target.blur(); });
+// Mute: M key, the corner button or the pause menu. Remembered between visits.
+let muted = false;
+try { muted = localStorage.getItem('sideways.muted') === '1'; } catch { /* ignore */ }
+function setMuted(m) {
+  muted = m;
+  audio.setMuted(m);
+  $('btn-mute').setAttribute('aria-pressed', String(m));
+  $('btn-mute').setAttribute('aria-label', m ? 'Unmute sound' : 'Mute sound');
+  $('opt-mute').checked = m;
+  try { localStorage.setItem('sideways.muted', m ? '1' : '0'); } catch { /* ignore */ }
+}
+setMuted(muted);
+$('btn-mute').addEventListener('click', (e) => { audio.init(); setMuted(!muted); e.currentTarget.blur(); });
+$('opt-mute').addEventListener('change', (e) => setMuted(e.target.checked));
+$('opt-ghost').checked = ghostOn;
+$('opt-ghost').addEventListener('change', (e) => {
+  ghostOn = e.target.checked;
+  try { localStorage.setItem('sideways.ghostOn', ghostOn ? '1' : '0'); } catch { /* ignore */ }
+  refreshGhost(); refreshStageHud();
+});
 $('opt-scan').addEventListener('change', (e) => document.body.classList.toggle('scanlines', e.target.checked));
 
 input.on('key', (code, key) => {
   if (code === 'Escape') { if (running) setPaused(!paused); return; }
   if (key === '?' || code === 'Slash') { $('debug').hidden = !$('debug').hidden; return; }
+  if (code === 'KeyM') { setMuted(!muted); toast(muted ? 'SOUND OFF' : 'SOUND ON', 800); return; }
   if (!running) { if (code === 'Enter') start('daily'); return; }
   if (paused) return;
   if (code === 'KeyC') toast(rig.cycle().toUpperCase() + ' CAM', 800);
   if (code === 'KeyG') { setAssist(!assist.on); toast(assist.on ? `LINE ASSIST ${assist.level.toUpperCase()}` : 'LINE ASSIST OFF', 1000); }
   if (code === 'KeyR') restartKey();
   if (code === 'KeyT') resetCar();
-  const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(code);
+  const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].indexOf(code);
   if (n >= 0) setCar(CAR_ORDER[n]);
 });
 input.on('action', (act) => {
@@ -552,6 +605,7 @@ function stepPhysics(dt, inp) {
     car.yawRate *= 1 - 0.6 * dt;
   } else applyLineAssist(q, dt);
   updateRun(q, dt);
+  if (run.state === 'running') recorder.record(run.t, car);
 
   // Height and slope. Sample the ground ahead/behind and to the sides.
   const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
@@ -645,6 +699,7 @@ function frame(now) {
   }
 
   model.update(car, dt);
+  updateGhost();
   world.follow(car.x, car.z);
   shakeKick *= Math.exp(-dt * 7);
   car.squash = (car.squash || 0) * Math.exp(-dt * 9);
@@ -673,6 +728,6 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  onLanding, renderer, scene, camera, marks, assist, setAssist, car, input, TUNE, CARS, start, stepSim, placeOnRoad, loadStage, run, stage,
+  get ghostModel() { return ghostModel; }, recorder, loadGhost, onLanding, renderer, scene, camera, marks, assist, setAssist, car, input, TUNE, CARS, start, stepSim, placeOnRoad, loadStage, run, stage,
   get road() { return road; }, get terrain() { return terrain; }, get lineMesh() { return lineMesh; }, get surface() { return surface; }, get best() { return best; },
 };

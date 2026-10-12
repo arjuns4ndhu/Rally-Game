@@ -60,9 +60,14 @@ export class AudioEngine {
 
   applyVolumes() {
     if (!this.ctx) return;
-    this.master.gain.value = this.volumes.master;
+    this.master.gain.value = this.muted ? 0 : this.volumes.master;
     this.engineBus.gain.value = this.volumes.engine;
     this.sfxBus.gain.value = this.volumes.sfx;
+  }
+
+  setMuted(m) {
+    this.muted = m;
+    if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : this.volumes.master, this.ctx.currentTime, 0.02);
   }
 
   setCar(spec) { this.cyl = spec.cyl || 4; this.redline = spec.redline; }

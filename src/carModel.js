@@ -6,33 +6,41 @@ import * as THREE from 'three';
 // Side profiles: [z (forward), y (up)] in metres, traced around the outline:
 // rear-bottom, up and over the top to the front, then front-bottom.
 const PROFILES = {
-  // 80s rally hatch: boxy, upright tailgate, short bonnet, big arches.
-  hatch80: {
-    body: [[-1.85, 0.3], [-1.88, 0.92], [-1.74, 0.98], [0.72, 0.94], [1.72, 0.84], [1.88, 0.64], [1.86, 0.3]],
-    glass: [[-1.76, 0.96], [-1.6, 1.42], [0.02, 1.46], [0.7, 0.95]],
-    width: 1.7, hood: [0.78, 1.72],
-    wing: 'roof', lamps: 'bar', flares: true,
+  // 70s mid-engine wedge: tiny, very low, wraparound screen, roof spoiler,
+  // louvred engine cover, light pod on the bonnet.
+  stratos: {
+    body: [[-1.84, 0.3], [-1.86, 0.78], [-1.5, 0.86], [-0.55, 0.92], [0.45, 0.84], [1.6, 0.6], [1.86, 0.44], [1.82, 0.3]],
+    glass: [[-0.62, 0.91], [-0.36, 1.1], [0.0, 1.13], [0.58, 0.83]],
+    width: 1.76, hood: [0.65, 1.7],
+    wing: 'roof', lamps: 'pod', flares: true, louvres: true,
   },
-  // 70s wedge coupe: pointed nose, high tail, wraparound screen, ducktail.
-  wedge: {
-    body: [[-1.92, 0.32], [-1.96, 0.88], [-1.62, 0.98], [-0.72, 1.0], [0.55, 0.9], [1.88, 0.56], [1.97, 0.42], [1.92, 0.32]],
-    glass: [[-0.78, 0.99], [-0.48, 1.3], [0.02, 1.32], [0.72, 0.88]],
-    width: 1.8, hood: [0.75, 1.75],
-    wing: 'ducktail', lamps: 'pod', flares: true,
+  // 60s mini: a small upright box on tiny wheels, contrast roof, grille lamps.
+  mini: {
+    body: [[-1.5, 0.27], [-1.53, 0.84], [-1.45, 0.9], [0.75, 0.9], [1.35, 0.82], [1.52, 0.66], [1.53, 0.27]],
+    glass: [[-1.42, 0.89], [-1.36, 1.3], [0.4, 1.32], [0.66, 0.89]],
+    width: 1.42, hood: [0.78, 1.4],
+    wing: 'none', lamps: 'grille', flares: true, roofContrast: true, roundLights: true,
   },
-  // Squared-off two-door saloon: long flat bonnet, flat boot, box flares.
-  saloon: {
-    body: [[-2.08, 0.32], [-2.12, 0.88], [-1.95, 0.95], [-1.12, 0.96], [1.22, 0.92], [2.04, 0.86], [2.12, 0.56], [2.08, 0.32]],
-    glass: [[-1.18, 0.95], [-0.84, 1.36], [0.44, 1.38], [1.04, 0.92]],
-    width: 1.74, hood: [1.25, 2.0],
-    wing: 'lip', lamps: 'bar', flares: true,
+  // 80s turbo coupe: boxy three-box shape with big blistered arches.
+  quattro: {
+    body: [[-2.2, 0.32], [-2.22, 0.84], [-2.05, 0.94], [-1.2, 0.96], [1.15, 0.9], [2.1, 0.82], [2.22, 0.56], [2.2, 0.32]],
+    glass: [[-1.3, 0.95], [-0.75, 1.33], [0.45, 1.36], [1.1, 0.9]],
+    width: 1.74, hood: [1.2, 2.05],
+    wing: 'lip', lamps: 'bar', flares: true, bigFlares: true,
   },
-  // 90s four-door rally saloon: smoother nose, bonnet scoop, roof vent, tall wing.
-  wrc: {
-    body: [[-2.18, 0.33], [-2.22, 0.86], [-2.0, 0.98], [-1.34, 1.0], [1.28, 0.93], [2.08, 0.78], [2.22, 0.52], [2.18, 0.33]],
-    glass: [[-1.4, 0.99], [-0.85, 1.4], [0.34, 1.43], [1.14, 0.94]],
-    width: 1.78, hood: [1.3, 2.05],
-    wing: 'big', lamps: 'pod', flares: true, scoop: true, vent: true,
+  // 00s world-rally hatch: tall five-door, raked screen, roof-edge wing.
+  focus: {
+    body: [[-2.05, 0.34], [-2.08, 0.95], [-1.95, 1.0], [0.9, 0.95], [1.85, 0.78], [2.06, 0.55], [2.04, 0.34]],
+    glass: [[-1.95, 0.99], [-1.8, 1.42], [0.05, 1.46], [0.85, 0.94]],
+    width: 1.8, hood: [0.95, 1.85],
+    wing: 'hatch', lamps: 'pod', flares: true, scoop: true, vent: true,
+  },
+  // Rally-raid SUV: tall body on big tyres, roof rack, spare wheels, light bar.
+  dakar: {
+    body: [[-2.3, 0.5], [-2.35, 1.15], [-2.2, 1.25], [0.95, 1.22], [1.95, 1.05], [2.33, 0.9], [2.35, 0.5]],
+    glass: [[-2.15, 1.24], [-1.9, 1.68], [0.2, 1.72], [0.95, 1.21]],
+    width: 1.95, hood: [1.0, 1.95],
+    wing: 'none', lamps: 'roof', flares: true, rack: true, skid: true,
   },
 };
 
@@ -126,7 +134,8 @@ function bannerTexture() {
 }
 
 export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', number = 7, ghost = false } = {}) {
-  const prof = PROFILES[spec.bodyStyle] || PROFILES.saloon;
+  const prof = PROFILES[spec.bodyStyle] || PROFILES.focus;
+  const WR = spec.wheelR || 0.32;
   const root = new THREE.Group();
   const body = new THREE.Group();        // pitches / rolls with weight transfer
   root.add(body);
@@ -172,7 +181,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   // Roof panel over the glass.
   const roofY = Math.max(g[1][1], g[2][1]) + 0.02;
   const roofZ = (g[1][0] + g[2][0]) / 2, roofLen = (g[2][0] - g[1][0]) * 0.92;
-  add(new THREE.BoxGeometry(W - 0.22, 0.05, roofLen), paint, 0, roofY, roofZ);
+  add(new THREE.BoxGeometry(W - 0.22, 0.05, roofLen), prof.roofContrast ? trim : paint, 0, roofY, roofZ);
 
   // Livery: twin bonnet stripes, matching roof stripes and a side band.
   const hz0 = prof.hood[0] * k, hz1 = prof.hood[1] * k;
@@ -220,31 +229,68 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   root.userData.tailMat = tailMat;
 
   // Rally lamps: a four-lamp bar on the bumper, or a pod on the bonnet.
-  const lampZ = prof.lamps === 'pod' ? hz1 - 0.35 : front + 0.07;
-  const lampY = prof.lamps === 'pod' ? topY(hz1 - 0.35) + 0.14 : 0.66;
-  add(new THREE.BoxGeometry(1.2, 0.06, 0.12), dark, 0, lampY - 0.11, lampZ - 0.02);
-  for (let n = 0; n < 4; n++) {
-    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.09, 10), dark);
-    lamp.rotation.x = Math.PI / 2;
-    lamp.position.set(-0.45 + n * 0.3, lampY, lampZ);
-    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.085, 10), lightMat);
-    lens.position.set(-0.45 + n * 0.3, lampY, lampZ + 0.05);
-    body.add(lamp, lens);
+  const lampSpots = {
+    pod: [hz1 - 0.35, topY(hz1 - 0.35) + 0.14, 0.3, 0.1],
+    bar: [front + 0.07, topY(front - 0.15) - 0.14, 0.3, 0.1],
+    grille: [front + 0.06, topY(front - 0.15) - 0.32, 0.26, 0.08],
+    roof: [g[2][0] - 0.05, roofY + 0.2, 0.3, 0.09],
+  }[prof.lamps];
+  if (lampSpots) {
+    const [lampZ, lampY, gap, lr] = lampSpots;
+    add(new THREE.BoxGeometry(gap * 4, 0.06, 0.12), dark, 0, lampY - lr - 0.01, lampZ - 0.02);
+    for (let n = 0; n < 4; n++) {
+      const x = (n - 1.5) * gap;
+      const lamp = new THREE.Mesh(new THREE.CylinderGeometry(lr, lr, 0.09, 10), dark);
+      lamp.rotation.x = Math.PI / 2;
+      lamp.position.set(x, lampY, lampZ);
+      const lens = new THREE.Mesh(new THREE.CircleGeometry(lr * 0.85, 10), lightMat);
+      lens.position.set(x, lampY, lampZ + 0.05);
+      body.add(lamp, lens);
+    }
   }
+  // Round headlamps at the front corners (the mini's face).
+  if (prof.roundLights) {
+    for (const side of [-1, 1]) {
+      const hl = new THREE.Mesh(new THREE.CircleGeometry(0.1, 12), lightMat);
+      hl.position.set(side * (W / 2 - 0.2), topY(front - 0.05) - 0.1, front + 0.06);
+      body.add(hl);
+    }
+  }
+  // Louvred engine cover behind the cabin.
+  if (prof.louvres) {
+    for (let n = 0; n < 5; n++) {
+      const z = g[0][0] - 0.15 - n * 0.16;
+      add(new THREE.BoxGeometry(W - 0.5, 0.03, 0.06), dark, 0, topY(z) + 0.02, z);
+    }
+  }
+  // Roof rack with two spare wheels (rally-raid).
+  if (prof.rack) {
+    add(new THREE.BoxGeometry(W - 0.3, 0.05, roofLen * 0.95), dark, 0, roofY + 0.1, roofZ);
+    for (const side of [-1, 1]) add(new THREE.BoxGeometry(0.05, 0.12, roofLen * 0.95), dark, side * (W / 2 - 0.16), roofY + 0.06, roofZ);
+    for (const dz of [-0.45, 0.35]) {
+      const spare = new THREE.Mesh(new THREE.CylinderGeometry(WR * 0.95, WR * 0.95, 0.24, 14), dark);
+      spare.position.set(0, roofY + 0.25, roofZ + dz);
+      spare.castShadow = true;
+      body.add(spare);
+    }
+  }
+  if (prof.skid) add(new THREE.BoxGeometry(W - 0.4, 0.06, 0.7), new THREE.MeshStandardMaterial({ color: 0x8b8f96, metalness: 0.6, roughness: 0.4, flatShading: true }), 0, bodyPts[0][1] - 0.02, front - 0.4);
 
   // Bumpers.
-  add(new THREE.BoxGeometry(W + 0.04, 0.16, 0.14), dark, 0, 0.38, front - 0.03);
-  add(new THREE.BoxGeometry(W + 0.04, 0.16, 0.14), dark, 0, 0.38, rear + 0.03);
+  const bumpY = bodyPts[0][1] + 0.08;
+  add(new THREE.BoxGeometry(W + 0.04, 0.16, 0.14), dark, 0, bumpY, front - 0.03);
+  add(new THREE.BoxGeometry(W + 0.04, 0.16, 0.14), dark, 0, bumpY, rear + 0.03);
 
   // Box-flared wheel arches and mud flaps.
   if (prof.flares) {
     for (const side of [-1, 1]) for (const wz of [spec.a, -spec.b]) {
-      add(new THREE.BoxGeometry(0.14, 0.2, 0.98), paint, side * (W / 2 + 0.03), 0.62, wz, true);
-      add(new THREE.BoxGeometry(0.15, 0.05, 1.0), dark, side * (W / 2 + 0.035), 0.5, wz);
+      const fw = prof.bigFlares ? 0.2 : 0.13, fl = WR * 3.0;
+      add(new THREE.BoxGeometry(fw, 0.2, fl), paint, side * (W / 2 + fw / 2 - 0.04), WR + 0.3, wz, true);
+      add(new THREE.BoxGeometry(fw + 0.01, 0.05, fl + 0.02), dark, side * (W / 2 + fw / 2 - 0.035), WR + 0.18, wz);
     }
   }
   for (const side of [-1, 1]) for (const wz of [spec.a + 0.42, -spec.b - 0.45]) {
-    add(new THREE.BoxGeometry(0.3, 0.24, 0.02), dark, side * (spec.track / 2), 0.2, wz);
+    add(new THREE.BoxGeometry(0.3, 0.24, 0.02), dark, side * (spec.track / 2), Math.max(0.2, WR - 0.12), wz);
   }
 
   // Wings.
@@ -255,6 +301,11 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     d.rotation.x = -0.25;
   } else if (prof.wing === 'lip') {
     add(new THREE.BoxGeometry(W - 0.1, 0.06, 0.16), dark, 0, topY(rear + 0.2) + 0.05, rear + 0.16, true);
+  } else if (prof.wing === 'hatch') {
+    // Roof-edge wing on the tailgate, with endplates.
+    const wz = g[1][0] - 0.12, wy = g[1][1] + 0.04;
+    add(new THREE.BoxGeometry(W - 0.12, 0.06, 0.4), dark, 0, wy, wz, true);
+    for (const side of [-1, 1]) add(new THREE.BoxGeometry(0.03, 0.2, 0.44), paint, side * (W / 2 - 0.08), wy - 0.04, wz);
   } else if (prof.wing === 'big') {
     const wy = Math.max(topY(rear + 0.35), 0.95) + 0.42;
     add(new THREE.BoxGeometry(W - 0.04, 0.07, 0.44), dark, 0, wy, rear + 0.32, true);
@@ -272,7 +323,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   add(new THREE.CylinderGeometry(0.01, 0.01, 0.5, 4), dark, 0.4, roofY + 0.25, roofZ - roofLen * 0.3);
 
   // Wheels: pivot (steers) -> spinner (rolls) -> tyre + rim.
-  const tyreGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.25, 14);
+  const tyreGeo = new THREE.CylinderGeometry(WR, WR, WR > 0.38 ? 0.32 : 0.25, 14);
   tyreGeo.rotateZ(Math.PI / 2);
   const rimMat = new THREE.MeshStandardMaterial({ color: RIM_COLORS[wheelStyle], roughness: 0.4, metalness: 0.5, flatShading: true });
   mats.push(rimMat);
@@ -283,13 +334,14 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   ];
   for (const [x, z, isFront] of positions) {
     const pivot = new THREE.Group();
-    pivot.position.set(x, 0.32, z);
+    pivot.position.set(x, WR, z);
     const spin = new THREE.Group();
     const tyre = new THREE.Mesh(tyreGeo, dark);
     tyre.castShadow = true;
     spin.add(tyre);
     const rim = buildRim(wheelStyle, rimMat, dark);
     rim.position.x = Math.sign(x) * 0.12;
+    rim.scale.setScalar(WR / 0.32);
     spin.add(rim);
     spin.userData.rim = rim;
     pivot.add(spin);
@@ -298,8 +350,11 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   }
 
   if (ghost) {
-    for (const m of mats) { m.transparent = true; m.opacity = 0.35; m.depthWrite = false; }
-    root.traverse((o) => { o.castShadow = false; });
+    root.traverse((o) => {
+      o.castShadow = false;
+      if (o.material && !mats.includes(o.material)) mats.push(o.material);
+    });
+    for (const m of mats) { m.transparent = true; m.opacity = 0.38; m.depthWrite = false; }
   }
 
   const api = {
@@ -311,6 +366,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
         w.spin.remove(w.spin.userData.rim);
         const rim = buildRim(style, rimMat, dark);
         rim.position.x = w.side * 0.12;
+        rim.scale.setScalar(WR / 0.32);
         w.spin.add(rim);
         w.spin.userData.rim = rim;
       }
@@ -330,11 +386,11 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
       body.rotation.x = THREE.MathUtils.lerp(body.rotation.x, pitch, Math.min(1, dt * 10));
       body.rotation.z = THREE.MathUtils.lerp(body.rotation.z, roll, Math.min(1, dt * 10));
       body.position.y = 0.02 - (car.squash || 0) + (car.air ? 0 : Math.sin(performance.now() * 0.03) * 0.004 * Math.min(1, car.speed / 20));
-      const roll2 = car.vF / 0.32 * dt;
+      const roll2 = car.vF / WR * dt;
       for (const w of wheels) {
         if (w.isFront) w.pivot.rotation.y = car.steer;
         // Suspension droops when the car is airborne.
-        w.pivot.position.y += ((car.air && car.airTime > 0.06 ? 0.2 : 0.32) - w.pivot.position.y) * Math.min(1, dt * 14);
+        w.pivot.position.y += ((car.air && car.airTime > 0.06 ? WR - 0.12 : WR) - w.pivot.position.y) * Math.min(1, dt * 14);
         // Rear wheels spin faster when the tyres are lit up.
         w.spin.rotation.x += w.isFront ? roll2 : roll2 * (1 + car.wheelSpin * 2);
       }

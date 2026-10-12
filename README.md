@@ -23,19 +23,28 @@ ES modules need a web server, so opening `index.html` straight from the file sys
 | Restart stage (practice: reset car) | R | RESET |
 | Back to last checkpoint (+5 s) | T | pause menu |
 | Pause | Esc | II |
+| Mute | M | speaker button |
 | Tuning panel (dev) | ? | |
 
 Driving: tap the brake while turning to kick the rear out. Hold the throttle to keep the drift going. Lift off to rotate more. Counter-steer to straighten up or flick into the next corner. Braking at a standstill engages reverse.
 
 ## Build status
 
-1. **Car driving and drifting**: done. Keys 1–4 switch cars.
+1. **Car driving and drifting**: done. Keys 1–5 switch cars.
 2. **Seeded stages**: done. A 2–3 km point-to-point gravel stage from a seed: today's date for the daily stage, or a random seed. Hairpins, sweepers, chicanes, esses and straights, with seeded hills and elevation. Each stage has 2–3 jumps and 2–3 crests, with warning boards. There are five sectors with split times and deltas against your best, and best times are saved per stage. Going more than 25 m off the road puts you back at the last checkpoint with a 5 s penalty. The practice loop is still there, now with a jump and a crest. Hairpin-tight corners are announced the way a real stage would: 3-2-1 brake boards at 150, 100 and 50 m, red chevrons round the outside, and dark braking marks on the approach.
 3. HUD polish, countdown, settings
 4. Garage: paint, wheel styles, 3D preview
-5. Ghost replays and past-stages calendar
+5. **Ghost car**: done. Your best run on each stage is recorded and replayed as a see-through car; toggle it in the pause menu. Past-stages calendar still to do.
 
-The four cars are original designs that borrow classic rally-era silhouettes (80s hatch, 70s wedge coupé, boxy V8 saloon, 90s 4WD saloon) with no real makes or badges.
+Five cars, each modelled on a rally icon's shape and character (no real names or badges):
+
+| Key | Car | Based on | Character |
+| --- | --- | --- | --- |
+| 1 | Stiletto V6 | 70s mid-engine wedge (Stratos-style) | short, light RWD; twitchy and tail-happy |
+| 2 | Pocket 1275 | 60s mini (original Mini-style) | tiny front-drive; nimble, low power |
+| 3 | Quadra 5T | 80s turbo coupé (Quattro-style) | 4WD, huge torque, nose-heavy |
+| 4 | Vector WRC | 00s world-rally hatch (Focus WRC-style) | grippy, balanced 4WD |
+| 5 | Dune Raider | rally-raid SUV (Cayenne/Macan Dakar-style) | heavy and tall, barely slowed off-road |
 
 ## Layout
 
@@ -52,6 +61,7 @@ src/scenery.js    sky, lights, trees, rocks, fences, hills
 src/camera.js     camera rigs
 src/particles.js  dust
 src/tyremarks.js  racing-line tracks + your own tyre marks
+src/ghost.js      ghost recording, compact storage and playback
 src/audio.js      Web Audio engine / tyre synthesis
 src/input.js      keyboard + touch
 src/rng.js        seeded PRNG + date seeds
