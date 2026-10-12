@@ -42,11 +42,13 @@
   <div class="hud-top" id="hud-timing" hidden>
     <div class="timer" id="hud-time">0:00.00</div>
     <div class="hud-best">BEST <span id="hud-best">--:--.--</span></div>
+    <div class="gap" id="hud-gap" hidden></div>
     <div class="sectors" id="hud-sectors"><i>S1</i><i>S2</i><i>S3</i><i>S4</i><i>S5</i></div>
   </div>
   <div class="split" id="hud-split"></div>
   <div class="pacenote" id="hud-note" role="img"></div>
   <canvas class="minimap" id="minimap" role="img" aria-label="Stage map"></canvas>
+  <div class="countdown" id="hud-count" hidden aria-live="assertive"></div>
   <div class="toast" id="toast"></div>
   <div class="replay-tag" id="hud-replay" hidden><span class="rec"></span>REPLAY <b id="replay-time">0:00.00</b><button id="btn-replay-exit" class="btn replay-exit">Exit <small>Esc</small></button></div>
 </div>
@@ -80,6 +82,12 @@
       <button id="btn-random" class="btn">Random stage<small>A brand-new road every time</small></button>
       <button id="btn-practice" class="btn">Practice loop<small>No clock, just driving</small></button>
     </div>
+    <div class="menu-row">
+      <button id="btn-garage" class="btn btn-sm">Garage</button>
+      <button id="btn-champ" class="btn btn-sm">Championship</button>
+      <button id="btn-past" class="btn btn-sm">Past stages</button>
+      <button id="btn-stats" class="btn btn-sm">Stats</button>
+    </div>
     <ul class="tips">
       <li><b>Tap brake</b> while turning to kick the rear out.</li>
       <li><b>Hold throttle</b> to keep the drift going.</li>
@@ -88,6 +96,51 @@
       <li><b>G</b> turns on the racing line assist, a gentle pull toward the ideal line.</li>
       <li><b>R</b> restarts the stage, <b>T</b> puts you back at the last checkpoint (+5 s).</li>
     </ul>
+  </div>
+</div>
+
+<!-- Garage -->
+<div id="garage" class="overlay page" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2 class="logo">GARAGE</h2><button class="btn btn-sm" data-back>Done</button></div>
+    <div class="garage">
+      <div class="garage-cars" id="garage-cars" role="listbox" aria-label="Cars"></div>
+      <div class="garage-main">
+        <canvas id="garage-view" aria-label="Car preview"></canvas>
+        <div class="garage-stats" id="garage-stats"></div>
+        <div class="garage-row"><span class="lbl">Paint</span><div class="swatches" id="garage-paint"></div><input type="color" id="garage-color" aria-label="Custom paint colour"></div>
+        <div class="garage-row"><span class="lbl">Wheels</span><div class="chips" id="garage-wheels"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Past stages -->
+<div id="past" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><h2 class="logo">PAST STAGES</h2><button class="btn btn-sm" data-back>Back</button></div>
+    <div class="cal-head"><button class="btn btn-sm" id="cal-prev" aria-label="Previous month">◀</button><b id="cal-month"></b><button class="btn btn-sm" id="cal-next" aria-label="Next month">▶</button></div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <p class="hint">Every day's stage, back to launch. Your best time shows on days you've finished.</p>
+  </div>
+</div>
+
+<!-- Weekly championship -->
+<div id="champ" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><h2 class="logo">CHAMPIONSHIP</h2><button class="btn btn-sm" data-back>Back</button></div>
+    <div class="eyebrow" id="champ-week"></div>
+    <table class="champ-table" id="champ-table"></table>
+    <div class="champ-total">TOTAL <b id="champ-total"></b></div>
+    <p class="hint">Five new stages every Monday. Your total is your best on each, added up.</p>
+  </div>
+</div>
+
+<!-- Stats -->
+<div id="statsview" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><h2 class="logo">STATS</h2><button class="btn btn-sm" data-back>Back</button></div>
+    <div class="stats-grid" id="stats-grid"></div>
   </div>
 </div>
 
@@ -134,8 +187,10 @@
     <p class="fin-meta"><span id="fin-prev"></span><br><span id="fin-pen"></span></p>
     <div class="fin-table"><table id="fin-splits"></table></div>
     <div class="fin-actions">
+      <button id="btn-next" class="btn btn-primary" hidden>Next stage</button>
       <button id="btn-retry" class="btn btn-primary">Retry</button>
       <button id="btn-replay" class="btn">Watch replay</button>
+      <button id="btn-share" class="btn">Copy result</button>
       <button id="btn-new" class="btn">Random stage</button>
       <button id="btn-fmenu" class="btn">Menu</button>
     </div>

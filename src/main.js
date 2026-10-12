@@ -18,6 +18,8 @@ import { buildPaceNotes, CoDriver } from './pacenotes.js';
 import { notesHTML } from './paceicons.js';
 import { Drone } from './drone.js';
 import { MiniMap } from './minimap.js';
+import { Stats } from './stats.js';
+import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, PAINTS, WHEELS } from './menus.js';
 import { buildHazards, HAZARD_DEBUG } from './hazards.js';
 
 const $ = (id) => document.getElementById(id);
@@ -41,6 +43,7 @@ const rig = new CameraRig(camera);
 const drone = new Drone(scene);
 const tv = new TVCamera(camera);
 const minimap = new MiniMap($('minimap'));
+const stats = new Stats();
 rig.drone = drone;
 rig.groundAt = (x, z) => worldGround(x, z);
 const dust = new Dust(scene);
@@ -217,12 +220,19 @@ function applyLineAssist(q, dt) {
   car.vz += lz * a * dt;
 }
 // ---------- Car ----------
-let carId = 'stiletto';
+// Garage choice (car, paint, wheels), remembered between visits.
+const garage = { car: 'stiletto', color: '#e8542a', wheels: 'spoke' };
+try { Object.assign(garage, JSON.parse(localStorage.getItem('sideways.garage') || '{}')); } catch { /* ignore */ }
+if (!CARS[garage.car]) garage.car = 'stiletto';
+if (!WHEELS.includes(garage.wheels)) garage.wheels = 'spoke';
+function saveGarage() { try { localStorage.setItem('sideways.garage', JSON.stringify(garage)); } catch { /* ignore */ } }
+let carId = garage.car;
 const car = new CarPhysics(CARS[carId]);
-let model = buildCarModel(CARS[carId], { color: '#e8542a', wheelStyle: 'spoke', number: 7 });
+let model = buildCarModel(CARS[carId], { color: garage.color, wheelStyle: garage.wheels, number: 7 });
 scene.add(model.root);
 rig.roofH = model.roofH;
 audio.setCar(CARS[carId]);
+$('hud-car').textContent = CARS[carId].name;
 let roadHint = -1;
 let roadAlong = 0;
 let surface = SURFACES.gravel;
@@ -273,7 +283,7 @@ function refreshGhost() {
   // Only ever your own best run on this stage: it must match your saved best time.
   const mine = loadBest();
   if (ghost && !(mine && Math.abs(ghost.time - mine.time) < 0.05)) ghost = null;
-  if (ghost) ghostToLift(ghost.samples);
+  if (ghost) { ghostToLift(ghost.samples); ghost.alongs = ghostAlongs(ghost.samples); }
   if (ghost && ghostOn) {
     ghostModel = buildCarModel(CARS[ghost.car] || CARS[carId], { ghost: true, color: ghost.color || '#9fe3ff' });
     scene.add(ghostModel.root);
@@ -315,12 +325,13 @@ function updateGhost() {
 function restartRun() {
   if (replay.on) { replay.on = false; $('hud-replay').hidden = true; document.body.classList.remove('replaying'); }
   recorder.reset();
-  run.state = stage.kind === 'practice' ? 'free' : 'ready';
+  run.state = stage.kind === 'practice' ? 'free' : 'countdown';
+  run.cd = 3.8; run.cdShown = null;
   run.t = 0; run.next = 0; run.splits = []; run.penalty = 0; run.respawns = 0;
   best = loadBest();
   hazards?.reset();
   model.repair();
-  placeOnRoad(stage.kind === 'practice' ? 0 : road.indexAt(stage.start - 14));
+  placeOnRoad(stage.kind === 'practice' ? 0 : road.indexAt(stage.start - 2.5));   // on the line
   $('finish').hidden = true;
   refreshGhost();
   refreshStageHud();
@@ -339,6 +350,23 @@ function respawn() {
 
 // Called every physics step with the car's position along the road.
 function updateRun(q, dt) {
+  // 3-2-1-GO from a standstill on the line; the clock starts on GO.
+  if (run.state === 'countdown') {
+    run.cd -= dt;
+    const n = run.cd > 3 ? null : run.cd > 0 ? Math.ceil(run.cd) : 0;
+    if (n !== run.cdShown) {
+      run.cdShown = n;
+      if (n != null) showCount(n ? String(n) : 'GO!', !n);
+      if (n) audio.beep(520, 0.12, 'square', 0.16);
+    }
+    if (run.cd <= 0) {
+      run.state = 'running'; run.t = 0;
+      audio.beep(1040, 0.3, 'square', 0.2);
+      stats.run();
+      if (stage.kind === 'daily') stats.day(stage.seed);
+    }
+    return;
+  }
   if (run.state === 'ready' && q.along >= stage.start && q.along < stage.start + 30) {
     run.state = 'running'; run.t = 0;
     audio.beep(880, 0.15);
@@ -372,8 +400,11 @@ function finishRun() {
     recorder.nextT = 0; recorder.record(run.t, car);   // final pose on the line
     saveGhost(stage.seed, { car: carId, color: model.paint.color.getStyle(), time: run.t, samples: recorder.samples });
   }
+  stats.finish(isBest);
+  lastResult = { time: run.t, splits: run.splits.slice(), prev, isBest, label: stageLabel(), respawns: run.respawns, car: CARS[carId].name };
   audio.beep(660, 0.12); setTimeout(() => audio.beep(990, 0.25), 140);
   $('fin-stage').textContent = stageLabel();
+  $('btn-next').hidden = !(stage.kind === 'champ' && champIndex(stage.seed) < 5);
   $('fin-time').textContent = fmt(run.t);
   $('fin-newbest').hidden = !isBest;
   $('fin-prev').textContent = prev ? `Best ${fmt(prev.time)} (${fmtDelta(run.t - prev.time)})` : 'First finish on this stage';
@@ -388,18 +419,18 @@ function finishRun() {
   refreshStageHud();
 }
 
-function setCar(id) {
+function setCar(id, quiet = false) {
   carId = id;
-  const color = model.paint.color.getStyle();
+  garage.car = id; saveGarage();
   scene.remove(model.root);
   model.dispose();
   car.setSpec(CARS[id]);
-  model = buildCarModel(CARS[id], { color, wheelStyle: 'spoke', number: 7 });
+  model = buildCarModel(CARS[id], { color: garage.color, wheelStyle: garage.wheels, number: 7 });
   scene.add(model.root);
   rig.roofH = model.roofH;
   audio.setCar(CARS[id]);
   $('hud-car').textContent = CARS[id].name;
-  toast(`${CARS[id].name} · ${CARS[id].tag}`);
+  if (!quiet) toast(`${CARS[id].name} · ${CARS[id].tag}`);
   buildSliders();
 }
 
@@ -423,6 +454,7 @@ function toast(msg, ms = 1600) {
 
 function stageLabel() {
   if (stage.kind === 'practice') return 'Practice loop';
+  if (stage.kind === 'champ') return `${stage.name} · Championship ${champIndex(stage.seed)}/5`;
   if (stage.kind === 'daily') {
     const d = new Date(Math.floor(stage.seed / 10000), Math.floor(stage.seed / 100) % 100 - 1, stage.seed % 100);
     return `${stage.name} · ${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
@@ -456,6 +488,10 @@ function updateHud(dt) {
   hudAcc = 0;
   $('hud-speed').textContent = Math.round(car.speed * 3.6);
   if (stage.kind !== 'practice') $('hud-time').textContent = fmt(run.t);
+  const gap = ghostGap();
+  const gEl = $('hud-gap');
+  gEl.hidden = gap == null;
+  if (gap != null) { gEl.textContent = fmtDelta(gap); gEl.className = `gap ${gap < 0 ? 'good' : 'bad'}`; }
   $('hud-gear').textContent = car.gear < 0 ? 'R' : car.gear;
   const frac = (car.rpm - car.spec.idleRpm) / (car.spec.redline - car.spec.idleRpm);
   const lit = Math.round(Math.max(0, Math.min(1, frac)) * 20);
@@ -530,7 +566,7 @@ let running = false, paused = false;
 
 function start(kind = 'daily', seed) {
   audio.init();
-  if (kind === 'daily') seed = dateSeed();
+  if (kind === 'daily' && seed == null) seed = dateSeed();
   if (kind === 'random' && seed == null) seed = 100000 + Math.floor(Math.random() * 900000);
   if (kind !== stage.kind || seed !== stage.seed || !road) loadStage(kind, seed);
   else restartRun();
@@ -544,6 +580,7 @@ function start(kind = 'daily', seed) {
 }
 function toMenu() {
   running = false; paused = false;
+  stats.save();
   codriver.stop();
   $('pause').hidden = true; $('finish').hidden = true; $('hud').hidden = true;
   $('start').hidden = false;
@@ -563,6 +600,69 @@ function resetCar() {
     audio.thud(0.3);
   } else respawn();
 }
+// Big 3-2-1-GO in the middle of the screen.
+let countTimer = 0;
+function showCount(text, go) {
+  const el = $('hud-count');
+  el.textContent = text;
+  el.classList.toggle('go', !!go);
+  el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+  el.hidden = false;
+  clearTimeout(countTimer);
+  countTimer = setTimeout(() => { el.hidden = true; }, go ? 700 : 950);
+}
+
+// Copy a spoiler-free result to share: time plus a square per sector,
+// green where you beat your previous best and red where you didn't.
+let lastResult = null;
+function shareText(r) {
+  const squares = r.splits.map((t, k) => {
+    if (!r.prev) return '⬜';
+    const sec = t - (k ? r.splits[k - 1] : 0);
+    const pb = r.prev.splits[k] - (k ? r.prev.splits[k - 1] : 0);
+    return sec <= pb ? '🟩' : '🟥';
+  }).join('');
+  return [
+    `SIDEWAYS · ${r.label}`,
+    `⏱ ${fmt(r.time)}${r.isBest && r.prev ? ' · NEW BEST' : ''}${r.respawns ? ` · ${r.respawns} reset${r.respawns > 1 ? 's' : ''}` : ''}`,
+    `${squares} · ${r.car}`,
+  ].join('\n');
+}
+async function copyResult() {
+  if (!lastResult) return;
+  const text = shareText(lastResult);
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch { /* ignore */ }
+    ta.remove();
+  }
+  const b = $('btn-share');
+  b.textContent = 'Copied!';
+  setTimeout(() => { b.textContent = 'Copy result'; }, 1400);
+}
+
+// Live gap to the ghost: when did your best run reach the spot you're at now?
+function ghostAlongs(samples) {
+  let hint = -1, mx = -Infinity;
+  return samples.map((sm) => {
+    const q = road.nearest(sm[1], sm[3], hint);
+    hint = q.i;
+    mx = Math.max(mx, q.along);
+    return mx;
+  });
+}
+function ghostGap() {
+  if (!ghost?.alongs || run.state !== 'running') return null;
+  const A = ghost.alongs, sm = ghost.samples;
+  if (roadAlong <= A[0] || roadAlong >= A[A.length - 1]) return null;
+  let lo = 0, hi = A.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (A[mid] < roadAlong) lo = mid; else hi = mid; }
+  const f = A[hi] > A[lo] ? (roadAlong - A[lo]) / (A[hi] - A[lo]) : 0;
+  return run.t - (sm[lo][0] + (sm[hi][0] - sm[lo][0]) * f);
+}
+
 function restartKey() {
   if (stage.kind === 'practice') resetCar();
   else { restartRun(); toast('RESTART', 800); }
@@ -576,6 +676,8 @@ $('btn-reset').addEventListener('click', () => { resetCar(); setPaused(false); }
 $('btn-restart').addEventListener('click', () => { restartKey(); setPaused(false); });
 $('btn-pmenu').addEventListener('click', toMenu);
 $('btn-retry').addEventListener('click', () => { restartRun(); });
+$('btn-next').addEventListener('click', (e) => { e.currentTarget.blur(); start('champ', champWeekOf(stage.seed).seeds[champIndex(stage.seed)]); });
+$('btn-share').addEventListener('click', (e) => { e.currentTarget.blur(); copyResult(); });
 $('btn-replay').addEventListener('click', (e) => { e.currentTarget.blur(); startReplay(); });
 $('btn-replay-exit').addEventListener('click', (e) => { e.currentTarget.blur(); stopReplay(); });
 $('btn-new').addEventListener('click', () => start('random'));
@@ -653,6 +755,7 @@ $('opt-drone').addEventListener('change', (e) => {
 $('opt-scan').addEventListener('change', (e) => document.body.classList.toggle('scanlines', e.target.checked));
 
 input.on('key', (code, key) => {
+  if (code === 'Escape' && !running && $('start').hidden && $('finish').hidden) { closePages(); return; }
   if (code === 'Escape') { if (replay.on) { stopReplay(); return; } if (running) setPaused(!paused); return; }
   if (key === '?' || code === 'Slash') { $('debug').hidden = !$('debug').hidden; return; }
   if (code === 'KeyN') { setMap(!mapOn); toast(mapOn ? 'MAP ON' : 'MAP OFF', 800); return; }
@@ -801,6 +904,7 @@ function dentAt(wx, wz, depth) {
   model.dent(dx * c - dz * sn, 0.5 + Math.random() * 0.3, dx * sn + dz * c, depth);
 }
 function crash(impact) {
+  stats.crash();
   car.yawRate += (Math.random() - 0.5) * Math.min(3, impact * 0.15);
   audio.thud(1);
   shakeKick = 0.45;
@@ -853,6 +957,7 @@ function stepPhysics(dt, inp) {
   } else hazardObs = [];
   roadLat = lat; roadLx = tz; roadLz = -tx;
   if (run.state === 'finished') { inp = { throttle: 0, brake: 0.35, steer: 0, handbrake: false }; }
+  if (run.state === 'countdown') { inp = { throttle: 0, brake: 0, steer: inp.steer, handbrake: true }; }
   // Tiny hops over kinks in the ground keep their grip; real flights don't.
   const flying = car.air && car.airTime > 0.06;
   car.step(dt, inp, flying ? AIR : surface);
@@ -869,6 +974,7 @@ function stepPhysics(dt, inp) {
   } else if (!onShortcut) applyLineAssist(q, dt);
   updateRun(q, dt);
   if (run.state === 'running') recorder.record(run.t, car);
+  if (run.state === 'running' || run.state === 'free') stats.drive(dt, car, carId);
 
   // Height and slope.
   const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
@@ -1107,6 +1213,86 @@ function frame(now) {
 // Boot: build today's stage behind the menu, then start the loop.
 loadStage('daily', dateSeed());
 requestAnimationFrame(frame);
+
+// ---------- Menu pages ----------
+const preview = new GaragePreview($('garage-view'));
+function openPage(id) {
+  $('start').hidden = true;
+  $(id).hidden = false;
+  $(id).querySelector('[data-back]')?.focus();
+}
+function closePages() {
+  for (const id of ['garage', 'past', 'champ', 'statsview']) $(id).hidden = true;
+  preview.stop();
+  $('start').hidden = false;
+}
+document.querySelectorAll('[data-back]').forEach((b) => b.addEventListener('click', closePages));
+
+function renderGarage() {
+  $('garage-cars').innerHTML = garageCarsHTML(garage.car);
+  $('garage-stats').innerHTML = garageStatsHTML(garage.car);
+  $('garage-paint').innerHTML = PAINTS.map((c) => `<button class="swatch${c === garage.color ? ' on' : ''}" style="background:${c}" data-paint="${c}" aria-label="Paint ${c}"></button>`).join('');
+  $('garage-wheels').innerHTML = WHEELS.map((w) => `<button class="chip${w === garage.wheels ? ' on' : ''}" data-wheels="${w}">${w}</button>`).join('');
+  $('garage-color').value = garage.color;
+}
+$('btn-garage').addEventListener('click', () => {
+  openPage('garage');
+  renderGarage();
+  preview.show(garage.car, garage);
+  preview.start();
+});
+$('garage').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-car]'), p = e.target.closest('[data-paint]'), w = e.target.closest('[data-wheels]');
+  if (c) { setCar(c.dataset.car, true); preview.show(garage.car, garage); }
+  if (p) { garage.color = p.dataset.paint; model.setColor(garage.color); preview.setColor(garage.color); }
+  if (w) { garage.wheels = w.dataset.wheels; model.setWheelStyle(garage.wheels); preview.setWheels(garage.wheels); }
+  if (c || p || w) { saveGarage(); renderGarage(); }
+});
+$('garage-color').addEventListener('input', (e) => {
+  garage.color = e.target.value; model.setColor(garage.color); preview.setColor(garage.color); saveGarage();
+  document.querySelectorAll('.swatch').forEach((s) => s.classList.toggle('on', s.dataset.paint === garage.color));
+});
+
+const cal = { y: new Date().getFullYear(), m: new Date().getMonth() };
+function renderCalendar() {
+  $('cal-month').textContent = monthLabel(cal.y, cal.m);
+  $('cal-grid').innerHTML = calendarHTML(cal.y, cal.m);
+  $('cal-prev').disabled = !canGoMonth(cal.y, cal.m, -1);
+  $('cal-next').disabled = !canGoMonth(cal.y, cal.m, 1);
+}
+function shiftMonth(dir) {
+  if (!canGoMonth(cal.y, cal.m, dir)) return;
+  cal.m += dir;
+  if (cal.m < 0) { cal.m = 11; cal.y--; } else if (cal.m > 11) { cal.m = 0; cal.y++; }
+  renderCalendar();
+}
+$('btn-past').addEventListener('click', () => { openPage('past'); renderCalendar(); });
+$('cal-prev').addEventListener('click', () => shiftMonth(-1));
+$('cal-next').addEventListener('click', () => shiftMonth(1));
+$('cal-grid').addEventListener('click', (e) => {
+  const d = e.target.closest('[data-seed]');
+  if (!d) return;
+  closePages();
+  start('daily', +d.dataset.seed);
+});
+
+let week = weekInfo();
+function renderChamp() {
+  week = weekInfo();
+  $('champ-week').textContent = `Week of ${week.label}`;
+  const c = champHTML(week);
+  $('champ-table').innerHTML = c.html;
+  $('champ-total').textContent = c.total;
+}
+$('btn-champ').addEventListener('click', () => { openPage('champ'); renderChamp(); });
+$('champ-table').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-champ]');
+  if (!b) return;
+  closePages();
+  start('champ', week.seeds[+b.dataset.champ]);
+});
+
+$('btn-stats').addEventListener('click', () => { stats.save(); openPage('statsview'); $('stats-grid').innerHTML = statsHTML(stats.d); });
 
 // Exposed for automated smoke tests.
 function stepSim(seconds, inp) {
