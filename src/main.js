@@ -119,6 +119,8 @@ function loadStage(kind, seed = 0) {
   terrain = built.terrain;
   buildObstacleGrid(built.obstacles);
   stageGroup.add(built.group);
+  // Verge shoulders slope from the road edge down to the ground on each side.
+  stageGroup.add(road.buildShoulders(terrain.heightAt, road.width / 2 - 0.2, road.width / 2 + SHOULDER, vergeMat));
   // Shortcut tracks follow the ground; darker, rutted dirt.
   if (trackMat.map) trackMat.map.dispose();
   trackMat.map = gravelTexture({ base: '#6f5a42', rut: [40, 30, 20], edge: [50, 60, 30], stone: [10, 0, -10] });
@@ -141,7 +143,6 @@ function loadStage(kind, seed = 0) {
     stageGroup.add(sc.buildOffsetStrip(() => 0, sc.width, 0.06, trackMat, 1 / 10, Math.max(0, from - 1), Math.min(sc.n, to + 1)));
     return sc;
   });
-  stageGroup.add(road.buildRibbon(road.width + 4.5, 0.012, vergeMat, 1 / 10));
   stageGroup.add(road.buildRibbon(road.width, 0.03, gravelMat, 1 / 12));
   // The racing line is always shown as dark, worn tyre tracks.
   lineMesh = buildRacingMarks(road);
@@ -719,8 +720,14 @@ function crash(impact) {
 const smoothstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 let offDist = 0;
 // Ground height: the road surface near the road, blending onto the terrain.
+// Matches the shoulder strips: flat to the road edge, then a straight slope
+// to the ground SHOULDER metres out.
+const SHOULDER = 3.6;
+function shoulderT(lateralAbs) {
+  return Math.max(0, Math.min(1, (lateralAbs - road.width / 2) / SHOULDER));
+}
 function groundAt(x, z, lateralAbs, roadY) {
-  const t = smoothstep(road.width / 2 + 1.5, road.width / 2 + 5, lateralAbs);
+  const t = shoulderT(lateralAbs);
   return t <= 0 ? roadY : roadY * (1 - t) + terrain.heightAt(x, z) * t;
 }
 function stepPhysics(dt, inp) {
@@ -766,26 +773,42 @@ function stepPhysics(dt, inp) {
   const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
   const latAbs = Math.abs(lat);
   const h0 = groundAt(car.x, car.z, latAbs, roadY);
-  // Road slope along its tangent, plus terrain slope when off it.
-  const iA = road.idx(roadHint - 1), iB = road.idx(roadHint + 1);
-  const roadGrade = (road.py[iB] - road.py[iA]) / Math.max(1, road.cum[iB] - road.cum[iA] || 4);
   const along1 = fx * tx + fz * tz;    // how much the car points along the road
-  const offT = smoothstep(road.width / 2 + 1.5, road.width / 2 + 5, latAbs);
-  let pitch = roadGrade * along1, roll = 0;
+  const offT = shoulderT(latAbs);
+  // Ground profile along the car's heading, 4 m behind and ahead. Using a
+  // real distance (not one physics step) keeps slope and take-off smooth.
+  const roadHeightAlong = (sAlong) => {
+    if (road.closed) sAlong = ((sAlong % road.length) + road.length) % road.length;
+    sAlong = Math.max(0, Math.min(road.length - 0.01, sAlong));
+    const i = Math.max(1, road.indexAt(sAlong));
+    const s0 = road.cum[i - 1], s1 = road.cum[i];
+    const t = s1 > s0 ? (sAlong - s0) / (s1 - s0) : 0;
+    return road.py[i - 1] + (road.py[i] - road.py[i - 1]) * Math.max(0, Math.min(1, t));
+  };
+  const profile = (d) => {
+    const yr = offT < 1 ? roadHeightAlong(roadAlong + d * along1) : 0;
+    const yt = offT > 0 ? terrain.heightAt(car.x + fx * d, car.z + fz * d) : 0;
+    return yr * (1 - offT) + yt * offT;
+  };
+  const W = 4;
+  const yBack = profile(-W), yMid = profile(0), yFwd = profile(W);
+  const pitch = (yFwd - yBack) / (2 * W);
+  const curv = (yBack - 2 * yMid + yFwd) / (W * W);   // vertical curvature (1/m)
+  let roll = 0;
   if (offT > 0) {
-    const hf = terrain.heightAt(car.x + fx * 1.6, car.z + fz * 1.6), hb = terrain.heightAt(car.x - fx * 1.6, car.z - fz * 1.6);
     const hl = terrain.heightAt(car.x + fz * 0.9, car.z - fx * 0.9), hr = terrain.heightAt(car.x - fz * 0.9, car.z + fx * 0.9);
-    pitch = pitch * (1 - offT) + ((hf - hb) / 3.2) * offT;
     roll = ((hl - hr) / 1.8) * offT;
   }
-  // Vertical motion: follow the ground until it falls away faster than
-  // gravity can pull the car down, then fly until it catches up.
+  // Vertical motion: stick to the ground until it curves away faster than
+  // gravity can follow (speed^2 x curvature > g), then fly.
   const G = 9.81;
   if (!car.air) {
-    const vyGround = (h0 - car.y) / dt;
-    const needAccel = (vyGround - car.vy) / dt;
-    if (needAccel < -G - 4 && car.speed > 6) {
+    const vyGround = pitch * car.vF;
+    // A bit over 1 g of 'lift' needed, so ordinary rises at speed keep the
+    // wheels down; jumps and crests are far sharper and still launch you.
+    if (curv * car.vF * car.vF < -G * 1.7 && car.speed > 6) {
       car.air = true; car.airTime = 0;
+      car.vy = vyGround;
     } else {
       car.vy = vyGround;
       car.y = h0;

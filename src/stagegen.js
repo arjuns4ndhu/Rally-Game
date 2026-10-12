@@ -207,6 +207,16 @@ export function generateStage(seed) {
   const maxStep = theme.maxGrade * DS;     // steepest allowed grade
   for (let i = 1; i < ys.length; i++) ys[i] = Math.max(ys[i - 1] - maxStep, Math.min(ys[i - 1] + maxStep, ys[i]));
   for (let i = ys.length - 2; i >= 0; i--) ys[i] = Math.max(ys[i + 1] - maxStep, Math.min(ys[i + 1] + maxStep, ys[i]));
+  // Round off the kinks the grade limit leaves, so crests are smooth.
+  for (let pass = 0; pass < 3; pass++) {
+    const out = ys.slice();
+    for (let i = 0; i < ys.length; i++) {
+      let s = 0, c = 0;
+      for (let d = -5; d <= 5; d++) { const j = i + d; if (j >= 0 && j < ys.length) { s += ys[j]; c++; } }
+      out[i] = s / c;
+    }
+    ys = out;
+  }
 
   const pts = xs.map((x, i) => [x, ys[i], zs[i]]);
 

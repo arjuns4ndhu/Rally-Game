@@ -41,6 +41,42 @@ export class Road {
     this.q = { i: 0, along: 0, lateral: 0, y: 0, tx: 0, tz: 1, dist: 0 };
   }
 
+  // Shoulders: strips from the road edge sloping down (or up) to the real
+  // ground on each side, so the road sits in the landscape instead of on a
+  // ledge. heightAt(x, z) gives the ground height.
+  buildShoulders(heightAt, inner, outer, material) {
+    const n = this.n + (this.closed ? 1 : 0);
+    const pos = new Float32Array(n * 4 * 3), uv = new Float32Array(n * 4 * 2);
+    for (let k = 0; k < n; k++) {
+      const i = k % this.n;
+      const lx = this.tz[i], lz = -this.tx[i];
+      const v = (k === this.n ? this.length : this.cum[i]) / 10;
+      let o = 0;
+      for (const side of [1, -1]) {
+        const ix = this.px[i] + lx * inner * side, iz = this.pz[i] + lz * inner * side;
+        const ox = this.px[i] + lx * outer * side, oz = this.pz[i] + lz * outer * side;
+        pos.set([ix, this.py[i] + 0.012, iz, ox, heightAt(ox, oz) - 0.03, oz], k * 12 + o * 6);
+        uv.set([0, v, 1, v], k * 8 + o * 4);
+        o++;
+      }
+    }
+    const idx = [];
+    for (let k = 0; k < n - 1; k++) {
+      const a = k * 4, b = (k + 1) * 4;
+      // left side: inner a, outer a+1 ; right side: inner a+2, outer a+3
+      idx.push(a, b, a + 1, a + 1, b, b + 1);
+      idx.push(a + 2, a + 3, b + 2, a + 3, b + 3, b + 2);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
   // Reshape the road's height profile with jumps and crests.
   //   jump:  a ramp up to a lip, then a short sharp drop (kicker)
   //   crest: a smooth symmetric hump that lifts the car at speed
