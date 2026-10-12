@@ -270,6 +270,9 @@ function refreshGhost() {
   ghostHint = -1;
   if (ghostModel) { scene.remove(ghostModel.root); ghostModel.dispose(); ghostModel = null; }
   ghost = stage.kind !== 'practice' ? loadGhost(stage.seed) : null;
+  // Only ever your own best run on this stage: it must match your saved best time.
+  const mine = loadBest();
+  if (ghost && !(mine && Math.abs(ghost.time - mine.time) < 0.05)) ghost = null;
   if (ghost) ghostToLift(ghost.samples);
   if (ghost && ghostOn) {
     ghostModel = buildCarModel(CARS[ghost.car] || CARS[carId], { ghost: true, color: ghost.color || '#9fe3ff' });
