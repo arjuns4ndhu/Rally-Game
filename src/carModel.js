@@ -33,7 +33,7 @@ const PROFILES = {
     body: [[-2.05, 0.34], [-2.08, 0.95], [-1.95, 1.0], [0.9, 0.95], [1.85, 0.78], [2.06, 0.55], [2.04, 0.34]],
     glass: [[-1.95, 0.99], [-1.8, 1.42], [0.05, 1.46], [0.85, 0.94]],
     width: 1.8, hood: [0.95, 1.85],
-    wing: 'hatch', lamps: 'pod', flares: true, scoop: true, vent: true,
+    wing: 'hatch', lamps: 'pod', flares: true, scoop: true, vent: true, round: true,
   },
   // Rally-raid SUV: tall body on big tyres, roof rack, spare wheels, light bar.
   dakar: {
@@ -55,14 +55,27 @@ function resample(pts, maxSeg = 0.3) {
   return out;
 }
 
-function extrudeProfile(pts, width, bevel = 0.05) {
-  pts = resample(pts);
+// Chaikin corner cutting: rounds off every corner of a closed outline.
+function roundOff(pts, passes = 3) {
+  for (let p = 0; p < passes; p++) {
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      const [z0, y0] = pts[i], [z1, y1] = pts[(i + 1) % pts.length];
+      out.push([z0 * 0.75 + z1 * 0.25, y0 * 0.75 + y1 * 0.25], [z0 * 0.25 + z1 * 0.75, y0 * 0.25 + y1 * 0.75]);
+    }
+    pts = out;
+  }
+  return pts;
+}
+
+function extrudeProfile(pts, width, bevel = 0.05, round = false) {
+  pts = round ? roundOff(pts) : resample(pts);
   const shape = new THREE.Shape();
   shape.moveTo(pts[0][0], pts[0][1]);
   for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1]);
   shape.closePath();
   const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: width - bevel * 2, steps: 5, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 1,
+    depth: width - bevel * 2, steps: 5, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: round ? 3 : 1,
   });
   // Shape is in XY; extrusion goes along +Z. Rotate so profile x -> world z.
   geo.translate(0, 0, -(width - bevel * 2) / 2);
@@ -185,8 +198,8 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     return top[top.length - 1][1];
   };
 
-  const bodyMesh = new THREE.Mesh(extrudeProfile(bodyPts, W), paint);
-  const glassMesh = new THREE.Mesh(extrudeProfile(g, W - 0.18, 0.04), glass);
+  const bodyMesh = new THREE.Mesh(extrudeProfile(bodyPts, W, prof.round ? 0.1 : 0.05, prof.round), paint);
+  const glassMesh = new THREE.Mesh(extrudeProfile(g, W - (prof.round ? 0.3 : 0.18), prof.round ? 0.1 : 0.04, prof.round), glass);
   bodyMesh.castShadow = glassMesh.castShadow = true;
   body.add(bodyMesh, glassMesh);
 
@@ -369,8 +382,11 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     for (const m of mats) { m.transparent = true; m.opacity = 0.38; m.depthWrite = false; }
   }
 
+  // Roof height (body and glass, plus the rack), used to frame the camera.
+  const roofBox = new THREE.Box3().setFromObject(bodyMesh).union(new THREE.Box3().setFromObject(glassMesh));
+  const roofH = roofBox.max.y + (prof.rack ? 0.3 : 0);
   const api = {
-    root, body, wheels, paint,
+    root, body, wheels, paint, roofH,
     setColor(c) { paint.color.set(c); },
     // Purely cosmetic crash damage: push the bodywork in around a point
     // (body space: x right, y up, z forward). `depth` in metres.

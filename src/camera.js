@@ -41,9 +41,22 @@ export class CameraRig {
       return;
     }
 
+    // Slope of the ground ahead (smoothed): the view tilts with it, and on
+    // descents the camera rises so you can see down past the car.
+    let slopeNow = 0;
+    if (this.groundAt) {
+      const ax = car.x + this.dir.x * 14, az = car.z + this.dir.y * 14;
+      slopeNow = Math.max(-0.45, Math.min(0.45, (this.groundAt(ax, az) - y) / 14));
+    }
+    this.slope = snap || this.slope == null ? slopeNow : this.slope + (slopeNow - this.slope) * Math.min(1, dt * 4);
+    const slope = this.slope, down = Math.max(0, -slope);
+    // Taller cars (the rally-raid SUV) get the camera higher and further back.
+    const ex = Math.max(0, (this.roofH ?? 1.1) - 1.1);
+
     if (this.mode === 'bonnet') {
-      cam.position.set(car.x + fx * 0.9, y + 1.5, car.z + fz * 0.9);
-      this._v.set(car.x + fx * 25, y + 1.1, car.z + fz * 25);
+      const camY = y + Math.max(1.5, (this.roofH ?? 1.1) + 0.3);
+      cam.position.set(car.x + fx * 0.9, camY, car.z + fz * 0.9);
+      this._v.set(car.x + fx * 25, camY - 0.4 + slope * 0.85 * 25, car.z + fz * 25);
       cam.lookAt(this._v);
       cam.fov = THREE.MathUtils.lerp(cam.fov, 72 + Math.min(car.speed, 50) * 0.18, Math.min(1, dt * 3));
       cam.updateProjectionMatrix();
@@ -63,30 +76,23 @@ export class CameraRig {
     this.dir.x += (tx - this.dir.x) * k; this.dir.y += (tz - this.dir.y) * k;
     this.dir.normalize();
 
-    const speedPull = Math.min(car.speed, 45) * 0.03;
-    const dist = rig.dist + speedPull;
-    const want = this._v.set(car.x - this.dir.x * dist, y + rig.height, car.z - this.dir.y * dist);
-    // On hills, sit at a sensible height above the ground behind the car
-    // rather than at the car's height (which buries it climbing and leaves
-    // it hanging high going down).
-    if (this.groundAt) {
-      const gBehind = this.groundAt(want.x, want.z);
-      want.y = Math.max(want.y, gBehind + rig.height * 0.75);
-      want.y = Math.min(want.y, Math.max(gBehind, y) + rig.height * 1.15);
-    }
+    const height = rig.height + ex * 1.6, look = rig.look + ex * 0.7;
+    const dist = rig.dist + ex * 2.0 + Math.min(car.speed, 45) * 0.03;
+    const camY = y + height + down * dist * 1.1;
+    const want = this._v.set(car.x - this.dir.x * dist, camY, car.z - this.dir.y * dist);
+    // Never down in the ground behind the car on a climb.
+    if (this.groundAt) want.y = Math.max(want.y, this.groundAt(want.x, want.z) + height * 0.75);
     const kp = snap ? 1 : 1 - Math.exp(-dt * rig.stiff);
     const ky = snap ? 1 : 1 - Math.exp(-dt * rig.stiff * 2.2);   // keep up with height changes
     this.pos.x += (want.x - this.pos.x) * kp;
     this.pos.z += (want.z - this.pos.z) * kp;
     this.pos.y += (want.y - this.pos.y) * ky;
     if (this.groundAt) this.pos.y = Math.max(this.pos.y, this.groundAt(this.pos.x, this.pos.z) + 0.8);
-    // Look a little ahead along the slope.
-    let lookY = y + rig.look;
-    if (this.groundAt) {
-      const ax = car.x + this.dir.x * 10, az = car.z + this.dir.y * 10;
-      lookY += Math.max(-2.5, Math.min(2.5, (this.groundAt(ax, az) - y) * 0.35));
-    }
-    this.lookY = snap || this.lookY == null ? lookY : this.lookY + (lookY - this.lookY) * Math.min(1, dt * 5);
+    // Aim: same framing as on the flat, tilted to follow the slope.
+    const span = dist + rig.ahead;
+    const base = (height - look) / span;
+    const lookY = camY + (slope * 0.85 - base) * span;
+    this.lookY = snap || this.lookY == null ? lookY : this.lookY + (lookY - this.lookY) * Math.min(1, dt * 6);
     this.look.set(car.x + this.dir.x * rig.ahead, this.lookY, car.z + this.dir.y * rig.ahead);
 
     cam.position.copy(this.pos);

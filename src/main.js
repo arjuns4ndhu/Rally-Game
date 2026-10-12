@@ -214,6 +214,7 @@ let carId = 'stiletto';
 const car = new CarPhysics(CARS[carId]);
 let model = buildCarModel(CARS[carId], { color: '#e8542a', wheelStyle: 'spoke', number: 7 });
 scene.add(model.root);
+rig.roofH = model.roofH;
 audio.setCar(CARS[carId]);
 let roadHint = -1;
 let roadAlong = 0;
@@ -384,6 +385,7 @@ function setCar(id) {
   car.setSpec(CARS[id]);
   model = buildCarModel(CARS[id], { color, wheelStyle: 'spoke', number: 7 });
   scene.add(model.root);
+  rig.roofH = model.roofH;
   audio.setCar(CARS[id]);
   $('hud-car').textContent = CARS[id].name;
   toast(`${CARS[id].name} · ${CARS[id].tag}`);
@@ -980,7 +982,7 @@ function frame(now) {
   if (active) {
     acc += dt;
     while (acc >= STEP) {
-      stepPhysics(STEP, input.update(STEP));
+      stepPhysics(STEP, window.__sideways?.auto ? window.__sideways.auto() : input.update(STEP));
       acc -= STEP;
     }
     emitDust(dt);
@@ -1022,7 +1024,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
+  auto: null, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver,
