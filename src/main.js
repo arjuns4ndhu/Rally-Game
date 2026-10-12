@@ -4,11 +4,11 @@ import { CarPhysics, CARS, CAR_ORDER, TUNE } from './car.js';
 import { buildCarModel } from './carModel.js';
 import { Road, createTestRoad, gravelTexture, SURFACES, findShortcuts } from './track.js';
 import { generateStage, stageName } from './stagegen.js';
-import { buildGate, buildSign, buildCornerWarnings } from './gates.js';
+import { buildGate, buildSign, buildCornerWarnings, buildShortcutMarkers } from './gates.js';
 import { dateSeed } from './rng.js';
 import { THEMES, pickTheme } from './themes.js';
 import { setupWorld, buildScenery } from './scenery.js';
-import { CameraRig } from './camera.js';
+import { CameraRig, TVCamera } from './camera.js';
 import { Dust } from './particles.js';
 import { AudioEngine } from './audio.js';
 import { Input } from './input.js';
@@ -38,6 +38,7 @@ const camera = new THREE.PerspectiveCamera(62, 1, 0.2, 480);
 const world = setupWorld(scene);
 const rig = new CameraRig(camera);
 const drone = new Drone(scene);
+const tv = new TVCamera(camera);
 rig.drone = drone;
 rig.groundAt = (x, z) => worldGround(x, z);
 const dust = new Dust(scene);
@@ -147,6 +148,7 @@ function loadStage(kind, seed = 0) {
     while (from < sc.n - 1 && road.nearest(sc.px[from], sc.pz[from], -1).dist < road.width / 2 - 0.3) from++;
     while (to > from + 1 && road.nearest(sc.px[to - 1], sc.pz[to - 1], -1).dist < road.width / 2 - 0.3) to--;
     stageGroup.add(sc.buildOffsetStrip(() => 0, sc.width, 0.06, trackMat, 1 / 10, Math.max(0, from - 1), Math.min(sc.n, to + 1)));
+    stageGroup.add(buildShortcutMarkers(road, sc));
     return sc;
   });
   stageGroup.add(road.buildRibbon(road.width, 0.03, gravelMat, 1 / 12));
@@ -290,7 +292,7 @@ function ghostToLift(samples) {
 let ghostHint = -1;
 function updateGhost() {
   if (!ghostModel) return;
-  const t = run.state === 'running' || run.state === 'finished' ? run.t : 0;
+  const t = replay.on ? replay.t : run.state === 'running' || run.state === 'finished' ? run.t : 0;
   samplePose(ghost.samples, t, ghostPose);
   const r = ghostModel.root;
   // Today's ground plus the recorded lift (see ghostToLift).
@@ -303,6 +305,7 @@ function updateGhost() {
 }
 
 function restartRun() {
+  if (replay.on) { replay.on = false; $('hud-replay').hidden = true; document.body.classList.remove('replaying'); }
   recorder.reset();
   run.state = stage.kind === 'practice' ? 'free' : 'ready';
   run.t = 0; run.next = 0; run.splits = []; run.penalty = 0; run.respawns = 0;
@@ -564,6 +567,8 @@ $('btn-reset').addEventListener('click', () => { resetCar(); setPaused(false); }
 $('btn-restart').addEventListener('click', () => { restartKey(); setPaused(false); });
 $('btn-pmenu').addEventListener('click', toMenu);
 $('btn-retry').addEventListener('click', () => { restartRun(); });
+$('btn-replay').addEventListener('click', (e) => { e.currentTarget.blur(); startReplay(); });
+$('btn-replay-exit').addEventListener('click', (e) => { e.currentTarget.blur(); stopReplay(); });
 $('btn-new').addEventListener('click', () => start('random'));
 $('btn-fmenu').addEventListener('click', toMenu);
 $('daily-name').textContent = `${stageName(dateSeed())} · ${new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
@@ -627,7 +632,7 @@ $('opt-drone').addEventListener('change', (e) => {
 $('opt-scan').addEventListener('change', (e) => document.body.classList.toggle('scanlines', e.target.checked));
 
 input.on('key', (code, key) => {
-  if (code === 'Escape') { if (running) setPaused(!paused); return; }
+  if (code === 'Escape') { if (replay.on) { stopReplay(); return; } if (running) setPaused(!paused); return; }
   if (key === '?' || code === 'Slash') { $('debug').hidden = !$('debug').hidden; return; }
   if (code === 'KeyM') { setMuted(!muted); toast(muted ? 'SOUND OFF' : 'SOUND ON', 800); return; }
   if (!running) { if (code === 'Enter') start('daily'); return; }
@@ -970,6 +975,73 @@ function onLanding(impact) {
   }
 }
 
+// ---------- Replay ----------
+// Plays the run you just finished back on your car, filmed by trackside TV
+// cameras and the drone. Hazards happen again at the same moments, and your
+// previous best's ghost races alongside.
+const replay = { on: false, t: 0, end: 0, samples: null, hint: -1, vx: 0, vz: 0 };
+const replayPose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, done: false };
+function startReplay() {
+  const smp = recorder.samples;
+  if (!smp.length) return;
+  replay.on = true; replay.t = 0; replay.samples = smp.slice(); replay.end = smp[smp.length - 1][0];
+  replay.hint = -1; replay.vx = replay.vz = 0;
+  $('finish').hidden = true;
+  $('hud-replay').hidden = false;
+  document.body.classList.add('replaying');
+  hazards?.reset();
+  dust.clear();
+  tv.reset();
+  samplePose(replay.samples, 0, replayPose);
+  applyReplayPose(0);
+  drone.snap(car, worldGround);
+}
+function stopReplay() {
+  if (!replay.on) return;
+  replay.on = false;
+  $('hud-replay').hidden = true;
+  document.body.classList.remove('replaying');
+  hazards?.update(0, 1e9, null);                  // everything back to how it ended
+  car.vx = car.vz = 0; car.speed = 0; car.yawRate = 0;
+  rig.snap(car);
+  if (run.state === 'finished') $('finish').hidden = false;
+}
+function applyReplayPose(dt) {
+  const px = car.x, pz = car.z;
+  car.x = replayPose.x; car.y = replayPose.y; car.z = replayPose.z; car.yaw = replayPose.yaw;
+  car.groundPitch = replayPose.pitch; car.groundRoll = replayPose.roll;
+  // Velocity from the motion (smoothed), for dust and the camera.
+  if (dt > 0) {
+    const vx = (car.x - px) / dt, vz = (car.z - pz) / dt;
+    const jump = Math.hypot(vx, vz) > 80;           // a respawn: don't streak
+    const k = Math.min(1, dt * 10);
+    replay.vx = jump ? 0 : replay.vx + (vx - replay.vx) * k;
+    replay.vz = jump ? 0 : replay.vz + (vz - replay.vz) * k;
+  }
+  car.vx = replay.vx; car.vz = replay.vz;
+  car.speed = Math.hypot(car.vx, car.vz);
+  const sn = Math.sin(car.yaw), cs = Math.cos(car.yaw);
+  car.vF = car.vx * sn + car.vz * cs; car.vL = car.vx * cs - car.vz * sn;
+  const slip = car.speed > 3 ? Math.abs(Math.atan2(car.vL, Math.abs(car.vF))) : 0;
+  car.rearSlide = Math.min(1, slip / 0.5);
+  car.steer = 0; car.wheelSpin = 0; car.axSmooth = 0; car.aySmooth = 0;
+  const q = road.nearest(car.x, car.z, replay.hint);
+  replay.hint = q.i;
+  replay.along = q.along;
+  car.air = car.y - groundAt(car.x, car.z, Math.abs(q.lateral), q.y) > 0.3;
+  surface = road.surfaceAt(Math.abs(q.lateral));
+}
+function updateReplay(dt) {
+  replay.t += dt;
+  samplePose(replay.samples, replay.t, replayPose);
+  applyReplayPose(dt);
+  hazards?.update(dt, replay.along, hazardFx);
+  hazardObs = [];
+  emitDust(dt);
+  $('replay-time').textContent = fmt(Math.min(replay.t, replay.end));
+  if (replay.t > replay.end + 2) stopReplay();
+}
+
 // ---------- Main loop ----------
 let last = performance.now(), acc = 0;
 function frame(now) {
@@ -978,7 +1050,8 @@ function frame(now) {
   last = now;
   if (dt > 0.1) dt = 0.1;
 
-  const active = running && !paused;
+  const active = running && !paused && !replay.on;
+  if (running && !paused && replay.on) updateReplay(dt);
   if (active) {
     acc += dt;
     while (acc >= STEP) {
@@ -997,9 +1070,10 @@ function frame(now) {
   shakeKick *= Math.exp(-dt * 7);
   car.squash = (car.squash || 0) * Math.exp(-dt * 9);
   rig.shake = active ? (car.air ? 0 : (surface.name === 'grass' ? 0.05 : 0.012) * Math.min(car.speed / 25, 1)) + shakeKick : 0;
-  drone.hidden = rig.mode === 'drone';
+  drone.hidden = replay.on ? tv.kind === 'drone' : rig.mode === 'drone';
   if (!paused) drone.update(car, dt, worldGround);
-  rig.update(car, dt);
+  if (replay.on) { if (!paused) tv.update(car, dt, road, replay.along, worldGround, drone); }
+  else rig.update(car, dt);
   world.sky.position.copy(camera.position);
   if (!paused) dust.update(dt);
   audio.update(car, car.air && car.airTime > 0.06 ? AIR : surface, dt, active);

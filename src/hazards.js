@@ -12,8 +12,14 @@ const ease = (t) => t * t;                          // gravity: slow start, fast
 const clamp01 = (t) => Math.max(0, Math.min(1, t));
 
 // Which hazards a stage gets (usually none).
+// Special days with hand-picked events.
+const FORCED = {
+  20261013: [{ kind: 'tree', mid: true }, { kind: 'slide', mid: true }],
+};
+
 function pickHazards(seed, theme) {
   if (HAZARD_DEBUG.force) return HAZARD_DEBUG.force.map((h) => ({ ...h }));
+  if (FORCED[seed]) return FORCED[seed].map((h) => ({ ...h }));
   const r = mulberry32(((seed * 2654435761) ^ 0x7f4a7c15) >>> 0);
   const out = [];
   const treeChance = theme.id === 'desert' ? 0 : 0.14;

@@ -206,3 +206,96 @@ export function buildCornerWarnings(road, corners) {
   }
   return group;
 }
+
+// ---------- Shortcut markers ----------
+// A green advance board ("SHORTCUT" with a bent arrow), an arrow board and
+// flags at the mouth of the track, and marker posts lining it.
+function shortcutTexture(dir, text) {
+  return boardTexture((g, w, h) => {
+    g.fillStyle = '#1f9e5a'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#f4f1e8'; g.lineWidth = 8; g.strokeRect(8, 8, w - 16, h - 16);
+    g.save();
+    g.translate(w / 2, 62);
+    g.scale(dir, 1);
+    g.strokeStyle = '#f4f1e8'; g.fillStyle = '#f4f1e8'; g.lineWidth = 12; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(-40, 34); g.lineTo(-40, 0); g.quadraticCurveTo(-40, -22, -10, -22); g.lineTo(26, -22); g.stroke();
+    g.beginPath(); g.moveTo(52, -22); g.lineTo(22, -44); g.lineTo(22, 0); g.closePath(); g.fill();
+    g.restore();
+    g.fillStyle = '#f4f1e8';
+    g.font = '30px Bungee, Impact, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, w / 2, 128);
+  });
+}
+
+function signPost(tex, width = 1.6, height = 1.0, postH = 2.2) {
+  const grp = new THREE.Group();
+  const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, postH, 0.12), new THREE.MeshStandardMaterial({ color: 0x2a2c33 }));
+  post.position.y = postH / 2;
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, emissive: 0x0d3a22, emissiveIntensity: 0.4 }));
+  board.position.y = postH;
+  post.castShadow = board.castShadow = true;
+  grp.add(post, board);
+  return grp;
+}
+
+export function buildShortcutMarkers(road, sc) {
+  const grp = new THREE.Group();
+  // Which end you reach first, and which side of the road the track leaves on.
+  const qa = road.nearest(sc.px[0], sc.pz[0], -1), aStart = qa.along;
+  const qb = road.nearest(sc.px[sc.n - 1], sc.pz[sc.n - 1], -1), aEnd = qb.along;
+  const fwd = aStart < aEnd;
+  const k0 = fwd ? 0 : sc.n - 1, kIn = fwd ? Math.min(sc.n - 1, 6) : Math.max(0, sc.n - 7);
+  const entryAlong = Math.min(aStart, aEnd);
+  const qi = road.nearest(sc.px[kIn], sc.pz[kIn], -1);
+  const side = qi.lateral >= 0 ? 1 : -1;          // +1 = left of the road
+  const dir = side > 0 ? -1 : 1;                  // arrow bends left or right on the board
+  const place = (obj, along, lat) => {
+    const i = road.indexAt(Math.max(0, along));
+    obj.position.set(road.px[i] + road.tz[i] * lat, road.py[i], road.pz[i] - road.tx[i] * lat);
+    obj.rotation.y = Math.atan2(road.tx[i], road.tz[i]) + Math.PI;   // face oncoming cars
+    return obj;
+  };
+  // Advance warning and the board at the turn-off.
+  const edge = side * (road.width / 2 + 2.4);
+  grp.add(place(signPost(shortcutTexture(dir, 'SHORTCUT'), 2.3, 1.45, 2.6), entryAlong - 70, edge));
+  grp.add(place(signPost(shortcutTexture(dir, 'SHORTCUT'), 2.3, 1.45, 2.6), entryAlong - 25, edge));
+  const at = signPost(shortcutTexture(dir, 'THIS WAY'), 2.0, 1.25, 2.0);
+  grp.add(place(at, entryAlong + 6, side * (road.width / 2 + 5)));
+  // Flags either side of the mouth of the track.
+  const flagMat = new THREE.MeshStandardMaterial({ color: 0x2bd47a, emissive: 0x0f5a32, emissiveIntensity: 0.5, side: THREE.DoubleSide });
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0xe9e4d8 });
+  const poleGeo = new THREE.CylinderGeometry(0.05, 0.06, 4.2, 5);
+  const flagGeo = new THREE.PlaneGeometry(1.4, 0.85);
+  const tx = sc.px[kIn] - sc.px[k0], tz = sc.pz[kIn] - sc.pz[k0], tl = Math.hypot(tx, tz) || 1;
+  const nx = tz / tl, nz = -tx / tl;
+  for (const s of [-1, 1]) {
+    const k = fwd ? 2 : sc.n - 3;
+    const x = sc.px[k] + nx * s * (sc.width / 2 + 0.6), z = sc.pz[k] + nz * s * (sc.width / 2 + 0.6);
+    const pole = new THREE.Mesh(poleGeo, poleMat);
+    pole.position.set(x, sc.py[k] + 2.1, z);
+    const flag = new THREE.Mesh(flagGeo, flagMat);
+    flag.position.set(x, sc.py[k] + 3.75, z);
+    flag.rotation.y = Math.atan2(tx, tz) + Math.PI / 2;
+    flag.translateX(0.7);
+    grp.add(pole, flag);
+  }
+  // Marker posts down both sides of the track: white with a green reflector.
+  const postGeo = new THREE.BoxGeometry(0.1, 0.9, 0.1), capGeo = new THREE.BoxGeometry(0.12, 0.18, 0.12);
+  const postMat = new THREE.MeshStandardMaterial({ color: 0xf2efe6 });
+  const capMat = new THREE.MeshStandardMaterial({ color: 0x2bd47a, emissive: 0x2bd47a, emissiveIntensity: 0.6 });
+  for (let k = 6; k < sc.n - 6; k += 6) {
+    const k1 = Math.min(sc.n - 1, k + 1);
+    const dx = sc.px[k1] - sc.px[k], dz = sc.pz[k1] - sc.pz[k], dl = Math.hypot(dx, dz) || 1;
+    for (const s of [-1, 1]) {
+      const x = sc.px[k] + (dz / dl) * s * (sc.width / 2 + 0.5), z = sc.pz[k] - (dx / dl) * s * (sc.width / 2 + 0.5);
+      // Skip posts standing on the main road.
+      if (road.nearest(x, z, -1).dist < road.width / 2 + 0.8) continue;
+      const p = new THREE.Mesh(postGeo, postMat);
+      p.position.set(x, sc.py[k] + 0.45, z);
+      const c = new THREE.Mesh(capGeo, capMat);
+      c.position.set(x, sc.py[k] + 0.85, z);
+      grp.add(p, c);
+    }
+  }
+  return grp;
+}

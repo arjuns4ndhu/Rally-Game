@@ -263,3 +263,18 @@ body.touch .tc-top { right: calc(62px + env(safe-area-inset-right, 0px)); }
 }
 .split { top: calc(220px + env(safe-area-inset-top, 0px)); }
 body.touch .pacenote { top: calc(96px + env(safe-area-inset-top, 0px)); transform: translateX(-50%) scale(0.82); transform-origin: top center; }
+
+/* ---------- Replay ---------- */
+.replay-tag {
+  position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 6px;
+  background: rgba(11, 13, 18, 0.78); border: 1px solid var(--line);
+  font-family: var(--font-display); font-size: 16px; letter-spacing: 0.08em; color: var(--text); pointer-events: auto;
+}
+.replay-tag b { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 400; }
+.replay-tag .rec { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; animation: rec-blink 1s steps(2) infinite; }
+@keyframes rec-blink { 50% { opacity: 0.2; } }
+.btn.replay-exit { padding: 6px 12px; font-size: 13px; min-height: 0; }
+.btn.replay-exit small { opacity: 0.6; margin-left: 4px; font-size: 11px; }
+.replay-tag[hidden] { display: none; }
+.replaying .hud-help { display: none; }

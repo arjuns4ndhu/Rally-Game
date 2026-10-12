@@ -16,14 +16,14 @@ const G = 9.81;
 // of the grass/verge penalty the car shrugs off.
 export const CARS = {
   stiletto: {
-    id: 'stiletto', name: 'Stiletto V6', tag: '70s mid-engine wedge · twitchy, tail-happy',
-    mass: 980, a: 1.18, b: 1.0, h: 0.42, inertia: 0.9,
+    id: 'stiletto', name: 'Stiletto V6', tag: '70s mid-engine wedge · sharp, tail-happy',
+    mass: 980, a: 1.18, b: 1.0, h: 0.42, inertia: 0.98,
     drive: 'RWD', frontDrive: 0,
     torque: 270, peakRpm: 6000, idleRpm: 1000, redline: 8000,
     gears: [3.0, 2.1, 1.6, 1.25, 1.0], finalDrive: 4.6,
-    muF: 1.1, muR: 1.02, peakF: 0.13, peakR: 0.13, slideF: 0.8, slideR: 0.7,
-    maxSteer: 0.62, steerSpeed: 5.4, counterSteer: 0.6,
-    driftAssist: 0.85, throttleOversteer: 0.75, driftBoost: 2.6, dragCoef: 0.42,
+    muF: 1.12, muR: 1.08, peakF: 0.13, peakR: 0.13, slideF: 0.82, slideR: 0.76,
+    maxSteer: 0.62, steerSpeed: 5.6, counterSteer: 0.72,
+    driftAssist: 1.0, throttleOversteer: 0.66, driftBoost: 2.6, dragCoef: 0.42,
     track: 1.48, length: 3.71, wheelR: 0.31, offroad: 0, bodyStyle: 'stratos', cyl: 6,
   },
   pocket: {

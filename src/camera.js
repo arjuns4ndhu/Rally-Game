@@ -107,3 +107,63 @@ export class CameraRig {
     cam.updateProjectionMatrix();
   }
 }
+
+// Replay "TV" director: trackside cameras placed beside the road ahead of
+// the car that pan and zoom to follow it as it passes, cut with drone shots.
+export class TVCamera {
+  constructor(camera) {
+    this.cam = camera;
+    this.look = new THREE.Vector3();
+    this.reset();
+  }
+
+  reset() { this.spot = null; this.shot = 0; this.kind = 'track'; this.timer = 0; this.n = 0; }
+
+  // q: the car's road position ({ along }). road: Road. groundAt(x, z).
+  update(car, dt, road, along, groundAt, drone) {
+    this.timer += dt;
+    const y = car.y ?? 0;
+    let cut = !this.spot && this.kind !== 'drone';
+    if (this.kind === 'drone' && this.timer > 4.5) cut = true;
+    if (this.kind === 'track' && this.spot) {
+      const d = Math.hypot(car.x - this.spot.x, car.z - this.spot.z);
+      if (along > this.spot.along + 18 || d > 140) cut = true;
+    }
+    if (cut) {
+      this.n++;
+      this.timer = 0;
+      if (this.n % 4 === 0 && drone) { this.kind = 'drone'; this.spot = null; }
+      else {
+        this.kind = 'track';
+        // Deterministic-ish variety from the shot number.
+        const r = (k) => (Math.sin(this.n * 12.9898 + k * 78.233) * 43758.5453) % 1;
+        const a = Math.min(road.length - 1, along + 45 + Math.abs(r(1)) * 35);
+        const i = road.indexAt(a);
+        const side = r(2) > 0 ? 1 : -1;
+        const lat = side * (road.width / 2 + 3 + Math.abs(r(3)) * 4);
+        const x = road.px[i] + road.tz[i] * lat, z = road.pz[i] - road.tx[i] * lat;
+        this.spot = { x, z, y: groundAt(x, z) + 1.2 + Math.abs(r(4)) * 3, along: a };
+      }
+      this.look.set(car.x, y + 0.7, car.z);
+      this.snapFov = true;
+    }
+    const cam = this.cam;
+    if (this.kind === 'drone' && drone) {
+      cam.position.copy(drone.pos);
+      cam.position.y -= 0.3;
+    } else {
+      cam.position.set(this.spot.x, this.spot.y, this.spot.z);
+    }
+    // Pan smoothly onto the car; zoom so it stays a similar size.
+    const k = Math.min(1, dt * 8);
+    this.look.x += (car.x - this.look.x) * k;
+    this.look.y += (y + 0.7 - this.look.y) * k;
+    this.look.z += (car.z - this.look.z) * k;
+    cam.lookAt(this.look);
+    const dist = cam.position.distanceTo(this.look);
+    const fov = this.kind === 'drone' ? 48 : THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan(5.5 / dist)), 10, 60);
+    cam.fov = this.snapFov ? fov : cam.fov + (fov - cam.fov) * Math.min(1, dt * 4);
+    this.snapFov = false;
+    cam.updateProjectionMatrix();
+  }
+}
