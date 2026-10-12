@@ -40,9 +40,8 @@ const vergeMat = new THREE.MeshStandardMaterial({ color: 0x6e6340, roughness: 1 
 scene.add(road.buildRibbon(road.width + 4.5, 0.012, vergeMat, 1 / 10));
 scene.add(road.buildRibbon(road.width, 0.03, gravelMat, 1 / 12));
 road.computeRacingLine();
-// The racing line shows as dark, worn tyre tracks when the assist is on.
+// The racing line is always shown as dark, worn tyre tracks.
 const lineMesh = buildRacingMarks(road);
-lineMesh.visible = false;
 scene.add(lineMesh);
 
 // ---------- Racing line assist ----------
@@ -248,7 +247,6 @@ $('btn-resume').addEventListener('click', () => setPaused(false));
 $('btn-reset').addEventListener('click', () => { resetCar(); setPaused(false); });
 function setAssist(on, level = assist.level) {
   assist.on = on; assist.level = level;
-  lineMesh.visible = on;
   $('opt-assist').checked = on;
   $('opt-assist-level').value = level;
   $('hud-assist').hidden = !on;

@@ -19,7 +19,7 @@ ES modules need a web server, so opening `index.html` straight from the file sys
 | Steer | A / D or ← / → | ◀ ▶ |
 | Handbrake | Space | HB |
 | Camera (chase / bonnet / far) | C | CAM |
-| Racing line assist on/off (shows the line as dark tyre tracks) | G | pause menu |
+| Racing line assist on/off | G | pause menu |
 | Reset car | R | RESET |
 | Pause | Esc | II |
 | Tuning panel (dev) | ? | |
