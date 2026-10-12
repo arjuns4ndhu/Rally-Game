@@ -46,7 +46,7 @@ export const CARS = {
     muF: 1.1, muR: 1.0, peakF: 0.14, peakR: 0.15, slideF: 0.82, slideR: 0.72,
     maxSteer: 0.58, steerSpeed: 4.2, counterSteer: 0.5,
     driftAssist: 1.0, throttleOversteer: 0.55, driftBoost: 2.4, dragCoef: 0.6,
-    track: 1.5, length: 4.4, wheelR: 0.33, offroad: 0, bodyStyle: 'quattro', cyl: 5,
+    track: 1.5, length: 4.4, wheelR: 0.33, offroad: 0, bodyStyle: 'quattro', cyl: 5, turbo: true,
   },
   vector: {
     id: 'vector', name: 'Vector WRC', tag: '00s world-rally hatch · grippy 4WD',
@@ -57,7 +57,7 @@ export const CARS = {
     muF: 1.18, muR: 1.14, peakF: 0.14, peakR: 0.15, slideF: 0.86, slideR: 0.8,
     maxSteer: 0.6, steerSpeed: 4.8, counterSteer: 0.55,
     driftAssist: 1.1, throttleOversteer: 0.4, driftBoost: 2.4, dragCoef: 0.46,
-    track: 1.58, length: 4.15, wheelR: 0.32, offroad: 0, bodyStyle: 'focus', cyl: 4,
+    track: 1.58, length: 4.15, wheelR: 0.32, offroad: 0, bodyStyle: 'focus', cyl: 4, turbo: true,
   },
   raider: {
     id: 'raider', name: 'Dune Raider', tag: 'Rally-raid SUV · heavy, tall, at home off-road',

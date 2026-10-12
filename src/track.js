@@ -251,7 +251,11 @@ export class Road {
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.setIndex(idx);
-    // Unlit decal strip: no shadow receiving (it made the road under it vanish).
+    // Normals point up so lit materials (tarmac, patches, tracks) shade properly.
+    const nrm = new Float32Array(n * 6);
+    for (let k = 0; k < n * 2; k++) nrm[k * 3 + 1] = 1;
+    geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+    // Decal strip: no shadow receiving (it made the road under it vanish).
     return new THREE.Mesh(geo, material);
   }
 

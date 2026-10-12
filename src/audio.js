@@ -30,6 +30,7 @@ export class AudioEngine {
     const gA = ctx.createGain(); gA.gain.value = 0.5;
     const gB = ctx.createGain(); gB.gain.value = 0.35;
     const gC = ctx.createGain(); gC.gain.value = 0.18;
+    this.oscGains = [gA, gB, gC];
     this.shaper = ctx.createWaveShaper();
     this.shaper.curve = softClip(2.2);
     this.engFilter = ctx.createBiquadFilter();
@@ -56,6 +57,30 @@ export class AudioEngine {
     this.rollFilter.type = 'lowpass'; this.rollFilter.frequency.value = 320;
     this.rollGain = ctx.createGain(); this.rollGain.gain.value = 0;
     src.connect(this.rollFilter).connect(this.rollGain).connect(this.sfxBus);
+
+    // --- Gravel spray: stones pinging off the arches (bright, flickering noise)
+    const src2 = ctx.createBufferSource();
+    src2.buffer = noise; src2.loop = true; src2.start(0, 0.7);
+    this.sprayFilter = ctx.createBiquadFilter();
+    this.sprayFilter.type = 'bandpass'; this.sprayFilter.frequency.value = 2600; this.sprayFilter.Q.value = 0.9;
+    this.sprayGain = ctx.createGain(); this.sprayGain.gain.value = 0;
+    src2.connect(this.sprayFilter).connect(this.sprayGain).connect(this.sfxBus);
+
+    // --- Turbo whistle (turbo cars only)
+    this.turbo = ctx.createOscillator(); this.turbo.type = 'sine'; this.turbo.frequency.value = 1800;
+    this.turboGain = ctx.createGain(); this.turboGain.gain.value = 0;
+    this.turbo.connect(this.turboGain).connect(this.engineBus);
+    this.turbo.start();
+    this.boost = 0;
+    this.applyTone();
+  }
+
+  // Engine character per car: mix of the three oscillators and filter Q.
+  applyTone() {
+    if (!this.ctx || !this.tone) return;
+    this.oscGains.forEach((g, i) => { g.gain.value = this.tone[i]; });
+    this.harm = this.tone[3];
+    this.engFilter.Q.value = this.tone[4];
   }
 
   applyVolumes() {
@@ -75,7 +100,20 @@ export class AudioEngine {
     if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : this.volumes.master, this.ctx.currentTime, 0.02);
   }
 
-  setCar(spec) { this.cyl = spec.cyl || 4; this.redline = spec.redline; }
+  setCar(spec) {
+    this.cyl = spec.cyl || 4; this.redline = spec.redline; this.hasTurbo = !!spec.turbo;
+    // [saw, square sub, upper, upper harmonic ratio, filter Q]
+    this.tone = {
+      stratos: [0.5, 0.3, 0.22, 2.02, 3.5],     // V6 howl
+      mini: [0.42, 0.2, 0.12, 2.0, 2.2],        // thin, buzzy four
+      quattro: [0.5, 0.38, 0.2, 1.5, 3.0],      // offbeat five warble
+      focus: [0.46, 0.32, 0.16, 2.0, 2.6],      // turbo four
+      dakar: [0.52, 0.5, 0.1, 2.0, 1.8],        // deep V8 rumble
+    }[spec.bodyStyle] || [0.5, 0.35, 0.18, 2.02, 3];
+    if (this.ctx) this.oscGains.forEach((g, i) => { g.gain.value = this.tone[i]; });
+    this.harm = this.tone[3];
+    if (this.ctx) this.engFilter.Q.value = this.tone[4];
+  }
 
   // Called every frame with the physics car and the current surface.
   update(car, surface, dt, active = true) {
@@ -86,7 +124,7 @@ export class AudioEngine {
     const f0 = (car.rpm / 60) * (this.cyl / 2);
     this.oscA.frequency.setTargetAtTime(f0, t, tc);
     this.oscB.frequency.setTargetAtTime(f0 * 0.5, t, tc);
-    this.oscC.frequency.setTargetAtTime(f0 * 2.02, t, tc);
+    this.oscC.frequency.setTargetAtTime(f0 * (this.harm || 2.02), t, tc);
 
     const load = car.throttle;
     let vol = active ? 0.16 + load * 0.16 + (car.rpm / (this.redline || 7000)) * 0.08 : 0;
@@ -97,8 +135,17 @@ export class AudioEngine {
     this.engGain.gain.setTargetAtTime(vol, t, 0.025);
     this.engFilter.frequency.setTargetAtTime(260 + load * 1900 + car.rpm * 0.22, t, 0.04);
 
-    // Lift-off crackle
-    if (active && this.lastThrottle > 0.6 && load < 0.2 && car.rpm > 4200) this.crackle();
+    // Turbo: spools with throttle and revs, whistles, and blows off on a lift.
+    const rf = car.rpm / (this.redline || 7000);
+    const want = this.hasTurbo && active ? load * Math.max(0, rf - 0.25) / 0.75 : 0;
+    const prevBoost = this.boost;
+    this.boost += (want - this.boost) * Math.min(1, dt * (want > this.boost ? 2.5 : 8));
+    this.turbo.frequency.setTargetAtTime(1500 + this.boost * 3200, t, 0.05);
+    this.turboGain.gain.setTargetAtTime(this.boost * 0.035, t, 0.05);
+    if (this.hasTurbo && active && prevBoost > 0.5 && load < 0.2) { this.blowOff(prevBoost); this.boost = 0; }
+
+    // Lift-off crackle (louder pops on the turbo cars)
+    if (active && this.lastThrottle > 0.6 && load < 0.2 && car.rpm > 4200) this.crackle(this.hasTurbo ? 0.8 : 0.5);
     this.lastThrottle = load;
 
     const sp = Math.min(car.speed / 30, 1);
@@ -109,9 +156,47 @@ export class AudioEngine {
     this.slideFilter.frequency.setTargetAtTime(offroad ? 500 : 750 + sp * 600, t, 0.1);
     this.rollGain.gain.setTargetAtTime(active && !inAir ? sp * (offroad ? 0.5 : 0.22) : 0, t, 0.08);
     this.rollFilter.frequency.setTargetAtTime(offroad ? 180 : 260 + sp * 250, t, 0.1);
+
+    // Gravel spray: loose surfaces only, flickering like stones hitting metal.
+    const loose = { gravel: 1, verge: 0.8, mud: 0.6, sand: 1.1, track: 1, grass: 0.35, tarmac: 0.05, ice: 0.1, puddle: 0.3, rubble: 1.2 }[surface.name] ?? 0;
+    const spray = active && !inAir ? loose * Math.min(1, car.speed / 25) * (0.5 + car.rearSlide) * (0.55 + Math.random() * 0.45) : 0;
+    this.sprayGain.gain.setTargetAtTime(spray * 0.1, t, 0.03);
   }
 
-  crackle() {
+  // Turbo blow-off valve: a quick falling hiss.
+  blowOff(k = 1) {
+    const ctx = this.ctx, at = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.Q.value = 2;
+    f.frequency.setValueAtTime(3800, at);
+    f.frequency.exponentialRampToValueAtTime(900, at + 0.35);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(0.18 * k, at + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.4);
+    src.connect(f).connect(g).connect(this.sfxBus);
+    src.start(at, Math.random(), 0.45);
+  }
+
+  // Driving into a puddle.
+  splash(k = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, at = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.setValueAtTime(2400, at); f.frequency.exponentialRampToValueAtTime(500, at + 0.4);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(0.5 * k + 0.05, at + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.5);
+    src.connect(f).connect(g).connect(this.sfxBus);
+    src.start(at, Math.random(), 0.55);
+  }
+
+  crackle(vol = 0.5) {
     const ctx = this.ctx;
     const n = 2 + Math.floor(Math.random() * 3);
     for (let i = 0; i < n; i++) {
@@ -122,7 +207,7 @@ export class AudioEngine {
       f.type = 'bandpass'; f.frequency.value = 300 + Math.random() * 500; f.Q.value = 1.5;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, at);
-      g.gain.exponentialRampToValueAtTime(0.5, at + 0.005);
+      g.gain.exponentialRampToValueAtTime(vol, at + 0.005);
       g.gain.exponentialRampToValueAtTime(0.0001, at + 0.06);
       src.connect(f).connect(g).connect(this.sfxBus);
       src.start(at, Math.random() * 1.5, 0.08);

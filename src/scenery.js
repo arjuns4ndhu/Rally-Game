@@ -145,7 +145,7 @@ function buildTreeKits() {
 }
 
 // Build the terrain and dressing around a road. Returns { group, terrain, obstacles }.
-export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.forest, hilliness = 1, avoid = [] } = {}) {
+export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.forest, hilliness = 1, avoid = [], detail = 1 } = {}) {
   const rand = mulberry32(seed * 7919 + 13);
   const group = new THREE.Group();
 
@@ -211,7 +211,16 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
     (byKind[kind] ||= []).push(item);
     return item;
   });
-  for (const [kind, items] of Object.entries(byKind)) {
+  // Lower detail thins out distant trees only (all of them still collide,
+  // so a stage plays the same on any setting).
+  const keep = (it) => {
+    if (detail >= 1) return true;
+    const nr = terrain.nearestRoad(it.x, it.z);
+    if (nr && nr.d < 28) return true;
+    return Math.abs(Math.sin(it.x * 12.9898 + it.z * 78.233) * 43758.5453) % 1 < detail;
+  };
+  for (const [kind, all] of Object.entries(byKind)) {
+    const items = all.filter(keep);
     for (const [geo, mat, colored] of kits[kind].parts) addTiled(group, geo, mat, items, colored);
   }
 

@@ -19,6 +19,8 @@ import { notesHTML } from './paceicons.js';
 import { Drone } from './drone.js';
 import { MiniMap } from './minimap.js';
 import { Stats } from './stats.js';
+import { WEATHER, pickWeather, weatherTheme, Precip } from './weather.js';
+import { planSurfaces, patchAt, buildSurfaces } from './surfaces.js';
 import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, PAINTS, WHEELS } from './menus.js';
 import { buildHazards, HAZARD_DEBUG } from './hazards.js';
 
@@ -44,6 +46,40 @@ const drone = new Drone(scene);
 const tv = new TVCamera(camera);
 const minimap = new MiniMap($('minimap'));
 const stats = new Stats();
+const precip = new Precip(scene);
+// Headlights, used at night and dusk.
+const headlights = [-1, 1].map(() => {
+  const l = new THREE.SpotLight(0xfff0d0, 0, 90, 0.5, 0.55, 1.2);
+  scene.add(l, l.target);
+  return l;
+});
+let weather = WEATHER.clear, surfPlan = null;
+
+// ---------- Graphics quality ----------
+// Auto picks Medium on phones/tablets (Low on small ones) and High elsewhere.
+const QUALITY = {
+  high: { ratio: 1.75, shadows: 2048, detail: 1 },
+  medium: { ratio: 1.25, shadows: 1024, detail: 0.7 },
+  low: { ratio: 1, shadows: 0, detail: 0.45 },
+};
+let quality = 'auto';
+try { quality = localStorage.getItem('sideways.quality') || 'auto'; } catch { /* ignore */ }
+function qualityLevel() {
+  if (quality !== 'auto') return quality;
+  const touch = matchMedia('(pointer: coarse)').matches;
+  if (!touch) return 'high';
+  return (navigator.hardwareConcurrency || 4) <= 4 ? 'low' : 'medium';
+}
+function applyQuality() {
+  const q = QUALITY[qualityLevel()];
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.ratio));
+  world.sun.castShadow = q.shadows > 0;
+  if (q.shadows && world.sun.shadow.mapSize.x !== q.shadows) {
+    world.sun.shadow.mapSize.set(q.shadows, q.shadows);
+    world.sun.shadow.map?.dispose(); world.sun.shadow.map = null;
+  }
+  precip.density = q.detail;
+}
 rig.drone = drone;
 rig.groundAt = (x, z) => worldGround(x, z);
 const dust = new Dust(scene);
@@ -93,7 +129,16 @@ function loadStage(kind, seed = 0) {
   let flat = false, runout = 0;
   const { theme, hilliness } = kind === 'practice' ? { theme: THEMES.forest, hilliness: 1 } : pickTheme(seed);
   stage.theme = theme;
-  world.applyTheme(theme);
+  weather = kind === 'practice' ? WEATHER.clear : pickWeather(seed, theme);
+  if (window.__sideways?.forceWeather) weather = WEATHER[window.__sideways.forceWeather];
+  stage.weather = weather;
+  world.applyTheme(weatherTheme(theme, weather));
+  precip.set(weather.id === 'rain' ? 'rain' : weather.id === 'snowfall' ? 'snow' : null);
+  const lamps = weather.dark ? 140 : weather.id === 'dusk' || weather.id === 'fog' ? 35 : 0;
+  headlights.forEach((l) => { l.intensity = lamps; });
+  // Wet gravel is darker and a little shiny.
+  gravelMat.color.setScalar(weather.wet ? 0.7 : 1);
+  gravelMat.roughness = weather.wet ? 0.6 : 0.95;
   if (roadTheme !== theme.id) {
     gravelMat.map.dispose();
     gravelMat.map = gravelTexture(theme.road);
@@ -115,10 +160,11 @@ function loadStage(kind, seed = 0) {
   }
   road.computeRacingLine();
   // Surface grip and dust colour follow the theme (packed snow is slippery).
+  const wg = weather.grip;
   road.surfaces = {
-    gravel: { ...SURFACES.gravel, grip: theme.road.grip, dust: theme.road.dust },
-    verge: { ...SURFACES.verge, grip: SURFACES.verge.grip * theme.road.grip, dust: theme.road.dust },
-    grass: { ...SURFACES.grass, dust: theme.road.dust },
+    gravel: { ...SURFACES.gravel, grip: theme.road.grip * wg, dust: theme.road.dust, dustK: weather.wet ? 0.35 : 1 },
+    verge: { ...SURFACES.verge, grip: SURFACES.verge.grip * theme.road.grip * wg, dust: theme.road.dust, dustK: weather.wet ? 0.35 : 1 },
+    grass: { ...SURFACES.grass, grip: SURFACES.grass.grip * wg, dust: theme.road.dust, dustK: weather.wet ? 0.35 : 1 },
   };
   // Shortcuts (stages only): rough tracks across where the road doubles back.
   let cuts = [];
@@ -127,7 +173,8 @@ function loadStage(kind, seed = 0) {
     const cps = [1, 2, 3, 4].map((k) => st + (fin - st) * k / SECTORS);
     cuts = findShortcuts(road, { checkpoints: cps, start: st, finish: fin });
   }
-  const built = buildScenery(road, kind === 'practice' ? 1 : seed, { flat, theme, hilliness, avoid: cuts.map((c) => c.pts) });
+  const built = buildScenery(road, kind === 'practice' ? 1 : seed, { flat, theme, hilliness, avoid: cuts.map((c) => c.pts), detail: QUALITY[qualityLevel()].detail });
+  stage.detail = qualityLevel();
   terrain = built.terrain;
   buildObstacleGrid(built.obstacles);
   stageGroup.add(built.group);
@@ -157,6 +204,13 @@ function loadStage(kind, seed = 0) {
     return sc;
   });
   stageGroup.add(road.buildRibbon(road.width, 0.03, gravelMat, 1 / 12));
+  // Tarmac sections, mud, puddles, ice or sand.
+  surfPlan = null;
+  if (kind !== 'practice') {
+    const st = 24, fin = road.length - runout;
+    surfPlan = planSurfaces(road, seed, { start: st, finish: fin, theme, weather });
+    stageGroup.add(buildSurfaces(road, surfPlan));
+  }
   // The racing line is always shown as dark, worn tyre tracks.
   lineMesh = buildRacingMarks(road);
   stageGroup.add(lineMesh);
@@ -568,7 +622,7 @@ function start(kind = 'daily', seed) {
   audio.init();
   if (kind === 'daily' && seed == null) seed = dateSeed();
   if (kind === 'random' && seed == null) seed = 100000 + Math.floor(Math.random() * 900000);
-  if (kind !== stage.kind || seed !== stage.seed || !road) loadStage(kind, seed);
+  if (kind !== stage.kind || seed !== stage.seed || !road || stage.detail !== qualityLevel()) loadStage(kind, seed);
   else restartRun();
   $('start').hidden = true;
   $('pause').hidden = true;
@@ -576,7 +630,7 @@ function start(kind = 'daily', seed) {
   minimap.rebuild();                 // sized now the HUD is showing
   running = true;
   paused = false;
-  toast(kind === 'practice' ? 'PRACTICE' : stage.name.toUpperCase(), 1400);
+  toast(kind === 'practice' ? 'PRACTICE' : stage.name.toUpperCase() + (weather.id !== 'clear' ? ` · ${weather.label.toUpperCase()}` : ''), 1600);
 }
 function toMenu() {
   running = false; paused = false;
@@ -682,7 +736,10 @@ $('btn-replay').addEventListener('click', (e) => { e.currentTarget.blur(); start
 $('btn-replay-exit').addEventListener('click', (e) => { e.currentTarget.blur(); stopReplay(); });
 $('btn-new').addEventListener('click', () => start('random'));
 $('btn-fmenu').addEventListener('click', toMenu);
-$('daily-name').textContent = `${stageName(dateSeed())} · ${new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
+{
+  const ds = dateSeed(), w = pickWeather(ds, pickTheme(ds).theme);
+  $('daily-name').textContent = `${stageName(ds)} · ${new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}${w.id !== 'clear' ? ` · ${w.label}` : ''}`;
+}
 function setAssist(on, level = assist.level) {
   assist.on = on; assist.level = level;
   $('opt-assist').checked = on;
@@ -744,6 +801,15 @@ function setMap(on) {
 }
 setMap(mapOn);
 $('opt-map').addEventListener('change', (e) => setMap(e.target.checked));
+$('opt-quality').value = quality;
+$('opt-quality').addEventListener('change', (e) => {
+  quality = e.target.value;
+  try { localStorage.setItem('sideways.quality', quality); } catch { /* ignore */ }
+  applyQuality();
+  resize();
+  if (stage.detail !== qualityLevel()) toast('SCENERY DETAIL: NEXT RESTART', 1400);
+  e.target.blur();
+});
 let droneOn = true;
 try { droneOn = localStorage.getItem('sideways.drone') !== '0'; } catch { /* ignore */ }
 drone.enabled = droneOn;
@@ -794,6 +860,7 @@ function resize() {
   minimap.rebuild();
 }
 window.addEventListener('resize', resize);
+applyQuality();
 resize();
 
 // ---------- Dust emission ----------
@@ -801,11 +868,12 @@ const emitAcc = [0, 0];
 const _w = new THREE.Vector3();
 function emitDust(dt) {
   if (car.air) return;
+  if (surface.splash && car.speed > 4) splash(dt);
   const s = car.spec;
   const sn = Math.sin(car.yaw), cs = Math.cos(car.yaw);
   const off = surface.name === 'grass';
   const base = Math.min(car.speed / 28, 1) * (off ? 0.6 : 0.22);
-  const amount = (car.rearSlide * 1.0 * Math.min(1, car.speed / 12) + base + (off ? car.speed / 40 : 0));
+  const amount = (car.rearSlide * 1.0 * Math.min(1, car.speed / 12) + base + (off ? car.speed / 40 : 0)) * (surface.dustK ?? 1);
   if (amount < 0.02) return;
   const col = surface.dust;
   for (let w = 0; w < 2; w++) {
@@ -828,6 +896,21 @@ function emitDust(dt) {
         [col[0] * shade, col[1] * shade, col[2] * shade],
       );
     }
+  }
+}
+
+// Puddles throw spray up from all four wheels.
+let splashAcc = 0, wasSplash = false;
+function splash(dt) {
+  const s = car.spec, sn = Math.sin(car.yaw), cs = Math.cos(car.yaw);
+  splashAcc += dt * car.speed * 6;
+  if (!wasSplash) { audio.splash?.(Math.min(1, car.speed / 20)); }
+  while (splashAcc >= 1) {
+    splashAcc -= 1;
+    const side = Math.random() < 0.5 ? 1 : -1, lz = Math.random() < 0.5 ? s.a : -s.b, lx = side * s.track / 2;
+    dust.emit(car.x + sn * lz + cs * lx, (car.y ?? 0) + 0.2, car.z + cs * lz - sn * lx,
+      car.vx * 0.3 + cs * side * (1 + Math.random() * 3), 1.5 + Math.random() * 2.5, car.vz * 0.3 - sn * side * (1 + Math.random() * 3),
+      0.5 + Math.random() * 0.6, 0.7 + Math.random() * 0.5, [0.8, 0.86, 0.92]);
   }
 }
 
@@ -950,6 +1033,10 @@ function stepPhysics(dt, inp) {
   // Far off the road: put the car back (at the last checkpoint on a stage).
   if (!onShortcut && offDist > (stage.kind === 'practice' ? 80 : RESPAWN_DIST)) { resetCar(); return; }
   surface = onShortcut ? SHORTCUT : road.surfaceAt(Math.abs(lat));
+  if (!onShortcut && Math.abs(lat) < road.width / 2) {
+    const pt = patchAt(surfPlan, roadAlong, lat);
+    if (pt) surface = pt === lastPatch ? lastPatchSurf : patchSurface(pt);
+  }
   if (hazards) {
     if (run.state !== 'finished') hazards.update(dt, roadAlong, hazardFx);
     hazardObs = hazards.obstacles();
@@ -1051,6 +1138,13 @@ function roadHeightAlong(sAlong) {
   const s0 = road.cum[i - 1], s1 = road.cum[i];
   const t = s1 > s0 ? (sAlong - s0) / (s1 - s0) : 0;
   return road.py[i - 1] + (road.py[i] - road.py[i - 1]) * Math.max(0, Math.min(1, t));
+}
+// Patch surfaces take the weather's grip too.
+let lastPatch = null, lastPatchSurf = null;
+function patchSurface(pt) {
+  lastPatch = pt;
+  lastPatchSurf = { ...pt, grip: pt.grip * weather.grip };
+  return lastPatchSurf;
 }
 // Landslide dirt: loose and draggy.
 const RUBBLE = { name: 'rubble', grip: 0.7, drag: 0.35, dust: [0.6, 0.52, 0.42] };
@@ -1205,6 +1299,16 @@ function frame(now) {
   else rig.update(car, dt);
   world.sky.position.copy(camera.position);
   if (!paused) dust.update(dt);
+  if (!paused) precip.update(dt, camera, { x: car.vx, z: car.vz });
+  wasSplash = !!surface.splash;
+  if (headlights[0].intensity > 0) {
+    const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw), y = (car.y ?? 0), f = car.spec.length / 2 + 0.25;
+    headlights.forEach((l, k) => {
+      const side = k ? 1 : -1;
+      l.position.set(car.x + fx * f + fz * side * 0.6, y + 0.7, car.z + fz * f - fx * side * 0.6);
+      l.target.position.set(car.x + fx * 30 + fz * side * 1.5, y - 1.0 + (car.groundPitch || 0) * 30, car.z + fz * 30 - fx * side * 1.5);
+    });
+  }
   audio.update(car, car.air && car.airTime > 0.06 ? AIR : surface, dt, active);
   if (running) updateHud(dt);
   if (running && mapOn) minimap.draw(car, replay.on ? replay.along : roadAlong, ghostModel ? ghostPose : null, dt);
@@ -1308,7 +1412,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  auto: null, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
+  auto: null, forceWeather: null, get weather() { return weather; }, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver,
