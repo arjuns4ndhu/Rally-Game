@@ -162,6 +162,8 @@ function buildSliders() {
     row.innerHTML = `<span>${key}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${obj[key]}"><output>${obj[key]}</output>`;
     const inp = row.querySelector('input'), out = row.querySelector('output');
     inp.addEventListener('input', () => { obj[key] = parseFloat(inp.value); out.textContent = inp.value; });
+    // Hand focus back to the game so keys drive the car, not the slider.
+    inp.addEventListener('change', () => inp.blur());
     box.appendChild(row);
   }
 }
@@ -195,9 +197,9 @@ $('btn-resume').addEventListener('click', () => setPaused(false));
 $('btn-reset').addEventListener('click', () => { resetCar(); setPaused(false); });
 $('opt-scan').addEventListener('change', (e) => document.body.classList.toggle('scanlines', e.target.checked));
 
-input.on('key', (code) => {
+input.on('key', (code, key) => {
   if (code === 'Escape') { if (running) setPaused(!paused); return; }
-  if (code === 'Backquote') { $('debug').hidden = !$('debug').hidden; return; }
+  if (key === '?' || code === 'Slash') { $('debug').hidden = !$('debug').hidden; return; }
   if (!running) { if (code === 'Enter' || code === 'Space') start(); return; }
   if (paused) return;
   if (code === 'KeyC') toast(rig.cycle().toUpperCase() + ' CAM', 800);

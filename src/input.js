@@ -18,9 +18,10 @@ export class Input {
     this._throttle = 0; this._brake = 0;
 
     window.addEventListener('keydown', (e) => {
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
+      const t = e.target;
+      if (t && (t.tagName === 'SELECT' || (t.tagName === 'INPUT' && !['range', 'checkbox'].includes(t.type)))) return;
       if (Object.values(KEYS).some((k) => k.includes(e.code))) e.preventDefault();
-      if (!e.repeat) this.emit('key', e.code);
+      if (!e.repeat) this.emit('key', e.code, e.key);
       this.down.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.down.delete(e.code));
@@ -28,7 +29,7 @@ export class Input {
   }
 
   on(name, fn) { (this.listeners[name] ||= []).push(fn); }
-  emit(name, arg) { (this.listeners[name] || []).forEach((fn) => fn(arg)); }
+  emit(name, ...args) { (this.listeners[name] || []).forEach((fn) => fn(...args)); }
 
   // Wire on-screen buttons. Each element has data-ctl="throttle|brake|left|right|handbrake".
   bindTouch(root) {
