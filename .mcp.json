@@ -2,9 +2,10 @@
   "mcpServers": {
     "playwright": {
       "type": "stdio",
-      "command": "npx",
+      "command": "sh",
       "args": [
-        "@playwright/mcp@latest"
+        "-c",
+        "if [ -x /opt/pw-browsers/chromium ]; then exec npx -y @playwright/mcp@latest --headless --no-sandbox --executable-path /opt/pw-browsers/chromium; else exec npx -y @playwright/mcp@latest; fi"
       ],
       "env": {}
     },
