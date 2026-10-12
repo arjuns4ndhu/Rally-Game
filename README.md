@@ -32,7 +32,7 @@ Driving: tap the brake while turning to kick the rear out. Hold the throttle to 
 ## Build status
 
 1. **Car driving and drifting**: done. Keys 1–5 switch cars.
-2. **Seeded stages**: done. A 2–3 km point-to-point gravel stage from a seed: today's date for the daily stage, or a random seed. Hairpins, sweepers, chicanes, esses and straights, with seeded hills and elevation. Each stage has 2–3 jumps and 2–3 crests, with warning boards. There are five sectors with split times and deltas against your best, and best times are saved per stage. Trees and big rocks are solid: a hard hit is a crash, and like going more than 25 m off the road or getting stuck, it puts you back at the last checkpoint with a 5 s penalty. R always restarts from the start. The practice loop is still there, now with a jump and a crest. Hairpin-tight corners are announced the way a real stage would: 3-2-1 brake boards at 150, 100 and 50 m, red chevrons round the outside, and dark braking marks on the approach.
+2. **Seeded stages**: done. Each stage gets one of five themes from its seed: forest, desert canyon, snow (slippery packed-snow road), alpine (big climbs, rocky slopes, snowy peaks) or autumn (broadleaf trees and birches, damp road). Each also gets its own hilliness. Some stages have **shortcuts**: rough dirt tracks across where the road doubles back. They save distance but are looser and bumpier. A 2–3 km point-to-point gravel stage from a seed: today's date for the daily stage, or a random seed. Hairpins, sweepers, chicanes, esses and straights, with seeded hills and elevation. Each stage has 2–3 jumps and 2–3 crests, with warning boards. There are five sectors with split times and deltas against your best, and best times are saved per stage. Trees and big rocks are solid: a hard hit is a crash, and like going more than 25 m off the road or getting stuck, it puts you back at the last checkpoint with a 5 s penalty. R always restarts from the start. The practice loop is still there, now with a jump and a crest. Hairpin-tight corners are announced the way a real stage would: 3-2-1 brake boards at 150, 100 and 50 m, red chevrons round the outside, and dark braking marks on the approach.
 3. HUD polish, countdown, settings
 4. Garage: paint, wheel styles, 3D preview
 5. **Ghost car**: done. Your best run on each stage is recorded and replayed as a see-through car; toggle it in the pause menu. Past-stages calendar still to do.
@@ -68,5 +68,6 @@ src/paceicons.js  DiRT-style pace-note signs (SVG corner arrows)
 src/audio.js      Web Audio engine / tyre synthesis
 src/input.js      keyboard + touch
 src/rng.js        seeded PRNG + date seeds
+src/themes.js     stage themes (sky, light, ground, road, trees, hills)
 tools/make-artifact.py  writes a copy for hosting as a claude.ai artifact
 ```

@@ -1,27 +1,24 @@
 // Low-poly world dressing: sky, lights, fog, ground, trees, rocks, fences.
+// Everything is driven by the stage theme (forest, canyon, snow, alpine, autumn).
 import * as THREE from 'three';
 import { mulberry32 } from './rng.js';
 import { buildTerrain } from './terrain.js';
-
-export const PALETTE = {
-  skyTop: new THREE.Color('#2a3a5c'),
-  horizon: new THREE.Color('#d9a877'),
-  fog: new THREE.Color('#c79a72'),
-  grass: '#4a5726',
-  sun: new THREE.Color('#ffd7a3'),
-};
+import { THEMES } from './themes.js';
+import { distToPolyline } from './track.js';
 
 function skyDome() {
   const geo = new THREE.SphereGeometry(440, 24, 12);
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
-    uniforms: { top: { value: PALETTE.skyTop }, horizon: { value: PALETTE.horizon } },
+    uniforms: {
+      top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() },
+      sunDir: { value: new THREE.Vector3(-0.6, 0.18, -0.75).normalize() }, glow: { value: new THREE.Color(1, 0.75, 0.45) },
+    },
     vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-    fragmentShader: `uniform vec3 top; uniform vec3 horizon; varying vec3 vP;
+    fragmentShader: `uniform vec3 top; uniform vec3 horizon; uniform vec3 sunDir; uniform vec3 glow; varying vec3 vP;
       void main(){ float h = clamp(vP.y * 2.2, 0.0, 1.0); vec3 c = mix(horizon, top, pow(h, 0.7));
-      // sun glow
-      float s = max(dot(vP, normalize(vec3(-0.6, 0.18, -0.75))), 0.0);
-      c += vec3(1.0, 0.75, 0.45) * pow(s, 24.0) * 0.7;
+      float s = max(dot(vP, normalize(sunDir)), 0.0);
+      c += glow * pow(s, 24.0) * 0.7;
       gl_FragColor = vec4(c, 1.0); }`,
   });
   const m = new THREE.Mesh(geo, mat);
@@ -29,14 +26,34 @@ function skyDome() {
   return m;
 }
 
-function grassTexture() {
+// Coloured ground texture (for the far apron).
+function groundTexture(theme) {
+  const g0 = theme.ground;
   const c = document.createElement('canvas');
   c.width = c.height = 256;
   const g = c.getContext('2d');
-  g.fillStyle = PALETTE.grass; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = g0.base; g.fillRect(0, 0, 256, 256);
   for (let i = 0; i < 5000; i++) {
-    const l = Math.random();
-    g.fillStyle = l < 0.5 ? `rgba(40,52,22,${0.3 * Math.random()})` : `rgba(150,140,80,${0.25 * Math.random()})`;
+    const [r, gg, b] = Math.random() < 0.5 ? g0.dark : g0.light;
+    g.fillStyle = `rgba(${r},${gg},${b},${0.28 * Math.random()})`;
+    const s = 1 + Math.random() * 3;
+    g.fillRect(Math.random() * 256, Math.random() * 256, s, s);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Near-white detail texture for the terrain; colour comes from vertex colours.
+function detailTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#e6e6e6'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 6000; i++) {
+    const l = 170 + Math.random() * 85;
+    g.fillStyle = `rgba(${l},${l},${l},${0.5 * Math.random()})`;
     const s = 1 + Math.random() * 3;
     g.fillRect(Math.random() * 256, Math.random() * 256, s, s);
   }
@@ -47,39 +64,91 @@ function grassTexture() {
 }
 
 export function setupWorld(scene) {
-  scene.background = PALETTE.fog.clone();
-  scene.fog = new THREE.FogExp2(PALETTE.fog, 0.0062);
+  scene.background = new THREE.Color();
+  scene.fog = new THREE.FogExp2(0xffffff, 0.006);
   const sky = skyDome();
   scene.add(sky);
-
-  const hemi = new THREE.HemisphereLight(0xffe6c4, 0x5a5238, 1.6);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.6);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(PALETTE.sun, 2.0);
+  const sun = new THREE.DirectionalLight(0xffffff, 2.0);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   const sc = sun.shadow.camera;
-  sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 220;
+  sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 260;
   sun.shadow.bias = -0.0008;
   sun.shadow.normalBias = 0.04;
   scene.add(sun, sun.target);
   const sunDir = new THREE.Vector3(-0.6, 0.55, -0.75).normalize();
 
-  return {
+  const world = {
     sun, sky,
-    follow(x, z) {
-      sun.target.position.set(x, 0, z);
-      sun.position.set(x + sunDir.x * 100, sunDir.y * 100, z + sunDir.z * 100);
+    applyTheme(theme) {
+      const fog = new THREE.Color(theme.sky.fog);
+      scene.background.copy(fog);
+      scene.fog.color.copy(fog);
+      scene.fog.density = theme.sky.fogDensity;
+      const u = sky.material.uniforms;
+      u.top.value.set(theme.sky.top);
+      u.horizon.value.set(theme.sky.horizon);
+      u.glow.value.setRGB(...theme.sky.sunGlow);
+      sunDir.set(...theme.light.sunDir).normalize();
+      u.sunDir.value.set(sunDir.x, Math.max(0.12, sunDir.y * 0.4), sunDir.z).normalize();
+      hemi.color.set(theme.light.hemiSky);
+      hemi.groundColor.set(theme.light.hemiGround);
+      hemi.intensity = theme.light.hemi;
+      sun.color.set(theme.light.sun);
+      sun.intensity = theme.light.sunI;
     },
+    follow(x, y, z) {
+      sun.target.position.set(x, y, z);
+      sun.position.set(x + sunDir.x * 120, y + sunDir.y * 120, z + sunDir.z * 120);
+    },
+  };
+  world.applyTheme(THEMES.forest);
+  return world;
+}
+
+// ---------- Tree kits ----------
+// Each kind is a list of parts (geometry + material + whether it takes the
+// per-instance colour), a colour picker and a collision radius.
+function buildTreeKits() {
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3626, flatShading: true });
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.9 });
+  const snowMat = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, flatShading: true, roughness: 0.8 });
+  const birchMat = new THREE.MeshStandardMaterial({ color: 0xe8e4da, flatShading: true });
+  const at = (geo, y) => { geo.translate(0, y, 0); return geo; };
+
+  const trunk = at(new THREE.CylinderGeometry(0.18, 0.28, 2.2, 5), 1.1);
+  const pine = mergeGeos([at(new THREE.ConeGeometry(1.9, 5.5, 6), 4.6), at(new THREE.ConeGeometry(1.3, 3.6, 6), 7.0)]);
+  const snowCaps = mergeGeos([at(new THREE.ConeGeometry(1.15, 2.0, 6), 6.25), at(new THREE.ConeGeometry(0.8, 1.7, 6), 8.0)]);
+  const canopy = at(new THREE.IcosahedronGeometry(2.3, 0), 4.6);
+  const birchTrunk = at(new THREE.CylinderGeometry(0.12, 0.16, 4.2, 5), 2.1);
+  const birchTop = at(new THREE.IcosahedronGeometry(1.4, 0), 4.9);
+  const cactus = mergeGeos([
+    at(new THREE.CylinderGeometry(0.28, 0.32, 3.2, 7), 1.6),
+    at(new THREE.CylinderGeometry(0.18, 0.18, 1.1, 6).rotateZ(Math.PI / 2), 1.5).translate(0.55, 0, 0),
+    at(new THREE.CylinderGeometry(0.17, 0.17, 1.0, 6), 2.0).translate(1.05, 0, 0),
+    at(new THREE.CylinderGeometry(0.16, 0.16, 0.9, 6).rotateZ(Math.PI / 2), 1.9).translate(-0.5, 0, 0),
+    at(new THREE.CylinderGeometry(0.15, 0.15, 0.8, 6), 2.3).translate(-0.95, 0, 0),
+  ]);
+  const shrub = at(new THREE.DodecahedronGeometry(0.9, 0), 0.5);
+  const H = (h, s, l) => (r) => new THREE.Color().setHSL(h[0] + r() * h[1], s[0] + r() * s[1], l[0] + r() * l[1]);
+
+  return {
+    pine: { parts: [[trunk, trunkMat, false], [pine, leafMat, true]], color: H([0.24, 0.08], [0.35, 0.2], [0.18, 0.1]), r: 0.42 },
+    snowpine: { parts: [[trunk, trunkMat, false], [pine, leafMat, true], [snowCaps, snowMat, false]], color: H([0.36, 0.06], [0.25, 0.15], [0.14, 0.08]), r: 0.42 },
+    broadleaf: { parts: [[trunk, trunkMat, false], [canopy, leafMat, true]], color: H([0.02, 0.11], [0.6, 0.25], [0.35, 0.15]), r: 0.42 },
+    birch: { parts: [[birchTrunk, birchMat, false], [birchTop, leafMat, true]], color: H([0.12, 0.05], [0.6, 0.2], [0.45, 0.12]), r: 0.25 },
+    cactus: { parts: [[cactus, leafMat, true]], color: H([0.26, 0.06], [0.35, 0.15], [0.28, 0.08]), r: 0.35 },
+    shrub: { parts: [[shrub, leafMat, true]], color: H([0.12, 0.1], [0.3, 0.2], [0.25, 0.1]), r: 0 },
   };
 }
 
-// Build the terrain and dressing around a road. Returns { group, terrain };
-// the group is added/removed as a unit.
-export function buildScenery(road, seed = 1, { flat = false } = {}) {
+// Build the terrain and dressing around a road. Returns { group, terrain, obstacles }.
+export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.forest, hilliness = 1, avoid = [] } = {}) {
   const rand = mulberry32(seed * 7919 + 13);
   const group = new THREE.Group();
 
-  // Bounds
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   for (let i = 0; i < road.n; i++) {
     minX = Math.min(minX, road.px[i]); maxX = Math.max(maxX, road.px[i]);
@@ -88,74 +157,82 @@ export function buildScenery(road, seed = 1, { flat = false } = {}) {
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
 
   // Ground: shaped terrain around the road, plus a flat apron under the horizon.
-  const terrain = buildTerrain(road, { seed, flat, grassMap: grassTexture() });
+  const terrain = buildTerrain(road, {
+    seed, flat, grassMap: detailTexture(), theme,
+    baseAmp: theme.heightAmp * hilliness, hillAmp: theme.hillAmp * hilliness,
+  });
   group.add(terrain.mesh);
-  const apronTex = grassTexture();
+  const apronTex = groundTexture(theme);
   apronTex.repeat.set(220, 220);
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(6000, 6000),
-    new THREE.MeshStandardMaterial({ map: apronTex, roughness: 1 }),
-  );
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial({ map: apronTex, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(cx, terrain.minH - 3, cz);
   group.add(ground);
   const groundY = terrain.heightAt;
 
-  const clear = (x, z, r) => { const n = terrain.nearestRoad(x, z); return !n || n.d > r; };
+  // Keep things off the road, and off any shortcut tracks.
+  const clear = (x, z, r) => {
+    const n = terrain.nearestRoad(x, z);
+    if (n && n.d <= r) return false;
+    return avoid.every((pts) => distToPolyline(pts, x, z) > 5.5);
+  };
   const density = Math.max(1, Math.min(2.4, road.length / 1200));
 
-  // --- Trees: pines and a few round broadleaf trees, denser near the road.
-  const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, 2.2, 5);
-  trunkGeo.translate(0, 1.1, 0);
-  const pineGeo = new THREE.ConeGeometry(1.9, 5.5, 6);
-  pineGeo.translate(0, 4.6, 0);
-  const pineTop = new THREE.ConeGeometry(1.3, 3.6, 6);
-  pineTop.translate(0, 7.0, 0);
-  const pineMerged = mergeGeos([pineGeo, pineTop]);
-  const leafMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.9 });
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3626, flatShading: true });
-
+  // --- Trees (or cacti, shrubs, birches...) per theme, denser near the road.
+  const kits = buildTreeKits();
   const spots = [];
   const tryPlace = (x, z, minR) => { if (clear(x, z, minR)) spots.push([x, z]); };
-  for (let k = 0; k < 1400 * density; k++) {
+  const nTrees = theme.treeDensity * density;
+  for (let k = 0; k < 1400 * nTrees; k++) {
     const i = Math.floor(rand() * road.n);
     const side = rand() < 0.5 ? -1 : 1;
     const off = road.width / 2 + 5 + Math.pow(rand(), 1.6) * 90;
     const lx = road.tz[i], lz = -road.tx[i];
     tryPlace(road.px[i] + lx * off * side + rand() * 4, road.pz[i] + lz * off * side + rand() * 4, road.width / 2 + 4);
   }
-  for (let k = 0; k < 550 * density; k++) {
+  for (let k = 0; k < 550 * nTrees; k++) {
     tryPlace(minX - 150 + rand() * (maxX - minX + 300), minZ - 150 + rand() * (maxZ - minZ + 300), road.width / 2 + 6);
   }
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
+  const pickKind = () => {
+    let r = rand();
+    for (const [kind, w] of theme.trees) { if ((r -= w) <= 0) return kind; }
+    return theme.trees[0][0];
+  };
+  const q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), m4 = new THREE.Matrix4();
+  const byKind = {};
   const treeItems = spots.map(([x, z]) => {
+    const kind = pickKind();
+    const kit = kits[kind];
     const sc = 0.7 + rand() * 0.8;
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * Math.PI * 2);
     s.set(sc, sc * (0.85 + rand() * 0.4), sc);
     p.set(x, groundY(x, z) - 0.3, z);
-    const color = new THREE.Color().setHSL(0.24 + rand() * 0.08, 0.35 + rand() * 0.2, 0.18 + rand() * 0.1);
-    return { x, z, r: 0.42 * sc, m: new THREE.Matrix4().compose(p, q, s), color };
+    const item = { x, z, r: kit.r * sc, m: new THREE.Matrix4().compose(p, q, s), color: kit.color(rand) };
+    (byKind[kind] ||= []).push(item);
+    return item;
   });
-  addTiled(group, trunkGeo, trunkMat, treeItems, false);
-  addTiled(group, pineMerged, leafMat, treeItems, true);
+  for (const [kind, items] of Object.entries(byKind)) {
+    for (const [geo, mat, colored] of kits[kind].parts) addTiled(group, geo, mat, items, colored);
+  }
 
   // --- Rocks
   const rockGeo = new THREE.DodecahedronGeometry(1, 0);
   const rockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.95 });
   const rockSpots = [];
-  for (let k = 0; k < 500; k++) {
+  for (let k = 0; k < 500 * theme.rockDensity; k++) {
     const i = Math.floor(rand() * road.n);
     const side = rand() < 0.5 ? -1 : 1;
     const off = road.width / 2 + 3 + rand() * 40;
     const x = road.px[i] + road.tz[i] * off * side, z = road.pz[i] - road.tx[i] * off * side;
     if (clear(x, z, road.width / 2 + 2.5)) rockSpots.push([x, z]);
   }
+  const [rh, rs, rl] = theme.rockColor;
   const rockItems = rockSpots.map(([x, z]) => {
     const sc = 0.3 + Math.pow(rand(), 2) * 1.6;
     q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 3, rand() * 3));
     s.set(sc * (1 + rand()), sc * 0.7, sc * (1 + rand()));
     p.set(x, groundY(x, z) + sc * 0.15, z);
-    const color = new THREE.Color().setHSL(0.08, 0.08 + rand() * 0.1, 0.35 + rand() * 0.2);
+    const color = new THREE.Color().setHSL(rh, rs + rand() * 0.1, rl - 0.08 + rand() * 0.2);
     // Small stones are drivable; only proper boulders block the car.
     return { x, z, r: sc > 0.55 ? Math.min(s.x, s.z) * 0.85 : 0, m: new THREE.Matrix4().compose(p, q, s), color };
   });
@@ -165,8 +242,8 @@ export function buildScenery(road, seed = 1, { flat = false } = {}) {
   const postGeo = new THREE.BoxGeometry(0.12, 1.1, 0.12);
   postGeo.translate(0, 0.55, 0);
   const railGeo = new THREE.BoxGeometry(0.06, 0.1, 1);
-  const fenceMat = new THREE.MeshStandardMaterial({ color: 0xd9c9a8, flatShading: true });
-  const posts = [], rails = [];
+  const fenceMat = new THREE.MeshStandardMaterial({ color: theme.id === 'snow' ? 0x8a5a3a : 0xd9c9a8, flatShading: true });
+  const posts = [];
   for (let i = 0; i < road.n; i += 2) {
     const a = road.idx(i - 4), b = road.idx(i + 4);
     let d = Math.atan2(road.tx[b], road.tz[b]) - Math.atan2(road.tx[a], road.tz[a]);
@@ -201,21 +278,41 @@ export function buildScenery(road, seed = 1, { flat = false } = {}) {
   postMesh.castShadow = true;
   group.add(postMesh, railMesh);
 
-  // --- Distant hills: big flat-shaded lumps in a ring, silhouetted by fog.
-  const hillMat = new THREE.MeshStandardMaterial({ color: 0x55603a, flatShading: true, roughness: 1 });
+  // --- Horizon: rolling hills, desert mesas or snow-capped alpine peaks.
+  const hillMat = new THREE.MeshStandardMaterial({ color: theme.hills, flatShading: true, roughness: 1 });
+  const capMat = new THREE.MeshStandardMaterial({ color: 0xf2f5f8, flatShading: true, roughness: 0.9 });
   const radius = Math.max(maxX - minX, maxZ - minZ) / 2 + 260;
+  const base = terrain.meanH - 8;
   for (let k = 0; k < 26; k++) {
     const a = (k / 26) * Math.PI * 2 + rand() * 0.2;
     const r = radius + rand() * 220;
-    const h = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), hillMat);
-    const w = 90 + rand() * 140;
-    h.scale.set(w, 30 + rand() * 70, w * (0.6 + rand() * 0.6));
-    h.position.set(cx + Math.cos(a) * r, terrain.meanH - 8, cz + Math.sin(a) * r);
-    h.rotation.y = rand() * 3;
-    group.add(h);
+    const px = cx + Math.cos(a) * r, pz = cz + Math.sin(a) * r;
+    if (theme.mesas) {
+      const w = 60 + rand() * 110, h = 40 + rand() * 70;
+      const mesa = new THREE.Mesh(new THREE.CylinderGeometry(w, w * 1.25, h, 7), hillMat);
+      mesa.position.set(px, base + h / 2, pz);
+      mesa.rotation.y = rand() * 3;
+      group.add(mesa);
+    } else if (theme.peaks) {
+      const w = 110 + rand() * 120, h = 140 + rand() * 160;
+      const peak = new THREE.Mesh(new THREE.ConeGeometry(w, h, 6), hillMat);
+      peak.position.set(px, base + h / 2, pz);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(w * 0.32, h * 0.32, 6), capMat);
+      cap.position.set(0, h * 0.34, 0);
+      peak.add(cap);
+      peak.rotation.y = rand() * 3;
+      group.add(peak);
+    } else {
+      const h = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), hillMat);
+      const w = 90 + rand() * 140;
+      h.scale.set(w, (30 + rand() * 70) * Math.max(0.8, hilliness), w * (0.6 + rand() * 0.6));
+      h.position.set(px, base, pz);
+      h.rotation.y = rand() * 3;
+      group.add(h);
+    }
   }
 
-  // Solid things the car can hit: tree trunks and big rocks.
+  // Solid things the car can hit: tree trunks, cacti and big rocks.
   const obstacles = [...treeItems, ...rockItems].filter((o) => o.r > 0).map(({ x, z, r }) => ({ x, z, r }));
   return { group, terrain, obstacles };
 }
@@ -245,7 +342,7 @@ function addTiled(group, geo, mat, items, withColor, receive = false) {
 
 function mergeGeos(geos) {
   // Minimal non-indexed merge (avoids pulling in BufferGeometryUtils).
-  const parts = geos.map((g) => g.toNonIndexed());
+  const parts = geos.map((g) => (g.index ? g.toNonIndexed() : g));
   let count = 0;
   parts.forEach((g) => (count += g.attributes.position.count));
   const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3);

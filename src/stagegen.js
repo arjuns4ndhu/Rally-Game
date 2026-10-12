@@ -7,6 +7,7 @@
 // the generator backtracks. Elevation comes from a seeded terrain field that
 // the scenery also uses, smoothed along the road and grade-limited.
 import { mulberry32 } from './rng.js';
+import { pickTheme } from './themes.js';
 
 const DS = 2;              // metres per sample
 const CLEAR = 34;          // min distance between non-neighbouring road parts
@@ -33,27 +34,27 @@ function valueNoise(x, z, seed) {
 export function makeBaseHeight(seed, amp = 1) {
   const s = seed | 0;
   return (x, z) => amp * (
-    (valueNoise(x / 420, z / 420, s) - 0.5) * 36 +
-    (valueNoise(x / 160, z / 160, s + 17) - 0.5) * 10
+    (valueNoise(x / 420, z / 420, s) - 0.5) * 64 +
+    (valueNoise(x / 170, z / 170, s + 17) - 0.5) * 22
   );
 }
 
 // Rolling hills away from the road (always >= 0 so the road sits in valleys).
-export function makeHillHeight(seed) {
+export function makeHillHeight(seed, amp = 1) {
   const s = (seed | 0) + 101;
   return (x, z) => {
     const n = valueNoise(x / 120, z / 120, s) * 0.65 + valueNoise(x / 45, z / 45, s + 9) * 0.35;
-    return Math.max(0, n - 0.3) * 40;
+    return Math.max(0, n - 0.3) * 40 * amp;
   };
 }
 
 // ---------- Names ----------
 const NAME_A = ['Kar', 'Vel', 'Ost', 'Mira', 'Tal', 'Bru', 'Sen', 'Alt', 'Kor', 'Lun', 'Fen', 'Var', 'Hol', 'Rav', 'Esk', 'Dun', 'Sol', 'Mar', 'Tor', 'Ash'];
 const NAME_B = ['vik', 'berg', 'dal', 'moor', 'by', 'wald', 'stad', 'ford', 'heim', 'holt', 'mere', 'lund', 'ness', 'rock'];
-const NAME_C = ['Ridge', 'Forest', 'Pass', 'Valley', 'Hills', 'Woods', 'Descent', 'Climb', 'Gorge', 'Heath'];
 export function stageName(seed) {
   const r = mulberry32((seed * 2654435761) >>> 0);
-  return `${r.pick(NAME_A)}${r.pick(NAME_B)} ${r.pick(NAME_C)}`;
+  const { theme } = pickTheme(seed);
+  return `${r.pick(NAME_A)}${r.pick(NAME_B)} ${r.pick(theme.names)}`;
 }
 
 // ---------- Segment library ----------
@@ -75,6 +76,8 @@ const straight = (len) => new Array(Math.max(1, Math.round(len / DS))).fill(0);
 function makeSegment(rand, type, dir) {
   switch (type) {
     case 'straight': return { type, ks: straight(rand.range(30, 110)) };
+    // Long straights leave room for a jump with a safe landing.
+    case 'longstraight': return { type: 'straight', ks: straight(rand.range(110, 150)) };
     case 'sweeper': return { type, ks: arc(rand.range(70, 160), rand.range(25, 70), dir) };
     case 'corner': return { type, ks: arc(rand.range(26, 48), rand.range(50, 105), dir) };
     case 'hairpin': return { type, ks: [...straight(rand.range(50, 80)), ...arc(rand.range(11, 15), rand.range(160, 185), dir), ...straight(rand.range(16, 30))] };
@@ -89,12 +92,12 @@ function makeSegment(rand, type, dir) {
     }
   }
 }
-const TYPES = [['straight', 0.2], ['sweeper', 0.24], ['corner', 0.22], ['hairpin', 0.1], ['chicane', 0.12], ['esses', 0.12]];
+const TYPES = [['straight', 0.13], ['longstraight', 0.08], ['sweeper', 0.23], ['corner', 0.22], ['hairpin', 0.1], ['chicane', 0.12], ['esses', 0.12]];
 function pickType(rand, prev) {
   for (;;) {
     let r = rand(), t = TYPES[0][0];
     for (const [name, w] of TYPES) { if ((r -= w) <= 0) { t = name; break; } }
-    if (t === prev && (t === 'hairpin' || t === 'straight')) continue;   // no back-to-back
+    if (t === prev && (t === 'hairpin' || t === 'straight' || t === 'longstraight')) continue;   // no back-to-back
     return t;
   }
 }
@@ -166,7 +169,7 @@ function tryGenerate(seed, salt) {
       const dir = rand() < 0.68 ? towardGoal : -towardGoal;
       const seg = makeSegment(rand, type, attempt % 2 ? -dir : dir);
       const start = xs.length;
-      if (lay(seg.ks)) { segs.push({ type, start }); prevType = type; placed = true; }
+      if (lay(seg.ks)) { segs.push({ type: seg.type, start }); prevType = type; placed = true; }
     }
     if (!placed) {
       if (++failures > 60 || segs.length < 2) return null;
@@ -187,19 +190,21 @@ export function generateStage(seed) {
   if (!raw) throw new Error(`Stage generation failed for seed ${seed}`);
   const { xs, zs, segs } = raw;
 
-  // Elevation from the shared landform, smoothed and grade-limited.
-  const base = makeBaseHeight(seed);
+  // Elevation from the shared landform, smoothed and grade-limited. The theme
+  // and the stage's own hilliness set how much it climbs and falls.
+  const { theme, hilliness } = pickTheme(seed);
+  const base = makeBaseHeight(seed, theme.heightAmp * hilliness);
   let ys = xs.map((x, i) => base(x, zs[i]));
-  for (let pass = 0; pass < 3; pass++) {
+  for (let pass = 0; pass < 2; pass++) {
     const out = ys.slice();
     for (let i = 0; i < ys.length; i++) {
       let s = 0, c = 0;
-      for (let d = -15; d <= 15; d++) { const j = i + d; if (j >= 0 && j < ys.length) { s += ys[j]; c++; } }
+      for (let d = -12; d <= 12; d++) { const j = i + d; if (j >= 0 && j < ys.length) { s += ys[j]; c++; } }
       out[i] = s / c;
     }
     ys = out;
   }
-  const maxStep = 0.1 * DS;     // 10% grade
+  const maxStep = theme.maxGrade * DS;     // steepest allowed grade
   for (let i = 1; i < ys.length; i++) ys[i] = Math.max(ys[i - 1] - maxStep, Math.min(ys[i - 1] + maxStep, ys[i]));
   for (let i = ys.length - 2; i >= 0; i--) ys[i] = Math.max(ys[i + 1] - maxStep, Math.min(ys[i + 1] + maxStep, ys[i]));
 
@@ -218,10 +223,14 @@ export function generateStage(seed) {
   for (const sg of shuffle(straights)) {
     if (bumps.filter((b) => b.kind === 'jump').length >= 3) break;
     const len = segLen(sg);
-    if (len < 55) continue;
-    const at = sg.start * DS + len * brand.range(0.55, 0.75);
+    // Needs a run-up and at least 60 m of straight road to land on.
+    if (len < 95) continue;
+    const at = sg.start * DS + brand.range(30, len - 62);
     if (at < 120 || at > total - 160 || !farFrom(at, 120)) continue;
-    bumps.push({ kind: 'jump', at, h: brand.range(1.1, 1.7), up: brand.range(18, 24), down: brand.range(8, 11) });
+    // Not on a steep descent, where the car would fly much too far.
+    const iA = Math.round(at / DS), iB = Math.min(ys.length - 1, iA + 25);
+    if ((ys[iB] - ys[iA]) / ((iB - iA) * DS || 1) < -0.04) continue;
+    bumps.push({ kind: 'jump', at, h: brand.range(1.0, 1.45), up: brand.range(18, 24), down: brand.range(8, 11) });
   }
   for (const sg of shuffle(sweepers)) {
     if (bumps.filter((b) => b.kind === 'crest').length >= 3) break;
@@ -238,6 +247,6 @@ export function generateStage(seed) {
   return {
     seed, name: stageName(seed), points: pts, width: 7.5,
     runout: 70,   // metres of road after the finish line
-    counts, bumps,
+    counts, bumps, theme: theme.id, hilliness,
   };
 }

@@ -2,10 +2,11 @@
 import * as THREE from 'three';
 import { CarPhysics, CARS, CAR_ORDER, TUNE } from './car.js';
 import { buildCarModel } from './carModel.js';
-import { Road, createTestRoad, gravelTexture, SURFACES } from './track.js';
+import { Road, createTestRoad, gravelTexture, SURFACES, findShortcuts } from './track.js';
 import { generateStage, stageName } from './stagegen.js';
 import { buildGate, buildSign, buildCornerWarnings } from './gates.js';
 import { dateSeed } from './rng.js';
+import { THEMES, pickTheme } from './themes.js';
 import { setupWorld, buildScenery } from './scenery.js';
 import { CameraRig } from './camera.js';
 import { Dust } from './particles.js';
@@ -54,12 +55,15 @@ try { if (localStorage.getItem('sideways.codriver') === 'off') codriver.mode = '
 // ---------- Stage ----------
 // A stage is a road plus everything built around it. Loading a new one
 // disposes the old meshes.
-const gravelMat = new THREE.MeshStandardMaterial({ map: gravelTexture(), roughness: 0.95 });
+const gravelMat = new THREE.MeshStandardMaterial({ map: gravelTexture(THEMES.forest.road), roughness: 0.95 });
 const vergeMat = new THREE.MeshStandardMaterial({ color: 0x6e6340, roughness: 1 });
+let roadTheme = 'forest';
 const SECTORS = 5;
 const PENALTY = 5;            // seconds added for a respawn
 const RESPAWN_DIST = 25;      // metres off the road before you're put back
 let road = null, terrain = null, stageGroup = null, lineMesh = null;
+let shortcuts = [];   // Road objects for rough cut-through tracks
+const trackMat = new THREE.MeshStandardMaterial({ roughness: 1 });
 const stage = { kind: 'practice', seed: 0, name: '', start: 0, finish: 0, cps: [] };
 
 function disposeGroup(g) {
@@ -75,6 +79,16 @@ function loadStage(kind, seed = 0) {
   stageGroup = new THREE.Group();
   stage.kind = kind; stage.seed = seed;
   let flat = false, runout = 0;
+  const { theme, hilliness } = kind === 'practice' ? { theme: THEMES.forest, hilliness: 1 } : pickTheme(seed);
+  stage.theme = theme;
+  world.applyTheme(theme);
+  if (roadTheme !== theme.id) {
+    gravelMat.map.dispose();
+    gravelMat.map = gravelTexture(theme.road);
+    gravelMat.needsUpdate = true;
+    roadTheme = theme.id;
+  }
+  vergeMat.color.setHex(theme.road.verge);
   if (kind === 'practice') {
     road = createTestRoad();
     road.applyBumps([{ kind: 'jump', at: 100, h: 1.4, up: 20, down: 9 }, { kind: 'crest', at: 300, h: 1.2, len: 30 }]);
@@ -88,10 +102,45 @@ function loadStage(kind, seed = 0) {
     stage.name = def.name;
   }
   road.computeRacingLine();
-  const built = buildScenery(road, kind === 'practice' ? 1 : seed, { flat });
+  // Surface grip and dust colour follow the theme (packed snow is slippery).
+  road.surfaces = {
+    gravel: { ...SURFACES.gravel, grip: theme.road.grip, dust: theme.road.dust },
+    verge: { ...SURFACES.verge, grip: SURFACES.verge.grip * theme.road.grip, dust: theme.road.dust },
+    grass: { ...SURFACES.grass, dust: theme.road.dust },
+  };
+  // Shortcuts (stages only): rough tracks across where the road doubles back.
+  let cuts = [];
+  if (kind !== 'practice') {
+    const st = 24, fin = road.length - runout;
+    const cps = [1, 2, 3, 4].map((k) => st + (fin - st) * k / SECTORS);
+    cuts = findShortcuts(road, { checkpoints: cps, start: st, finish: fin });
+  }
+  const built = buildScenery(road, kind === 'practice' ? 1 : seed, { flat, theme, hilliness, avoid: cuts.map((c) => c.pts) });
   terrain = built.terrain;
   buildObstacleGrid(built.obstacles);
   stageGroup.add(built.group);
+  // Shortcut tracks follow the ground; darker, rutted dirt.
+  if (trackMat.map) trackMat.map.dispose();
+  trackMat.map = gravelTexture({ base: '#6f5a42', rut: [40, 30, 20], edge: [50, 60, 30], stone: [10, 0, -10] });
+  trackMat.color.set(theme.id === 'snow' ? 0xdfe6ee : 0xffffff);
+  trackMat.needsUpdate = true;
+  shortcuts = cuts.map((c) => {
+    // Follow the ground, easing up to road level where it joins the road.
+    const pts = c.pts.map(([x, z]) => {
+      const nr = terrain.nearestRoad(x, z);
+      const t = nr ? smoothstep(road.width / 2, road.width / 2 + 6, nr.d) : 1;
+      const yRoad = nr ? road.py[nr.i] - 0.03 : 0;
+      return [x, yRoad * (1 - t) + terrain.heightAt(x, z) * t, z];
+    });
+    const sc = new Road(pts, { width: 4.6, spacing: 2 });
+    sc.hint = -1;
+    // Only draw it where it's off the road surface (no dark patch on the gravel).
+    let from = 0, to = sc.n;
+    while (from < sc.n - 1 && road.nearest(sc.px[from], sc.pz[from], -1).dist < road.width / 2 - 0.3) from++;
+    while (to > from + 1 && road.nearest(sc.px[to - 1], sc.pz[to - 1], -1).dist < road.width / 2 - 0.3) to--;
+    stageGroup.add(sc.buildOffsetStrip(() => 0, sc.width, 0.06, trackMat, 1 / 10, Math.max(0, from - 1), Math.min(sc.n, to + 1)));
+    return sc;
+  });
   stageGroup.add(road.buildRibbon(road.width + 4.5, 0.012, vergeMat, 1 / 10));
   stageGroup.add(road.buildRibbon(road.width, 0.03, gravelMat, 1 / 12));
   // The racing line is always shown as dark, worn tyre tracks.
@@ -165,7 +214,7 @@ function placeOnRoad(i) {
   car.y = road.py[i];
   car.groundPitch = 0; car.groundRoll = 0;
   car.vy = 0; car.air = false; car.airTime = 0; car.squash = 0;
-  car.crashTimer = 0; stuckTime = 0;
+  stuckTime = 0;
   roadHint = i;
   roadAlong = road.cum[i];
   codriver.seek(roadAlong);
@@ -563,7 +612,7 @@ function emitDust(dt) {
   if (car.air) return;
   const s = car.spec;
   const sn = Math.sin(car.yaw), cs = Math.cos(car.yaw);
-  const off = surface === SURFACES.grass;
+  const off = surface.name === 'grass';
   const base = Math.min(car.speed / 28, 1) * (off ? 0.6 : 0.22);
   const amount = (car.rearSlide * 1.0 * Math.min(1, car.speed / 12) + base + (off ? car.speed / 40 : 0));
   if (amount < 0.02) return;
@@ -611,9 +660,9 @@ function layMarks() {
 }
 
 // ---------- Crashes ----------
-// Tree trunks and big rocks are solid. A hard hit is a crash: the car stops,
-// and after a moment you're put back at the last checkpoint (+5 s, like any
-// respawn). Light knocks just bounce you off. R still restarts from the start.
+// Tree trunks and big rocks are solid. A hard hit is a crash: a thump, dust
+// and a big loss of speed, but you keep going. Light knocks just bounce you
+// off. R still restarts from the start.
 const OB_CELL = 10, CAR_R = 0.85, CRASH_SPEED = 8.5;   // m/s into the obstacle (~30 km/h)
 let obGrid = new Map(), stuckTime = 0;
 function buildObstacleGrid(list) {
@@ -625,7 +674,6 @@ function buildObstacleGrid(list) {
   }
 }
 function collide() {
-  if (car.crashTimer > 0) return;
   const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw), off = car.spec.length * 0.3;
   for (const k of [off, 0, -off]) {
     const cx = car.x + fx * k, cz = car.z + fz * k;
@@ -641,10 +689,13 @@ function collide() {
         const vn = car.vx * nx + car.vz * nz;
         if (vn >= 0) continue;
         const impact = -vn;
-        if (impact > CRASH_SPEED && run.state !== 'finished') { crash(impact); return; }
-        // Bounce: kill most of the speed into it, scrub some along it, add a little spin.
-        car.vx -= 1.2 * vn * nx; car.vz -= 1.2 * vn * nz;
-        car.vx *= 0.8; car.vz *= 0.8;
+        // Bounce: kill the speed into it, scrub some along it, add a little spin.
+        // A hard hit is a crash: much bigger speed loss, but you carry on.
+        const hard = impact > CRASH_SPEED;
+        car.vx -= 1.15 * vn * nx; car.vz -= 1.15 * vn * nz;
+        const keep = hard ? 0.35 : 0.8;
+        car.vx *= keep; car.vz *= keep;
+        if (hard) { crash(impact); continue; }
         car.yawRate += (fx * nz - fz * nx) * impact * 0.12 * Math.sign(k || 1);
         audio.thud(Math.min(0.8, 0.15 + impact / 12));
         shakeKick = Math.max(shakeKick, Math.min(0.3, impact * 0.03));
@@ -653,8 +704,7 @@ function collide() {
   }
 }
 function crash(impact) {
-  car.crashTimer = 1.3;
-  car.vx *= 0.05; car.vz *= 0.05; car.yawRate = (Math.random() - 0.5) * 2;
+  car.yawRate += (Math.random() - 0.5) * Math.min(3, impact * 0.15);
   audio.thud(1);
   shakeKick = 0.45;
   dust.clear();
@@ -662,8 +712,7 @@ function crash(impact) {
     const a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 5;
     dust.emit(car.x, (car.y ?? 0) + 0.6, car.z, Math.cos(a) * sp, 1 + Math.random() * 2, Math.sin(a) * sp, 1.4, 1.6, [0.55, 0.5, 0.42]);
   }
-  toast('CRASH!', 1200);
-  void impact;
+  toast('CRASH!', 900);
 }
 
 // ---------- Physics step ----------
@@ -675,22 +724,25 @@ function groundAt(x, z, lateralAbs, roadY) {
   return t <= 0 ? roadY : roadY * (1 - t) + terrain.heightAt(x, z) * t;
 }
 function stepPhysics(dt, inp) {
-  if (car.crashTimer > 0) {
-    car.crashTimer -= dt;
-    car.vx *= 0.9; car.vz *= 0.9; car.yawRate *= 0.9;
-    if (car.crashTimer <= 0) { resetCar(); return; }
-    inp = { throttle: 0, brake: 1, steer: 0, handbrake: false };
-  }
   const q = road.nearest(car.x, car.z, roadHint);
   roadHint = q.i;
   const lat = q.lateral, roadY = q.y, tx = q.tx, tz = q.tz;
   // A lap of the closed practice loop wraps the distance back to zero.
   if (road.closed && q.along < roadAlong - road.length / 2) codriver.seek(q.along);
+  // Rejoining from a shortcut skips ahead: don't flash the missed pace notes.
+  if (q.along - roadAlong > 40) codriver.seek(q.along);
   roadAlong = q.along;
   offDist = q.dist;
+  // On a shortcut track? Then it's fine to be far from the main road.
+  onShortcut = false;
+  for (const sc of shortcuts) {
+    const qs = sc.nearest(car.x, car.z, sc.hint);
+    sc.hint = qs.i;
+    if (qs.dist < sc.width / 2 + 0.8) { onShortcut = true; break; }
+  }
   // Far off the road: put the car back (at the last checkpoint on a stage).
-  if (offDist > (stage.kind === 'practice' ? 40 : RESPAWN_DIST)) { resetCar(); return; }
-  surface = road.surfaceAt(Math.abs(lat));
+  if (!onShortcut && offDist > (stage.kind === 'practice' ? 40 : RESPAWN_DIST)) { resetCar(); return; }
+  surface = onShortcut ? SHORTCUT : road.surfaceAt(Math.abs(lat));
   roadLat = lat; roadLx = tz; roadLz = -tx;
   if (run.state === 'finished') { inp = { throttle: 0, brake: 0.35, steer: 0, handbrake: false }; }
   // Tiny hops over kinks in the ground keep their grip; real flights don't.
@@ -698,15 +750,15 @@ function stepPhysics(dt, inp) {
   car.step(dt, inp, flying ? AIR : surface);
   collide();
   // Stuck off the road (crawling for 4 s while trying to drive): put back.
-  if (q.dist > road.width / 2 + 3 && car.speed < 1.5 && (inp.throttle > 0.5 || inp.brake > 0.5) && car.crashTimer <= 0) {
+  if (q.dist > road.width / 2 + 3 && car.speed < 1.5 && (inp.throttle > 0.5 || inp.brake > 0.5) ) {
     stuckTime += dt;
     if (stuckTime > 4) { stuckTime = 0; toast('STUCK', 900); resetCar(); return; }
   } else stuckTime = 0;
   if (flying) {
     // A little air control, and the spin bleeds off slowly.
-    car.yawRate += inp.steer * 0.9 * dt;
-    car.yawRate *= 1 - 0.6 * dt;
-  } else applyLineAssist(q, dt);
+    car.yawRate += inp.steer * 0.5 * dt;
+    car.yawRate *= Math.exp(-3 * dt);   // no grip to keep it spinning
+  } else if (!onShortcut) applyLineAssist(q, dt);
   updateRun(q, dt);
   if (run.state === 'running') recorder.record(run.t, car);
 
@@ -750,7 +802,7 @@ function stepPhysics(dt, inp) {
       const vyGround = pitch * car.vF;
       const impact = Math.max(0, vyGround - car.vy);
       car.y = h0; car.vy = vyGround; car.air = false;
-      if (car.airTime > 0.12) onLanding(impact);
+      if (car.airTime > 0.12) { settleLanding(inp); onLanding(impact); }
     }
     return;
   }
@@ -762,6 +814,21 @@ function stepPhysics(dt, inp) {
   car.vz -= fz * g * dt;
 }
 const AIR = { name: 'air', grip: 0.02, drag: 0, dust: [0.7, 0.6, 0.5] };
+// Shortcut tracks: rough and loose, a gamble against the distance saved.
+const SHORTCUT = { name: 'track', grip: 0.82, drag: 0.07, dust: [0.5, 0.42, 0.32] };
+let onShortcut = false;
+
+// After a flight, line the car up with where it's going unless the player is
+// clearly steering into a slide, so a landing doesn't fling you off the road.
+function settleLanding(inp) {
+  const vh = Math.atan2(car.vx, car.vz);
+  let b = vh - car.yaw;
+  b = Math.atan2(Math.sin(b), Math.cos(b));
+  const keep = Math.abs(inp.steer) > 0.5 ? 0.6 : 0.2;     // fraction of slip kept
+  car.yaw = vh - b * keep;
+  car.yawRate *= 0.3;
+  car.drifting = false;
+}
 
 // Landing: thump, dust, camera kick and a body squash, scaled by impact speed.
 let shakeKick = 0;
@@ -804,10 +871,10 @@ function frame(now) {
 
   model.update(car, dt);
   updateGhost();
-  world.follow(car.x, car.z);
+  world.follow(car.x, car.y ?? 0, car.z);
   shakeKick *= Math.exp(-dt * 7);
   car.squash = (car.squash || 0) * Math.exp(-dt * 9);
-  rig.shake = active ? (car.air ? 0 : (surface === SURFACES.grass ? 0.05 : 0.012) * Math.min(car.speed / 25, 1)) + shakeKick : 0;
+  rig.shake = active ? (car.air ? 0 : (surface.name === 'grass' ? 0.05 : 0.012) * Math.min(car.speed / 25, 1)) + shakeKick : 0;
   rig.update(car, dt);
   world.sky.position.copy(camera.position);
   if (!paused) dust.update(dt);
@@ -832,6 +899,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
+  get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver,
   get ghostModel() { return ghostModel; }, recorder, loadGhost, onLanding, renderer, scene, camera, marks, assist, setAssist, car, input, TUNE, CARS, start, stepSim, placeOnRoad, loadStage, run, stage,

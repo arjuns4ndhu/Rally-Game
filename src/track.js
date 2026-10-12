@@ -220,9 +220,10 @@ export class Road {
   }
 
   surfaceAt(lateralAbs) {
-    if (lateralAbs < this.width / 2) return SURFACES.gravel;
-    if (lateralAbs < this.width / 2 + 1.8) return SURFACES.verge;
-    return SURFACES.grass;
+    const S = this.surfaces || SURFACES;
+    if (lateralAbs < this.width / 2) return S.gravel;
+    if (lateralAbs < this.width / 2 + 1.8) return S.verge;
+    return S.grass;
   }
 
   // Ribbon mesh following the centreline; `extra` widens it (for verges).
@@ -256,18 +257,20 @@ export class Road {
 }
 
 // Procedural gravel texture: speckled stones, two darker wheel ruts, soft edges.
-export function gravelTexture() {
+// pal: { base, rut: [r,g,b], edge: [r,g,b], stone: [dr,dg,db] } from the stage theme.
+export function gravelTexture(pal = { base: '#b59c78', rut: [70, 55, 40], edge: [60, 70, 40], stone: [25, 10, -15] }) {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 512;
   const g = c.getContext('2d');
-  g.fillStyle = '#b59c78';
+  const [rr, rg, rb] = pal.rut, [er, eg0, eb] = pal.edge, [sr, sg, sb] = pal.stone;
+  g.fillStyle = pal.base;
   g.fillRect(0, 0, 256, 512);
   // Ruts
   for (const x of [72, 184]) {
     const grad = g.createLinearGradient(x - 26, 0, x + 26, 0);
-    grad.addColorStop(0, 'rgba(70,55,40,0)');
-    grad.addColorStop(0.5, 'rgba(70,55,40,0.28)');
-    grad.addColorStop(1, 'rgba(70,55,40,0)');
+    grad.addColorStop(0, `rgba(${rr},${rg},${rb},0)`);
+    grad.addColorStop(0.5, `rgba(${rr},${rg},${rb},0.28)`);
+    grad.addColorStop(1, `rgba(${rr},${rg},${rb},0)`);
     g.fillStyle = grad;
     g.fillRect(x - 26, 0, 52, 512);
   }
@@ -277,15 +280,15 @@ export function gravelTexture() {
     const edge = Math.min(x, 256 - x) < 22 || Math.abs(x - 128) < 18;
     const r = Math.random() * (edge ? 2.2 : 1.4) + 0.4;
     const l = 90 + Math.random() * 110;
-    g.fillStyle = `rgba(${l + 25},${l + 10},${l - 15},${edge ? 0.75 : 0.45})`;
+    g.fillStyle = `rgba(${l + sr},${l + sg},${l + sb},${edge ? 0.75 : 0.45})`;
     g.fillRect(x, y, r, r);
   }
   // Edge darkening
   const eg = g.createLinearGradient(0, 0, 256, 0);
-  eg.addColorStop(0, 'rgba(60,70,40,0.55)');
-  eg.addColorStop(0.07, 'rgba(60,70,40,0)');
-  eg.addColorStop(0.93, 'rgba(60,70,40,0)');
-  eg.addColorStop(1, 'rgba(60,70,40,0.55)');
+  eg.addColorStop(0, `rgba(${er},${eg0},${eb},0.55)`);
+  eg.addColorStop(0.07, `rgba(${er},${eg0},${eb},0)`);
+  eg.addColorStop(0.93, `rgba(${er},${eg0},${eb},0)`);
+  eg.addColorStop(1, `rgba(${er},${eg0},${eb},0.55)`);
   g.fillStyle = eg; g.fillRect(0, 0, 256, 512);
   const t = new THREE.CanvasTexture(c);
   t.wrapS = THREE.ClampToEdgeWrapping; t.wrapT = THREE.RepeatWrapping;
@@ -304,4 +307,69 @@ export function createTestRoad() {
     [28, -186], [4, -170], [-4, -130],
   ];
   return new Road(P.map(([x, z]) => [x, 0, z]), { width: 8, closed: true, spacing: 2 });
+}
+
+// ---------- Shortcuts ----------
+// Find places where two bits of the stage come close (e.g. across a hairpin)
+// and a rough dirt track could cut across. Rules: saves at least 70 m, never
+// skips a checkpoint, and doesn't pass near any other part of the road.
+// Returns [{ a, b, pts: [[x, z], ...] }] in road order.
+export function findShortcuts(road, { checkpoints = [], start = 0, finish = road.length, max = 2 } = {}) {
+  const n = road.n, step = 3;
+  const cands = [];
+  for (let i = 0; i < n; i += step) {
+    const a = road.cum[i];
+    if (a < start + 60) continue;
+    for (let j = i + 20; j < n; j += step) {
+      const b = road.cum[j];
+      if (b > finish - 40) break;
+      const gain = b - a;
+      if (gain < 70) continue;
+      const dx = road.px[j] - road.px[i], dz = road.pz[j] - road.pz[i];
+      const d = Math.hypot(dx, dz);
+      if (d < 22 || d > 90 || gain / d < 1.8) continue;
+      if (Math.abs(road.py[j] - road.py[i]) / d > 0.12) continue;
+      if (checkpoints.some((c) => c > a - 10 && c < b + 10)) continue;
+      cands.push({ i, j, a, b, d, score: gain - d });
+    }
+  }
+  cands.sort((p, q) => q.score - p.score);
+  const picked = [];
+  for (const c of cands) {
+    if (picked.length >= max) break;
+    if (picked.some((p) => Math.abs(p.a - c.a) < 250 && Math.abs(p.b - c.b) < 250)) continue;
+    // Gentle S-bend so it reads as a track, not a ruler line.
+    const ax = road.px[c.i], az = road.pz[c.i], bx = road.px[c.j], bz = road.pz[c.j];
+    const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+    const nx = -(bz - az) / c.d, nz = (bx - ax) / c.d;
+    const bend = (c.d * 0.12) * (c.i % 2 ? 1 : -1);
+    const pts = [];
+    for (let k = 0; k <= 20; k++) {
+      const t = k / 20, w = 2 * t * (1 - t) * 2;   // quadratic bulge, 0 at the ends
+      pts.push([ax + (bx - ax) * t + nx * bend * w, az + (bz - az) * t + nz * bend * w]);
+    }
+    // Must stay clear of the rest of the road in its middle section.
+    let ok = true;
+    for (let k = 4; k <= 16 && ok; k++) {
+      const [x, z] = pts[k];
+      for (let s = 0; s < n; s += 2) {
+        if (road.cum[s] > c.a - 15 && road.cum[s] < c.a + 15) continue;
+        if (road.cum[s] > c.b - 15 && road.cum[s] < c.b + 15) continue;
+        if (Math.hypot(road.px[s] - x, road.pz[s] - z) < road.width / 2 + 4) { ok = false; break; }
+      }
+    }
+    if (ok) picked.push({ ...c, pts });
+  }
+  return picked.sort((p, q) => p.a - q.a);
+}
+
+export function distToPolyline(pts, x, z) {
+  let best = Infinity;
+  for (let k = 0; k < pts.length - 1; k++) {
+    const [ax, az] = pts[k], [bx, bz] = pts[k + 1];
+    const ex = bx - ax, ez = bz - az, l2 = ex * ex + ez * ez || 1;
+    const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / l2));
+    best = Math.min(best, Math.hypot(x - (ax + ex * t), z - (az + ez * t)));
+  }
+  return best;
 }
