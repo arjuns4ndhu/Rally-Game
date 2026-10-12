@@ -26,7 +26,7 @@ ES modules need a web server, so opening `index.html` straight from the file sys
 | Mute | M | speaker button |
 | Tuning panel (dev) | ? | |
 
-Driving: tap the brake while turning to kick the rear out. Hold the throttle to keep the drift going. Lift off to rotate more. Counter-steer to straighten up or flick into the next corner. Braking at a standstill engages reverse.
+Driving: tap the brake while turning to kick the rear out. Hold the throttle to keep the drift going. Lift off to rotate more. Counter-steer to straighten up or flick into the next corner. Holding the brake slows you down, even mid-slide; keep holding it once stopped to reverse.
 
 ## Build status
 

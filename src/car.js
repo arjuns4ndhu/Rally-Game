@@ -151,9 +151,10 @@ export class CarPhysics {
     // ---- Gear / reverse logic --------------------------------------------
     let throttle = input.throttle, brake = input.brake;
     if (this.gear > 0) {
-      if (brake > 0.5 && throttle < 0.1 && vF < 0.6) {
+      // Reverse only once the car has genuinely stopped (not while sliding sideways).
+      if (brake > 0.5 && throttle < 0.1 && speed < 1.0) {
         this.reverseTimer += dt;
-        if (this.reverseTimer > 0.2) { this.gear = -1; this.reverseTimer = 0; this.shifted = -1; }
+        if (this.reverseTimer > 0.35) { this.gear = -1; this.reverseTimer = 0; this.shifted = -1; }
       } else this.reverseTimer = 0;
     } else {
       // In reverse: brake key drives backwards, throttle key brakes.
@@ -252,7 +253,7 @@ export class CarPhysics {
     let hbForce = 0;
     if (input.handbrake) hbForce = maxR * 0.55;
     // Don't let brakes push the car backwards at a standstill.
-    const stopFactor = clamp(Math.abs(vF) / 0.6, 0, 1);
+    const stopFactor = clamp(speed / 0.6, 0, 1);
     FxF -= dirF * brakeF * stopFactor;
     FxR -= dirF * (brakeR + hbForce) * stopFactor;
 
@@ -300,6 +301,15 @@ export class CarPhysics {
       Fy -= k * vL * 0.5;
     }
 
+    // Braking while sideways: the tyres scrub against the direction of travel,
+    // which the forward-only brake force above can't do on its own.
+    if (brake > 0.05 && speed > 0.5) {
+      const sideways = Math.abs(vL) / speed;
+      const scrub = brake * m * G * 0.5 * grip * sideways;
+      Fx -= scrub * vF / speed;
+      Fy -= scrub * vL / speed;
+    }
+
     // Drift boost: a sustained drift at a sensible angle under throttle keeps
     // its speed, so sliding through corners is the fast way round.
     const absBeta = Math.abs(beta);
@@ -327,7 +337,8 @@ export class CarPhysics {
     if (this.drifting) {
       const d = -Math.sign(beta);                 // +1 = rotating left
       const into = this.steerInput * d;           // +1 into the corner, -1 counter
-      let target = 0.40 + 0.22 * into + 0.2 * (1 - throttle) + (input.handbrake ? 0.25 : 0);
+      // Lifting rotates the car; braking does the opposite and straightens it up.
+      let target = 0.40 + 0.22 * into + 0.2 * (1 - throttle) * (1 - brake) - 0.3 * brake + (input.handbrake ? 0.25 : 0);
       if (into < -0.4) target *= clamp(1 - (-into - 0.4) * 1.8, 0, 1);
       target = clamp(target, 0, 0.85);
       const desired = this.velHeadRate + d * (target - absBeta) * TUNE.driftGain;
