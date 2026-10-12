@@ -23,20 +23,25 @@ export class Dust {
       transparent: true, depthWrite: false, fog: true,
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uScale: { value: 400 } }]),
       vertexShader: `
+        #include <common>
         attribute float aSize; attribute float aAlpha; attribute vec3 aColor;
         uniform float uScale; varying float vAlpha; varying vec3 vColor;
         #include <fog_pars_vertex>
+        #include <logdepthbuf_pars_vertex>
         void main(){
           vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
           gl_PointSize = aSize * uScale / max(-mvPosition.z, 0.1);
           gl_Position = projectionMatrix * mvPosition;
           vAlpha = aAlpha; vColor = aColor;
+          #include <logdepthbuf_vertex>
           #include <fog_vertex>
         }`,
       fragmentShader: `
         varying float vAlpha; varying vec3 vColor;
         #include <fog_pars_fragment>
+        #include <logdepthbuf_pars_fragment>
         void main(){
+          #include <logdepthbuf_fragment>
           float d = length(gl_PointCoord - 0.5);
           float a = smoothstep(0.5, 0.05, d) * vAlpha;
           if (a < 0.01) discard;

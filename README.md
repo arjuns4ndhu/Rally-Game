@@ -24,6 +24,7 @@ ES modules need a web server, so opening `index.html` straight from the file sys
 | Back to last checkpoint (+5 s) | T | pause menu |
 | Pause | Esc | II |
 | Mute | M | speaker button |
+| Co-driver voice / text / off | pause menu | pause menu |
 | Tuning panel (dev) | ? | |
 
 Driving: tap the brake while turning to kick the rear out. Hold the throttle to keep the drift going. Lift off to rotate more. Counter-steer to straighten up or flick into the next corner. Holding the brake slows you down, even mid-slide; keep holding it once stopped to reverse.
@@ -62,6 +63,7 @@ src/camera.js     camera rigs
 src/particles.js  dust
 src/tyremarks.js  racing-line tracks + your own tyre marks
 src/ghost.js      ghost recording, compact storage and playback
+src/pacenotes.js  co-driver: pace notes from the road, spoken with the browser's speech
 src/audio.js      Web Audio engine / tyre synthesis
 src/input.js      keyboard + touch
 src/rng.js        seeded PRNG + date seeds

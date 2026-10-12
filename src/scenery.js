@@ -14,7 +14,7 @@ export const PALETTE = {
 function skyDome() {
   const geo = new THREE.SphereGeometry(440, 24, 12);
   const mat = new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false, fog: false,
+    side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
     uniforms: { top: { value: PALETTE.skyTop }, horizon: { value: PALETTE.horizon } },
     vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
     fragmentShader: `uniform vec3 top; uniform vec3 horizon; varying vec3 vP;

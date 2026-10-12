@@ -45,6 +45,7 @@
     <div class="sectors" id="hud-sectors"><i>S1</i><i>S2</i><i>S3</i><i>S4</i><i>S5</i></div>
   </div>
   <div class="split" id="hud-split"></div>
+  <div class="pacenote" id="hud-note" aria-live="polite"></div>
   <div class="toast" id="toast"></div>
 </div>
 
@@ -102,6 +103,13 @@
         <option value="low">Low</option>
         <option value="medium">Medium</option>
         <option value="high">High</option>
+      </select>
+    </label>
+    <label class="check select">Co-driver
+      <select id="opt-codriver">
+        <option value="voice">Voice + text</option>
+        <option value="text">Text only</option>
+        <option value="off">Off</option>
       </select>
     </label>
     <label class="check"><input type="checkbox" id="opt-ghost" checked> Ghost car (your best run)</label>

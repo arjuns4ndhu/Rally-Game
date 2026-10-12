@@ -13,6 +13,7 @@ import { AudioEngine } from './audio.js';
 import { Input } from './input.js';
 import { TyreMarks, buildRacingMarks } from './tyremarks.js';
 import { GhostRecorder, saveGhost, loadGhost, samplePose } from './ghost.js';
+import { buildPaceNotes, CoDriver } from './pacenotes.js';
 
 const $ = (id) => document.getElementById(id);
 document.body.classList.add('scanlines');
@@ -20,7 +21,7 @@ const STEP = 1 / 120;
 
 // ---------- Renderer / scene ----------
 const canvas = $('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -29,13 +30,22 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 480);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.2, 480);
 const world = setupWorld(scene);
 const rig = new CameraRig(camera);
 const dust = new Dust(scene);
 const marks = new TyreMarks(scene);
 const audio = new AudioEngine();
 const input = new Input();
+let noteTimer = 0;
+const codriver = new CoDriver((text) => {
+  const el = $('hud-note');
+  el.textContent = text;
+  el.classList.add('on');
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => el.classList.remove('on'), 3200);
+});
+try { const m = localStorage.getItem('sideways.codriver'); if (m === 'voice' || m === 'text' || m === 'off') codriver.mode = m; } catch { /* ignore */ }
 
 // ---------- Stage ----------
 // A stage is a road plus everything built around it. Loading a new one
@@ -101,6 +111,7 @@ function loadStage(kind, seed = 0) {
     stageGroup.add(buildGate(road, stage.finish, 'FINISH', 'finish'));
   }
   scene.add(stageGroup);
+  codriver.load(buildPaceNotes(road, { start: stage.start, finish: stage.kind === 'practice' ? road.length : stage.finish }));
   marks.clear();
   restartRun();
 }
@@ -140,6 +151,7 @@ let model = buildCarModel(CARS[carId], { color: '#e8542a', wheelStyle: 'spoke', 
 scene.add(model.root);
 audio.setCar(CARS[carId]);
 let roadHint = -1;
+let roadAlong = 0;
 let surface = SURFACES.gravel;
 
 function placeOnRoad(i) {
@@ -149,6 +161,8 @@ function placeOnRoad(i) {
   car.groundPitch = 0; car.groundRoll = 0;
   car.vy = 0; car.air = false; car.airTime = 0; car.squash = 0;
   roadHint = i;
+  roadAlong = road.cum[i];
+  codriver.seek(roadAlong);
   dust.clear();
   marks.cut();
   rig.snap(car);
@@ -422,6 +436,7 @@ function start(kind = 'daily', seed) {
 }
 function toMenu() {
   running = false; paused = false;
+  codriver.stop();
   $('pause').hidden = true; $('finish').hidden = true; $('hud').hidden = true;
   $('start').hidden = false;
   audio.suspend();
@@ -430,6 +445,7 @@ function setPaused(p) {
   if (!running) return;
   paused = p;
   $('pause').hidden = !p;
+  if (p) codriver.stop();
   if (p) audio.suspend(); else audio.resume();
 }
 function resetCar() {
@@ -472,6 +488,8 @@ try { muted = localStorage.getItem('sideways.muted') === '1'; } catch { /* ignor
 function setMuted(m) {
   muted = m;
   audio.setMuted(m);
+  codriver.muted = m;
+  if (m) codriver.stop();
   $('btn-mute').setAttribute('aria-pressed', String(m));
   $('btn-mute').setAttribute('aria-label', m ? 'Unmute sound' : 'Mute sound');
   $('opt-mute').checked = m;
@@ -480,6 +498,13 @@ function setMuted(m) {
 setMuted(muted);
 $('btn-mute').addEventListener('click', (e) => { audio.init(); setMuted(!muted); e.currentTarget.blur(); });
 $('opt-mute').addEventListener('change', (e) => setMuted(e.target.checked));
+$('opt-codriver').value = codriver.mode;
+$('opt-codriver').addEventListener('change', (e) => {
+  codriver.mode = e.target.value;
+  codriver.stop();
+  try { localStorage.setItem('sideways.codriver', codriver.mode); } catch { /* ignore */ }
+  e.target.blur();
+});
 $('opt-ghost').checked = ghostOn;
 $('opt-ghost').addEventListener('change', (e) => {
   ghostOn = e.target.checked;
@@ -593,6 +618,9 @@ function stepPhysics(dt, inp) {
   const q = road.nearest(car.x, car.z, roadHint);
   roadHint = q.i;
   const lat = q.lateral, roadY = q.y, tx = q.tx, tz = q.tz;
+  // A lap of the closed practice loop wraps the distance back to zero.
+  if (road.closed && q.along < roadAlong - road.length / 2) codriver.seek(q.along);
+  roadAlong = q.along;
   offDist = q.dist;
   // Far off the road: put the car back (at the last checkpoint on a stage).
   if (offDist > (stage.kind === 'practice' ? 40 : RESPAWN_DIST)) { resetCar(); return; }
@@ -699,6 +727,7 @@ function frame(now) {
     emitDust(dt);
     layMarks();
     marks.flush();
+    if (run.state !== 'finished') codriver.update(roadAlong, car.speed);
   }
 
   model.update(car, dt);
@@ -731,6 +760,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
+  codriver,
   get ghostModel() { return ghostModel; }, recorder, loadGhost, onLanding, renderer, scene, camera, marks, assist, setAssist, car, input, TUNE, CARS, start, stepSim, placeOnRoad, loadStage, run, stage,
   get road() { return road; }, get terrain() { return terrain; }, get lineMesh() { return lineMesh; }, get surface() { return surface; }, get best() { return best; },
 };

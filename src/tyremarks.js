@@ -36,7 +36,7 @@ export function buildRacingMarks(road, trackWidth = 1.6) {
   });
   const group = new THREE.Group();
   for (const side of [-1, 1]) {
-    group.add(road.buildOffsetStrip((i) => road.racing[i] + side * trackWidth / 2, 0.42, 0.04, mat, 1 / 6));
+    group.add(road.buildOffsetStrip((i) => road.racing[i] + side * trackWidth / 2, 0.42, 0.05, mat, 1 / 6));
   }
   return group;
 }
@@ -94,7 +94,7 @@ export class TyreMarks {
     const s = this.cursor;
     this.cursor = (this.cursor + 1) % MAX_SEG;
     const p = this.pos, c = this.col, v = s * 12, k = s * 16;
-    const yy = y + 0.05, ly = last.y + 0.05;
+    const yy = y + 0.075, ly = last.y + 0.075;
     p[v] = last.x + last.lx; p[v + 1] = ly; p[v + 2] = last.z + last.lz;
     p[v + 3] = last.x - last.lx; p[v + 4] = ly; p[v + 5] = last.z - last.lz;
     p[v + 6] = x + lx; p[v + 7] = yy; p[v + 8] = z + lz;

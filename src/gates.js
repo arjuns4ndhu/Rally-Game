@@ -52,7 +52,7 @@ export function buildGate(road, along, label, kind) {
     new THREE.MeshBasicMaterial({ color: kind === 'finish' ? 0xf1e9da : kind === 'start' ? 0x9fe3b8 : 0xffd27a, transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
   );
   line.rotation.x = -Math.PI / 2;
-  line.position.y = 0.06;
+  line.position.y = 0.085;
   g.add(line);
   g.position.set(road.px[i], road.py[i], road.pz[i]);
   g.rotation.y = Math.atan2(road.tx[i], road.tz[i]);
@@ -201,7 +201,7 @@ export function buildCornerWarnings(road, corners) {
     const from = road.indexAt(Math.max(0, c.entry - 70)), to = road.indexAt(c.entry + 6);
     const len = road.cum[to] - road.cum[from];
     for (const s of [-1, 1]) {
-      group.add(road.buildOffsetStrip((i) => (road.racing ? road.racing[i] : 0) + s * 0.8, 0.5, 0.045, brakeMat, 1 / Math.max(1, len), from, to));
+      group.add(road.buildOffsetStrip((i) => (road.racing ? road.racing[i] : 0) + s * 0.8, 0.5, 0.062, brakeMat, 1 / Math.max(1, len), from, to));
     }
   }
   return group;

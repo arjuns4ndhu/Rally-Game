@@ -230,3 +230,14 @@ body.touch .hud-top { transform: translateX(-50%) scale(0.85); transform-origin:
 .mute[aria-pressed="true"] .off { display: inline; }
 body.touch .tc-top { right: calc(62px + env(safe-area-inset-right, 0px)); }
 #hud .hud-top { pointer-events: none; }
+
+/* ---------- Co-driver pace notes ---------- */
+.pacenote {
+  position: absolute; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  max-width: calc(100% - 32px); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-family: var(--font-display); font-size: clamp(16px, 2.4vw, 24px); letter-spacing: 0.02em; text-transform: uppercase;
+  color: var(--text); background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+  border-radius: 4px; padding: 6px 14px; opacity: 0; transition: opacity 0.2s;
+}
+.pacenote.on { opacity: 1; }
+body.touch .pacenote { bottom: auto; top: calc(110px + env(safe-area-inset-top, 0px)); }
