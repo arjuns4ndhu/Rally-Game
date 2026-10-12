@@ -169,6 +169,20 @@ function buildSliders() {
 }
 buildSliders();
 
+// Snapshot the shipped values so the panel can put everything back.
+const DEFAULTS = {
+  TUNE: { ...TUNE },
+  cars: Object.fromEntries(Object.entries(CARS).map(([id, spec]) => [id, { ...spec }])),
+};
+function resetTuning() {
+  Object.assign(TUNE, DEFAULTS.TUNE);
+  for (const id in CARS) Object.assign(CARS[id], DEFAULTS.cars[id]);
+  car.setSpec(CARS[carId]);
+  buildSliders();
+  toast('TUNING RESET', 1000);
+}
+$('dbg-reset').addEventListener('click', (e) => { resetTuning(); e.currentTarget.blur(); });
+
 // ---------- Game state ----------
 let running = false, paused = false;
 
