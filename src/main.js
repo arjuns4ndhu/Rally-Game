@@ -17,6 +17,7 @@ import { GhostRecorder, saveGhost, loadGhost, samplePose } from './ghost.js';
 import { buildPaceNotes, CoDriver } from './pacenotes.js';
 import { notesHTML } from './paceicons.js';
 import { Drone } from './drone.js';
+import { MiniMap } from './minimap.js';
 import { buildHazards, HAZARD_DEBUG } from './hazards.js';
 
 const $ = (id) => document.getElementById(id);
@@ -39,6 +40,7 @@ const world = setupWorld(scene);
 const rig = new CameraRig(camera);
 const drone = new Drone(scene);
 const tv = new TVCamera(camera);
+const minimap = new MiniMap($('minimap'));
 rig.drone = drone;
 rig.groundAt = (x, z) => worldGround(x, z);
 const dust = new Dust(scene);
@@ -178,6 +180,9 @@ function loadStage(kind, seed = 0) {
   });
   if (hazards) stageGroup.add(hazards.group);
   scene.add(stageGroup);
+  minimap.build(road, kind === 'practice'
+    ? { closed: true }
+    : { start: stage.start, finish: stage.finish, cps: stage.cps, shortcuts });
   codriver.load(buildPaceNotes(road, { start: stage.start, finish: stage.kind === 'practice' ? road.length : stage.finish }));
   marks.clear();
   restartRun();
@@ -529,6 +534,7 @@ function start(kind = 'daily', seed) {
   $('start').hidden = true;
   $('pause').hidden = true;
   $('hud').hidden = false;
+  minimap.rebuild();                 // sized now the HUD is showing
   running = true;
   paused = false;
   toast(kind === 'practice' ? 'PRACTICE' : stage.name.toUpperCase(), 1400);
@@ -621,6 +627,18 @@ $('opt-ghost').addEventListener('change', (e) => {
   try { localStorage.setItem('sideways.ghostOn', ghostOn ? '1' : '0'); } catch { /* ignore */ }
   refreshGhost(); refreshStageHud();
 });
+// Mini map: N key or the pause menu. Remembered between visits.
+let mapOn = true;
+try { mapOn = localStorage.getItem('sideways.map') !== '0'; } catch { /* ignore */ }
+function setMap(on) {
+  mapOn = on;
+  $('minimap').hidden = !on;
+  $('opt-map').checked = on;
+  if (on) minimap.rebuild();
+  try { localStorage.setItem('sideways.map', on ? '1' : '0'); } catch { /* ignore */ }
+}
+setMap(mapOn);
+$('opt-map').addEventListener('change', (e) => setMap(e.target.checked));
 let droneOn = true;
 try { droneOn = localStorage.getItem('sideways.drone') !== '0'; } catch { /* ignore */ }
 drone.enabled = droneOn;
@@ -634,6 +652,7 @@ $('opt-scan').addEventListener('change', (e) => document.body.classList.toggle('
 input.on('key', (code, key) => {
   if (code === 'Escape') { if (replay.on) { stopReplay(); return; } if (running) setPaused(!paused); return; }
   if (key === '?' || code === 'Slash') { $('debug').hidden = !$('debug').hidden; return; }
+  if (code === 'KeyN') { setMap(!mapOn); toast(mapOn ? 'MAP ON' : 'MAP OFF', 800); return; }
   if (code === 'KeyM') { setMuted(!muted); toast(muted ? 'SOUND OFF' : 'SOUND ON', 800); return; }
   if (!running) { if (code === 'Enter') start('daily'); return; }
   if (paused) return;
@@ -666,6 +685,7 @@ function resize() {
   camera.updateProjectionMatrix();
   dust.setViewport(h * renderer.getPixelRatio(), camera.fov);
   $('rotate').hidden = !(isTouch && h > w);
+  minimap.rebuild();
 }
 window.addEventListener('resize', resize);
 resize();
@@ -1078,6 +1098,7 @@ function frame(now) {
   if (!paused) dust.update(dt);
   audio.update(car, car.air && car.airTime > 0.06 ? AIR : surface, dt, active);
   if (running) updateHud(dt);
+  if (running && mapOn) minimap.draw(car, replay.on ? replay.along : roadAlong, ghostModel ? ghostPose : null, dt);
   renderer.render(scene, camera);
 }
 // Boot: build today's stage behind the menu, then start the loop.

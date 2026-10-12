@@ -37,7 +37,7 @@
     </div>
   </div>
   <div class="hud-help" id="hud-help">
-    <b>W/S</b> throttle/brake · <b>A/D</b> steer · <b>Space</b> handbrake · <b>C</b> camera · <b>G</b> line assist · <b>R</b> restart · <b>T</b> back to checkpoint · <b>1–5</b> car · <b>M</b> mute · <b>?</b> tuning · <b>Esc</b> pause
+    <b>W/S</b> throttle/brake · <b>A/D</b> steer · <b>Space</b> handbrake · <b>C</b> camera · <b>G</b> line assist · <b>R</b> restart · <b>T</b> back to checkpoint · <b>1–5</b> car · <b>M</b> mute · <b>N</b> map · <b>?</b> tuning · <b>Esc</b> pause
   </div>
   <div class="hud-top" id="hud-timing" hidden>
     <div class="timer" id="hud-time">0:00.00</div>
@@ -46,6 +46,7 @@
   </div>
   <div class="split" id="hud-split"></div>
   <div class="pacenote" id="hud-note" role="img"></div>
+  <canvas class="minimap" id="minimap" role="img" aria-label="Stage map"></canvas>
   <div class="toast" id="toast"></div>
   <div class="replay-tag" id="hud-replay" hidden><span class="rec"></span>REPLAY <b id="replay-time">0:00.00</b><button id="btn-replay-exit" class="btn replay-exit">Exit <small>Esc</small></button></div>
 </div>
@@ -114,6 +115,7 @@
     </label>
     <label class="check"><input type="checkbox" id="opt-ghost" checked> Ghost car (your best run)</label>
     <label class="check"><input type="checkbox" id="opt-drone" checked> Camera drone</label>
+    <label class="check"><input type="checkbox" id="opt-map" checked> Mini map</label>
     <label class="check select">Volume <span class="vol"><input type="range" id="opt-volume" min="0" max="100" step="5" value="80" aria-label="Volume"><output id="opt-volume-val">80%</output></span></label>
     <label class="check"><input type="checkbox" id="opt-mute"> Mute sound</label>
     <label class="check"><input type="checkbox" id="opt-scan" checked> Scanlines</label>
