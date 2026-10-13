@@ -214,6 +214,9 @@ export function weekInfo(date = new Date()) {
   const weekNo = Math.round((d - EPOCH) / (7 * DAY));
   return { weekNo, seeds: weekSeeds(weekNo), label: d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) };
 }
+// Themed weeks: every week in four has its own weather for all five stages.
+const WEEK_THEMES = [null, { id: 'night', label: 'Night week' }, { id: 'rain', label: 'Rain week' }, { id: 'fog', label: 'Fog week' }];
+export const weekTheme = (weekNo) => WEEK_THEMES[((weekNo % 4) + 4) % 4];
 // The week a championship stage belongs to (for "Next stage").
 export function champWeekOf(seed) {
   const weekNo = Math.floor((seed - 1e6) / 50);

@@ -103,9 +103,11 @@ function pickType(rand, prev) {
 }
 
 // ---------- Generator ----------
+// Endurance stages (codes 3000000-3999999) run 5-8 km instead of 2-3 km.
+export const isEndurance = (seed) => seed >= 3e6 && seed < 4e6;
 function tryGenerate(seed, salt) {
   const rand = mulberry32((seed * 7919 + salt * 104729 + 1) >>> 0);
-  const target = 2000 + rand() * 1000;
+  const target = isEndurance(seed) ? 5000 + rand() * 3000 : 2000 + rand() * 1000;
   const xs = [0], zs = [0], hs = [0];
   const grid = new Map();
   const key = (x, z) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
@@ -231,7 +233,7 @@ export function generateStage(seed) {
   const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(brand() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
   const segLen = (sg) => { const k = segs.indexOf(sg); const end = k + 1 < segs.length ? segs[k + 1].start : xs.length; return (end - sg.start) * DS; };
   for (const sg of shuffle(straights)) {
-    if (bumps.filter((b) => b.kind === 'jump').length >= 3) break;
+    if (bumps.filter((b) => b.kind === 'jump').length >= (isEndurance(seed) ? 6 : 3)) break;
     const len = segLen(sg);
     // Needs a run-up and at least 60 m of straight road to land on.
     if (len < 95) continue;
@@ -243,7 +245,7 @@ export function generateStage(seed) {
     bumps.push({ kind: 'jump', at, h: brand.range(1.0, 1.45), up: brand.range(18, 24), down: brand.range(8, 11) });
   }
   for (const sg of shuffle(sweepers)) {
-    if (bumps.filter((b) => b.kind === 'crest').length >= 3) break;
+    if (bumps.filter((b) => b.kind === 'crest').length >= (isEndurance(seed) ? 6 : 3)) break;
     const len = segLen(sg);
     if (len < 50) continue;
     const at = sg.start * DS + len * 0.5;

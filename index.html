@@ -81,8 +81,13 @@
       <button id="btn-daily" class="btn btn-primary">Today's stage<small id="daily-name"></small></button>
       <button id="btn-classics" class="btn">Classic stages<small>Five fixed stages, the same for everyone: compare times</small></button>
       <button id="btn-random" class="btn">Random stage<small>A brand-new road every time</small></button>
+      <button id="btn-endurance" class="btn">Endurance stage<small>A long 5–8 km stage: pace yourself</small></button>
       <button id="btn-practice" class="btn">Practice loop<small>No clock, just driving</small></button>
     </div>
+    <form id="code-form" class="code-form" autocomplete="off">
+      <input id="code-in" inputmode="numeric" maxlength="10" placeholder="Stage code" aria-label="Stage code">
+      <button class="btn btn-sm" type="submit">Drive</button>
+    </form>
     <div class="menu-row">
       <button id="btn-garage" class="btn btn-sm">Garage</button>
       <button id="btn-champ" class="btn btn-sm">Championship</button>
@@ -162,6 +167,7 @@
 <div id="pause" class="overlay" hidden>
   <div class="title-card small">
     <h2 class="logo">PAUSED</h2>
+    <div class="eyebrow" id="pause-code"></div>
     <button id="btn-resume" class="btn btn-primary">Resume</button>
     <button id="btn-reset" class="btn">Back to checkpoint</button>
     <button id="btn-restart" class="btn">Restart stage</button>

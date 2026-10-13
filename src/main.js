@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { CarPhysics, CARS, CAR_ORDER, TUNE } from './car.js';
 import { buildCarModel } from './carModel.js';
 import { Road, createTestRoad, gravelTexture, SURFACES, findShortcuts } from './track.js';
-import { generateStage, stageName } from './stagegen.js';
+import { generateStage, stageName, isEndurance } from './stagegen.js';
 import { buildGate, buildSign, buildCornerWarnings, buildShortcutMarkers } from './gates.js';
 import { dateSeed } from './rng.js';
 import { THEMES, pickTheme } from './themes.js';
@@ -31,7 +31,7 @@ import { Leaderboard } from './leaderboard.js';
 import { buildTrackside } from './trackside.js';
 import { WEATHER, pickWeather, weatherTheme, Precip, Rain } from './weather.js';
 import { planSurfaces, patchAt, buildSurfaces } from './surfaces.js';
-import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, PAINTS, WHEELS, CLASSICS, MEDAL_ICON, classicOf, medalTimes, medalFor, classicsHTML, SPECIAL_PAINTS, LOCKS, unlockState, carLocked, wheelLocked } from './menus.js';
+import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, weekTheme, LAUNCH, PAINTS, WHEELS, CLASSICS, MEDAL_ICON, classicOf, medalTimes, medalFor, classicsHTML, SPECIAL_PAINTS, LOCKS, unlockState, carLocked, wheelLocked } from './menus.js';
 import { buildHazards, HAZARD_DEBUG } from './hazards.js';
 
 const $ = (id) => document.getElementById(id);
@@ -147,6 +147,9 @@ function loadStage(kind, seed = 0) {
   const { theme, hilliness } = kind === 'practice' ? { theme: THEMES.forest, hilliness: 1 } : pickTheme(seed);
   stage.theme = theme;
   weather = kind === 'practice' ? WEATHER.clear : pickWeather(seed, theme);
+  // Themed championship weeks put every stage of the week in the same weather.
+  const wt = kind === 'champ' ? weekTheme(champWeekOf(seed).weekNo) : null;
+  if (wt) weather = WEATHER[wt.id === 'rain' && theme.id === 'snow' ? 'snowfall' : wt.id === 'rain' && theme.id === 'desert' ? 'night' : wt.id];
   if (window.__sideways?.forceWeather) weather = WEATHER[window.__sideways.forceWeather];
   stage.weather = weather;
   world.applyTheme(weatherTheme(theme, weather));
@@ -554,6 +557,7 @@ function stageLabel() {
   if (stage.kind === 'practice') return 'Practice loop';
   if (stage.kind === 'classic') return `${stage.name} · Classic`;
   if (stage.kind === 'champ') return `${stage.name} · Championship ${champIndex(stage.seed)}/5`;
+  if (stage.kind === 'endurance') return `${stage.name} · Endurance #${stage.seed}`;
   if (stage.kind === 'daily') {
     const d = new Date(Math.floor(stage.seed / 10000), Math.floor(stage.seed / 100) % 100 - 1, stage.seed % 100);
     return `${stage.name} · ${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
@@ -563,6 +567,7 @@ function stageLabel() {
 function refreshStageHud() {
   const timed = stage.kind !== 'practice';
   $('hud-stage').textContent = stageLabel();
+  $('pause-code').textContent = stage.kind === 'practice' ? '' : `Stage code ${stage.seed}`;
   $('hud-timing').hidden = !timed;
   $('hud-best').textContent = fmt(best?.time) + (ghostModel ? ' · GHOST' : '');
   [...$('hud-sectors').children].forEach((el, k) => {
@@ -667,6 +672,7 @@ function start(kind = 'daily', seed) {
   audio.init();
   if (kind === 'daily' && seed == null) seed = dateSeed();
   if (kind === 'random' && seed == null) seed = 100000 + Math.floor(Math.random() * 900000);
+  if (kind === 'endurance' && seed == null) seed = 3e6 + Math.floor(Math.random() * 1e6);
   if (kind !== stage.kind || seed !== stage.seed || !road || stage.detail !== qualityLevel()) loadStage(kind, seed);
   else restartRun();
   $('start').hidden = true;
@@ -814,6 +820,28 @@ function restartKey() {
 
 $('btn-daily').addEventListener('click', () => pickThenStart('daily'));
 $('btn-random').addEventListener('click', () => pickThenStart('random'));
+$('btn-endurance').addEventListener('click', () => pickThenStart('endurance'));
+// Stage codes: every stage has a number; typing it in drives that same road.
+function kindOfCode(n) {
+  if (!Number.isInteger(n) || n <= 0) return null;
+  if (classicOf(n)) return 'classic';
+  if (isEndurance(n)) return 'endurance';
+  if (n >= 1e6 && n < 2e6) return 'champ';
+  if (n >= 100000 && n < 1e6) return 'random';
+  if (n >= 20000101 && n <= 21001231) {
+    const d = new Date(Math.floor(n / 10000), Math.floor(n / 100) % 100 - 1, n % 100);
+    if (dateSeed(d) === n && n >= LAUNCH && n <= dateSeed()) return 'daily';
+  }
+  return null;
+}
+$('code-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const n = Number($('code-in').value.replace(/\D/g, ''));
+  const kind = kindOfCode(n);
+  if (!kind) { toast('UNKNOWN STAGE CODE', 1400); return; }
+  $('code-in').blur();
+  pickThenStart(kind, n);
+});
 $('btn-practice').addEventListener('click', () => pickThenStart('practice'));
 $('btn-resume').addEventListener('click', () => setPaused(false));
 $('btn-reset').addEventListener('click', () => { resetCar(); setPaused(false); });
@@ -1570,6 +1598,8 @@ function openGarage(mode, label = '') {
 function stageTitle(kind, seed) {
   if (kind === 'practice') return 'Practice loop';
   if (kind === 'random' && seed == null) return 'Random stage';
+  if (kind === 'endurance' && seed == null) return 'Endurance stage';
+  if (kind === 'endurance') return `${stageName(seed)} · Endurance`;
   if (kind === 'daily' && seed == null) seed = dateSeed();
   const name = stageName(seed);
   if (kind === 'classic') return `${name} · Classic`;
@@ -1631,7 +1661,8 @@ $('cal-grid').addEventListener('click', (e) => {
 let week = weekInfo();
 function renderChamp() {
   week = weekInfo();
-  $('champ-week').textContent = `Week of ${week.label}`;
+  const wt = weekTheme(week.weekNo);
+  $('champ-week').textContent = `Week of ${week.label}${wt ? ` · ${wt.label}` : ''}`;
   const c = champHTML(week);
   $('champ-table').innerHTML = c.html;
   $('champ-total').textContent = c.total;
