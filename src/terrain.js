@@ -57,13 +57,16 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
     H[j * nx + i] = heightRaw(minX + i * cell, minZ + j * cell);
   }
 
-  // Bilinear sample of the grid (matches the mesh closely).
+  // Height on the mesh's own triangles (PlaneGeometry splits each cell
+  // along the (i+1, j) - (i, j+1) diagonal), so things placed on the ground
+  // sit exactly on what you see, even on steep slopes.
   const heightAt = (x, z) => {
     const fx = (x - minX) / cell, fz = (z - minZ) / cell;
     const i = Math.max(0, Math.min(nx - 2, Math.floor(fx))), j = Math.max(0, Math.min(nz - 2, Math.floor(fz)));
     const tx = Math.max(0, Math.min(1, fx - i)), tz = Math.max(0, Math.min(1, fz - j));
-    const a = H[j * nx + i], b = H[j * nx + i + 1], c = H[(j + 1) * nx + i], d = H[(j + 1) * nx + i + 1];
-    return (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz;
+    const A = H[j * nx + i], D = H[j * nx + i + 1], B = H[(j + 1) * nx + i], C = H[(j + 1) * nx + i + 1];
+    if (tx + tz <= 1) return A + (D - A) * tx + (B - A) * tz;
+    return C + (B - C) * (1 - tx) + (D - C) * (1 - tz);
   };
 
   // Mesh

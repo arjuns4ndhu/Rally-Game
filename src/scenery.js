@@ -169,6 +169,8 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
   ground.position.set(cx, terrain.minH - 3, cz);
   group.add(ground);
   const groundY = terrain.heightAt;
+  // Lowest ground under a footprint, so nothing hangs off a slope.
+  const baseY = (x, z, r) => Math.min(groundY(x, z), groundY(x + r, z), groundY(x - r, z), groundY(x, z + r), groundY(x, z - r));
 
   // Keep things off the road, and off any shortcut tracks.
   const clear = (x, z, r) => {
@@ -206,7 +208,7 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
     const sc = 0.7 + rand() * 0.8;
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * Math.PI * 2);
     s.set(sc, sc * (0.85 + rand() * 0.4), sc);
-    p.set(x, groundY(x, z) - 0.3, z);
+    p.set(x, baseY(x, z, 0.6 * sc) - 0.3, z);
     const item = { x, z, r: kit.r * sc, m: new THREE.Matrix4().compose(p, q, s), color: kit.color(rand) };
     (byKind[kind] ||= []).push(item);
     return item;
@@ -240,7 +242,7 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
     const sc = 0.3 + Math.pow(rand(), 2) * 1.6;
     q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 3, rand() * 3));
     s.set(sc * (1 + rand()), sc * 0.7, sc * (1 + rand()));
-    p.set(x, groundY(x, z) + sc * 0.15, z);
+    p.set(x, baseY(x, z, 0.8 * sc) + sc * 0.15, z);
     const color = new THREE.Color().setHSL(rh, rs + rand() * 0.1, rl - 0.08 + rand() * 0.2);
     // Small stones are drivable; only proper boulders block the car.
     return { x, z, r: sc > 0.55 ? Math.min(s.x, s.z) * 0.85 : 0, m: new THREE.Matrix4().compose(p, q, s), color };
