@@ -460,6 +460,7 @@ function finishRun() {
   audio.beep(660, 0.12); setTimeout(() => audio.beep(990, 0.25), 140);
   $('fin-stage').textContent = stageLabel();
   $('btn-next').hidden = !(stage.kind === 'champ' && champIndex(stage.seed) < 5);
+  $('btn-retry').classList.toggle('btn-primary', $('btn-next').hidden);
   // Classic stages: medal for this run, and the next target to chase.
   const cl = stage.kind === 'classic' ? classicOf(stage.seed) : null;
   const medal = cl ? medalFor(cl, run.t, stage.finish - stage.start) : null;
@@ -743,7 +744,8 @@ $('btn-reset').addEventListener('click', () => { resetCar(); setPaused(false); }
 $('btn-restart').addEventListener('click', () => { restartKey(); setPaused(false); });
 $('btn-pmenu').addEventListener('click', toMenu);
 $('btn-retry').addEventListener('click', () => { restartRun(); });
-$('btn-next').addEventListener('click', (e) => { e.currentTarget.blur(); pickThenStart('champ', champWeekOf(stage.seed).seeds[champIndex(stage.seed)]); });
+// Straight on to the next championship stage in the same car.
+$('btn-next').addEventListener('click', (e) => { e.currentTarget.blur(); start('champ', champWeekOf(stage.seed).seeds[champIndex(stage.seed)]); });
 $('btn-share').addEventListener('click', (e) => { e.currentTarget.blur(); copyResult(); });
 $('btn-replay').addEventListener('click', (e) => { e.currentTarget.blur(); startReplay(); });
 $('btn-replay-exit').addEventListener('click', (e) => { e.currentTarget.blur(); stopReplay(); });
@@ -1521,7 +1523,13 @@ function renderChamp() {
   const c = champHTML(week);
   $('champ-table').innerHTML = c.html;
   $('champ-total').textContent = c.total;
+  // Continue: the first stage you haven't finished yet.
+  const next = week.seeds.findIndex((sd) => !localStorage.getItem(`sideways.best.${sd}`));
+  champNext = next < 0 ? 0 : next;
+  $('champ-continue').textContent = next < 0 ? 'Run it again from stage 1 ▶' : `Continue: stage ${next + 1} of 5 ▶`;
 }
+let champNext = 0;
+$('champ-continue').addEventListener('click', () => { closePages(); pickThenStart('champ', week.seeds[champNext]); });
 $('btn-champ').addEventListener('click', () => { openPage('champ'); renderChamp(); });
 $('champ-table').addEventListener('click', (e) => {
   const b = e.target.closest('[data-champ]');
