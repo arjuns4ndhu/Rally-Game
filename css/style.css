@@ -388,3 +388,6 @@ button.cal-day:hover, button.cal-day:focus-visible { border-color: var(--accent)
 .fin-medal { font-family: var(--font-display); font-size: 20px; letter-spacing: 0.04em; color: var(--accent); }
 .fin-medal small { display: block; font-family: var(--font-ui); font-size: 13px; color: var(--muted); letter-spacing: 0; }
 @media (max-width: 520px) { .classics-table .medals { display: none; } }
+
+.garage-actions { display: flex; gap: 8px; }
+#garage-go { min-width: 130px; }

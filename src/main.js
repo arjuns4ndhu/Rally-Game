@@ -734,19 +734,19 @@ function restartKey() {
   else { restartRun(); toast('RESTART', 800); }
 }
 
-$('btn-daily').addEventListener('click', () => start('daily'));
-$('btn-random').addEventListener('click', () => start('random'));
-$('btn-practice').addEventListener('click', () => start('practice'));
+$('btn-daily').addEventListener('click', () => pickThenStart('daily'));
+$('btn-random').addEventListener('click', () => pickThenStart('random'));
+$('btn-practice').addEventListener('click', () => pickThenStart('practice'));
 $('btn-resume').addEventListener('click', () => setPaused(false));
 $('btn-reset').addEventListener('click', () => { resetCar(); setPaused(false); });
 $('btn-restart').addEventListener('click', () => { restartKey(); setPaused(false); });
 $('btn-pmenu').addEventListener('click', toMenu);
 $('btn-retry').addEventListener('click', () => { restartRun(); });
-$('btn-next').addEventListener('click', (e) => { e.currentTarget.blur(); start('champ', champWeekOf(stage.seed).seeds[champIndex(stage.seed)]); });
+$('btn-next').addEventListener('click', (e) => { e.currentTarget.blur(); pickThenStart('champ', champWeekOf(stage.seed).seeds[champIndex(stage.seed)]); });
 $('btn-share').addEventListener('click', (e) => { e.currentTarget.blur(); copyResult(); });
 $('btn-replay').addEventListener('click', (e) => { e.currentTarget.blur(); startReplay(); });
 $('btn-replay-exit').addEventListener('click', (e) => { e.currentTarget.blur(); stopReplay(); });
-$('btn-new').addEventListener('click', () => start('random'));
+$('btn-new').addEventListener('click', () => pickThenStart('random'));
 $('btn-fmenu').addEventListener('click', toMenu);
 {
   const ds = dateSeed(), w = pickWeather(ds, pickTheme(ds).theme);
@@ -838,14 +838,19 @@ input.on('key', (code, key) => {
   if (key === '?' || code === 'Slash') { $('debug').hidden = !$('debug').hidden; return; }
   if (code === 'KeyN') { setMap(!mapOn); toast(mapOn ? 'MAP ON' : 'MAP OFF', 800); return; }
   if (code === 'KeyM') { setMuted(!muted); toast(muted ? 'SOUND OFF' : 'SOUND ON', 800); return; }
-  if (!running) { if (code === 'Enter') start('daily'); return; }
+  if (!running) {
+    if (code === 'Enter' && !$('garage').hidden) $('garage-go').click();
+    else if (code === 'Enter' && !$('start').hidden) pickThenStart('daily');
+    return;
+  }
   if (paused) return;
   if (code === 'KeyC') toast(rig.cycle().toUpperCase() + ' CAM', 800);
   if (code === 'KeyG') { setAssist(!assist.on); toast(assist.on ? `LINE ASSIST ${assist.level.toUpperCase()}` : 'LINE ASSIST OFF', 1000); }
   if (code === 'KeyR') restartKey();
   if (code === 'KeyT') resetCar();
   const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].indexOf(code);
-  if (n >= 0) setCar(CAR_ORDER[n]);
+  // Car is chosen in the garage before a timed stage; quick swaps only in practice.
+  if (n >= 0) { if (stage.kind === 'practice') setCar(CAR_ORDER[n]); else toast('PICK YOUR CAR IN THE GARAGE', 1100); }
 });
 input.on('action', (act) => {
   if (act === 'camera') toast(rig.cycle().toUpperCase() + ' CAM', 800);
@@ -1340,6 +1345,7 @@ function openPage(id) {
   $(id).querySelector('[data-back]')?.focus();
 }
 function closePages() {
+  if (pendingStart && !$('garage').hidden) pendingStart = null;
   for (const id of ['garage', 'past', 'champ', 'statsview', 'classics']) $(id).hidden = true;
   preview.stop();
   $('start').hidden = false;
@@ -1353,11 +1359,41 @@ function renderGarage() {
   $('garage-wheels').innerHTML = WHEELS.map((w) => `<button class="chip${w === garage.wheels ? ' on' : ''}" data-wheels="${w}">${w}</button>`).join('');
   $('garage-color').value = garage.color;
 }
-$('btn-garage').addEventListener('click', () => {
+// The garage doubles as the car picker: you always land here first, and
+// every stage goes through it so you choose your car before you drive.
+let pendingStart = null;
+function openGarage(mode, label = '') {
+  pendingStart = mode === 'pick' ? pendingStart : null;
+  $('garage-for').textContent = mode === 'pick' ? `Next: ${label}` : 'Choose your car';
+  $('garage-go').textContent = mode === 'pick' ? 'Drive ▶' : 'Continue ▶';
+  $('garage-back').hidden = mode === 'boot';
   openPage('garage');
   renderGarage();
   preview.show(garage.car, garage);
   preview.start();
+  $('garage-go').focus();
+}
+function stageTitle(kind, seed) {
+  if (kind === 'practice') return 'Practice loop';
+  if (kind === 'random' && seed == null) return 'Random stage';
+  if (kind === 'daily' && seed == null) seed = dateSeed();
+  const name = stageName(seed);
+  if (kind === 'classic') return `${name} · Classic`;
+  if (kind === 'champ') return `${name} · Championship ${champIndex(seed)}/5`;
+  return name;
+}
+function pickThenStart(kind, seed) {
+  if (running) toMenu();
+  pendingStart = { kind, seed };
+  openGarage('pick', stageTitle(kind, seed));
+}
+$('btn-garage').addEventListener('click', () => openGarage('browse'));
+$('garage-go').addEventListener('click', (e) => {
+  e.currentTarget.blur();
+  const p = pendingStart;
+  pendingStart = null;
+  closePages();
+  if (p) start(p.kind, p.seed);
 });
 $('garage').addEventListener('click', (e) => {
   const c = e.target.closest('[data-car]'), p = e.target.closest('[data-paint]'), w = e.target.closest('[data-wheels]');
@@ -1391,7 +1427,7 @@ $('cal-grid').addEventListener('click', (e) => {
   const d = e.target.closest('[data-seed]');
   if (!d) return;
   closePages();
-  start('daily', +d.dataset.seed);
+  pickThenStart('daily', +d.dataset.seed);
 });
 
 let week = weekInfo();
@@ -1407,7 +1443,7 @@ $('champ-table').addEventListener('click', (e) => {
   const b = e.target.closest('[data-champ]');
   if (!b) return;
   closePages();
-  start('champ', week.seeds[+b.dataset.champ]);
+  pickThenStart('champ', week.seeds[+b.dataset.champ]);
 });
 
 function renderClassics() {
@@ -1418,9 +1454,11 @@ $('classics-table').addEventListener('click', (e) => {
   const b = e.target.closest('[data-classic]');
   if (!b) return;
   closePages();
-  start('classic', CLASSICS[+b.dataset.classic].seed);
+  pickThenStart('classic', CLASSICS[+b.dataset.classic].seed);
 });
 $('btn-stats').addEventListener('click', () => { stats.save(); openPage('statsview'); $('stats-grid').innerHTML = statsHTML(stats.d); });
+
+openGarage('boot');
 
 // Exposed for automated smoke tests.
 function stepSim(seconds, inp) {

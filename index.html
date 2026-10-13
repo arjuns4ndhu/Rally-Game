@@ -72,7 +72,7 @@
 </div>
 
 <!-- Title / start -->
-<div id="start" class="overlay">
+<div id="start" class="overlay" hidden>
   <div class="title-card">
     <div class="eyebrow">Daily gravel rally</div>
     <h1 class="logo">SIDE<span>WAYS</span></h1>
@@ -101,9 +101,12 @@
 </div>
 
 <!-- Garage -->
-<div id="garage" class="overlay page" hidden>
+<div id="garage" class="overlay page">
   <div class="panel">
-    <div class="panel-head"><h2 class="logo">GARAGE</h2><button class="btn btn-sm" data-back>Done</button></div>
+    <div class="panel-head">
+      <div><div class="eyebrow" id="garage-for">Choose your car</div><h2 class="logo">GARAGE</h2></div>
+      <div class="garage-actions"><button class="btn btn-sm" id="garage-back" data-back>Back</button><button class="btn btn-sm btn-primary" id="garage-go">Continue ▶</button></div>
+    </div>
     <div class="garage">
       <div class="garage-cars" id="garage-cars" role="listbox" aria-label="Cars"></div>
       <div class="garage-main">
