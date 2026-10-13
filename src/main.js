@@ -28,7 +28,8 @@ const RETRO_LINES = { off: 0, light: 360, heavy: 240 };
 import { MiniMap } from './minimap.js';
 import { Stats } from './stats.js';
 import { Leaderboard } from './leaderboard.js';
-import { WEATHER, pickWeather, weatherTheme, Precip } from './weather.js';
+import { buildTrackside } from './trackside.js';
+import { WEATHER, pickWeather, weatherTheme, Precip, Rain } from './weather.js';
 import { planSurfaces, patchAt, buildSurfaces } from './surfaces.js';
 import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, PAINTS, WHEELS, CLASSICS, MEDAL_ICON, classicOf, medalTimes, medalFor, classicsHTML } from './menus.js';
 import { buildHazards, HAZARD_DEBUG } from './hazards.js';
@@ -58,6 +59,7 @@ const stats = new Stats();
 const board = new Leaderboard();
 board.init();
 const precip = new Precip(scene);
+const rain = new Rain(scene);
 // Headlights, used at night and dusk.
 const headlights = [-1, 1].map(() => {
   const l = new THREE.SpotLight(0xfff0d0, 0, 90, 0.5, 0.55, 1.2);
@@ -123,6 +125,8 @@ const PENALTY = 5;            // seconds added for a respawn
 const RESPAWN_DIST = 50;      // metres off the road before you're put back
 let road = null, terrain = null, stageGroup = null, lineMesh = null;
 let hazards = null;  // rare fallen trees / landslides
+let trackside = null; // crowds, tape, hay bales, helicopter
+let builtObstacles = [];
 let shortcuts = [];   // Road objects for rough cut-through tracks
 const trackMat = new THREE.MeshStandardMaterial({ roughness: 1, vertexColors: true, flatShading: true });
 const stage = { kind: 'practice', seed: 0, name: '', start: 0, finish: 0, cps: [] };
@@ -146,7 +150,8 @@ function loadStage(kind, seed = 0) {
   if (window.__sideways?.forceWeather) weather = WEATHER[window.__sideways.forceWeather];
   stage.weather = weather;
   world.applyTheme(weatherTheme(theme, weather));
-  precip.set(weather.id === 'rain' ? 'rain' : weather.id === 'snowfall' ? 'snow' : null);
+  precip.set(weather.id === 'snowfall' ? 'snow' : null);
+  rain.set(weather.id === 'rain', precip.density ?? 1);
   const lamps = weather.dark ? 140 : weather.id === 'dusk' || weather.id === 'fog' ? 35 : 0;
   headlights.forEach((l) => { l.intensity = lamps; });
   // Wet gravel is darker and a little shiny.
@@ -189,6 +194,7 @@ function loadStage(kind, seed = 0) {
   const built = buildScenery(road, kind === 'practice' ? 1 : seed, { flat, theme, hilliness, avoid: cuts.map((c) => c.pts), detail: QUALITY[qualityLevel()].detail });
   stage.detail = qualityLevel();
   terrain = built.terrain;
+  builtObstacles = built.obstacles;
   buildObstacleGrid(built.obstacles);
   stageGroup.add(built.group);
   // Verge shoulders slope from the road edge down to the ground on each side.
@@ -249,10 +255,17 @@ function loadStage(kind, seed = 0) {
     seed, theme, groundY: worldGround, start: stage.start, finish: stage.finish, cps: stage.cps, corners: road.findSharpCorners(),
   });
   if (hazards) stageGroup.add(hazards.group);
+  // Crowds and hay bales (timed stages only).
+  trackside = null;
+  if (kind !== 'practice') {
+    trackside = buildTrackside(road, { seed, corners: road.findSharpCorners(), start: stage.start, finish: stage.finish, groundY: worldGround });
+    stageGroup.add(trackside.group);
+    buildObstacleGrid([...builtObstacles, ...trackside.obstacles]);
+  }
   scene.add(stageGroup);
   minimap.build(road, kind === 'practice'
     ? { closed: true }
-    : { start: stage.start, finish: stage.finish, cps: stage.cps });   // shortcuts stay a secret
+    : { start: stage.start, finish: stage.finish, cps: stage.cps, shortcuts });
   codriver.load(buildPaceNotes(road, { start: stage.start, finish: stage.kind === 'practice' ? road.length : stage.finish }));
   marks.clear();
   restartRun();
@@ -1478,7 +1491,8 @@ function frame(now) {
   else rig.update(car, dt);
   world.sky.position.copy(camera.position);
   if (!paused) { dust.update(dt); updateFlyingRocks(dt); }
-  if (!paused) precip.update(dt, camera, { x: car.vx, z: car.vz });
+  if (!paused && trackside) trackside.update(dt, car.x, car.z);
+  if (!paused) { precip.update(dt, camera, { x: car.vx, z: car.vz }); rain.update(dt, camera, { x: car.vx, z: car.vz }, car.y); }
   wasSplash = !!surface.splash;
   if (headlights[0].intensity > 0) {
     const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw), y = (car.y ?? 0), f = car.spec.length / 2 + 0.25;

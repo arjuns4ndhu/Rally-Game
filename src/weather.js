@@ -126,3 +126,123 @@ export class Precip {
     this.mesh.geometry.attributes.position.needsUpdate = true;
   }
 }
+
+// High-quality rain, animated entirely on the GPU: soft-edged streaks
+// aligned with their fall (tilted by wind and by your own speed), plus
+// splash rings on the ground around the car.
+export class Rain {
+  constructor(scene) {
+    this.scene = scene;
+    this.group = null;
+  }
+
+  set(on, density = 1) {
+    if (this.group) {
+      this.scene.remove(this.group);
+      this.group.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
+      this.group = null;
+    }
+    if (!on) return;
+    this.group = new THREE.Group();
+    this.uniforms = {
+      uTime: { value: 0 }, uCenter: { value: new THREE.Vector3() }, uWind: { value: new THREE.Vector2(2.5, 0) },
+      uGround: { value: 0 }, uOpacity: { value: 0.45 },
+    };
+    const logV = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
+    const logF = '#include <common>\n#include <logdepthbuf_pars_fragment>\n';
+
+    // Streaks.
+    const N = Math.round(3200 * density);
+    const quad = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
+    const g = new THREE.InstancedBufferGeometry();
+    g.index = quad.index;
+    g.setAttribute('position', quad.attributes.position);
+    g.setAttribute('uv', quad.attributes.uv);
+    const off = new Float32Array(N * 4);
+    for (let i = 0; i < N; i++) off.set([Math.random() * 40, Math.random() * 24, Math.random() * 40, 0.6 + Math.random() * 0.8], i * 4);
+    g.setAttribute('aOff', new THREE.InstancedBufferAttribute(off, 4));
+    g.instanceCount = N;
+    const streaks = new THREE.Mesh(g, new THREE.ShaderMaterial({
+      uniforms: this.uniforms, transparent: true, depthWrite: false,
+      vertexShader: logV + `
+        uniform float uTime; uniform vec3 uCenter; uniform vec2 uWind;
+        attribute vec4 aOff; varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          float speed = 16.0 + aOff.w * 8.0;
+          vec3 box = vec3(40.0, 24.0, 40.0);
+          vec3 p;
+          p.x = uCenter.x + mod(aOff.x + uWind.x * uTime * 0.3 - uCenter.x, box.x) - box.x * 0.5;
+          p.z = uCenter.z + mod(aOff.z + uWind.y * uTime * 0.3 - uCenter.z, box.z) - box.z * 0.5;
+          p.y = uCenter.y - 8.0 + mod(aOff.y - uTime * speed, box.y);
+          vec3 dir = normalize(vec3(uWind.x, -speed, uWind.y));
+          vec3 toCam = normalize(cameraPosition - p);
+          vec3 side = normalize(cross(dir, toCam));
+          float len = 0.35 + aOff.w * 0.45, wid = 0.012 + aOff.w * 0.01;
+          vec3 world = p + side * position.x * wid - dir * position.y * len;
+          gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+          #include <logdepthbuf_vertex>
+        }`,
+      fragmentShader: logF + `
+        uniform float uOpacity; varying vec2 vUv;
+        void main() {
+          #include <logdepthbuf_fragment>
+          float a = uOpacity * smoothstep(0.0, 0.35, vUv.y) * (1.0 - vUv.y * 0.6) * (1.0 - abs(vUv.x - 0.5) * 2.0);
+          gl_FragColor = vec4(0.82, 0.87, 0.93, a);
+        }`,
+    }));
+    streaks.frustumCulled = false;
+    this.group.add(streaks);
+
+    // Splash rings on the ground near the car.
+    const M = Math.round(260 * density);
+    const sq = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    const sg = new THREE.InstancedBufferGeometry();
+    sg.index = sq.index;
+    sg.setAttribute('position', sq.attributes.position);
+    sg.setAttribute('uv', sq.attributes.uv);
+    const so = new Float32Array(M * 3);
+    for (let i = 0; i < M; i++) so.set([Math.random() * 28, Math.random() * 28, Math.random()], i * 3);
+    sg.setAttribute('aOff', new THREE.InstancedBufferAttribute(so, 3));
+    sg.instanceCount = M;
+    const splashes = new THREE.Mesh(sg, new THREE.ShaderMaterial({
+      uniforms: this.uniforms, transparent: true, depthWrite: false,
+      vertexShader: logV + `
+        uniform float uTime; uniform vec3 uCenter; uniform float uGround;
+        attribute vec3 aOff; varying vec2 vUv; varying float vT;
+        void main() {
+          vUv = uv;
+          float cyc = uTime * 2.2 + aOff.z;
+          vT = fract(cyc);
+          float k = floor(cyc);
+          // Each cycle lands somewhere new.
+          vec2 jit = vec2(fract(sin(k * 12.9898 + aOff.x) * 43758.5), fract(sin(k * 78.233 + aOff.y) * 43758.5)) * 6.0;
+          vec3 p = vec3(uCenter.x + mod(aOff.x + jit.x - uCenter.x, 28.0) - 14.0, uGround + 0.06, uCenter.z + mod(aOff.y + jit.y - uCenter.z, 28.0) - 14.0);
+          float s = 0.08 + vT * 0.32;
+          gl_Position = projectionMatrix * viewMatrix * vec4(p + position * s, 1.0);
+          #include <logdepthbuf_vertex>
+        }`,
+      fragmentShader: logF + `
+        uniform float uOpacity; varying vec2 vUv; varying float vT;
+        void main() {
+          #include <logdepthbuf_fragment>
+          float r = length(vUv - 0.5) * 2.0;
+          float ring = smoothstep(0.65, 0.85, r) * (1.0 - smoothstep(0.85, 1.0, r));
+          gl_FragColor = vec4(0.85, 0.9, 0.95, ring * (1.0 - vT) * uOpacity * 1.6);
+        }`,
+    }));
+    splashes.frustumCulled = false;
+    this.group.add(splashes);
+    this.scene.add(this.group);
+  }
+
+  update(dt, cam, carVel, groundY) {
+    if (!this.group) return;
+    const u = this.uniforms;
+    u.uTime.value += dt;
+    u.uCenter.value.copy(cam.position);
+    // Streaks lean into the wind and against your motion.
+    u.uWind.value.set(2.5 - (carVel?.x || 0) * 0.6, -(carVel?.z || 0) * 0.6);
+    u.uGround.value = groundY ?? cam.position.y - 2;
+  }
+}
