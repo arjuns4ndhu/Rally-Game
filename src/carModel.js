@@ -223,7 +223,44 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   const fw = prof.bigFlares ? 0.22 : 0.15;
   const tw = WR > 0.38 ? 0.32 : 0.25, hw = tw / 2;
   const wheelX = prof.flares ? W / 2 + fw - 0.07 - hw : W / 2 + 0.01 - hw;
-  const bodyMesh = new THREE.Mesh(extrudeProfile(bodyPts, W, rnd ? 0.06 + rnd * 0.015 : 0.05, rnd), paint);
+  // Body in three slices so the wheel wells can be real openings: two outer
+  // side panels with half-round cutouts over each wheel, and a solid centre
+  // that forms the back wall of each well. The centre overlaps the sides by
+  // twice the bevel so no seam shows on top.
+  const bev = rnd ? 0.06 + rnd * 0.015 : 0.05;
+  const ar = WR + 0.07;                               // wheel-well radius
+  const sideW = Math.max(W / 2 - (wheelX - hw) + 0.06, 3.2 * bev + 0.02);
+  const y0 = bodyPts[bodyPts.length - 1][1];          // body's bottom edge
+  const well = (wz) => {
+    const dy = y0 - WR;
+    if (Math.abs(dy) >= ar) return [];
+    const c = Math.sqrt(ar * ar - dy * dy), t0 = Math.atan2(dy, c), out = [];
+    for (let i = 0; i <= 16; i++) { const t = t0 + (Math.PI - 2 * t0) * i / 16; out.push([wz + ar * Math.cos(t), WR + ar * Math.sin(t)]); }
+    return out;
+  };
+  // The outline runs rear-bottom -> over the top -> front-bottom, so the
+  // closing bottom edge goes front to rear: front well first, then rear.
+  const cutPts = [...bodyPts, ...well(spec.a), ...well(-spec.b)];
+  const bodyMesh = new THREE.Mesh(extrudeProfile(bodyPts, W - 2 * sideW + 4 * bev, bev, rnd), paint);
+  for (const side of [-1, 1]) {
+    const panel = new THREE.Mesh(extrudeProfile(cutPts, sideW, bev, rnd), paint);
+    panel.position.x = side * (W / 2 - sideW / 2);
+    panel.castShadow = true;
+    body.add(panel);
+  }
+  // Dark liner over each wheel and a dark back wall, so the openings read as wells.
+  {
+    const linerMat = new THREE.MeshStandardMaterial({ color: 0x141518, roughness: 0.95, side: THREE.DoubleSide });
+    mats.push(linerMat);
+    const liner = new THREE.CylinderGeometry(ar - 0.01, ar - 0.01, sideW, 18, 1, true, 0, Math.PI);
+    liner.rotateZ(Math.PI / 2);
+    const wall = new THREE.CircleGeometry(ar - 0.01, 18, 0, Math.PI);
+    wall.rotateY(Math.PI / 2);   // upper half-disc in the car's side plane
+    for (const side of [-1, 1]) for (const wz of [spec.a, -spec.b]) {
+      add(liner, linerMat, side * (W / 2 - sideW / 2), WR, wz);
+      add(wall, linerMat, side * (W / 2 - sideW + 0.005), WR, wz);
+    }
+  }
   const glassMesh = new THREE.Mesh(extrudeProfile(g, W - (rnd ? 0.24 + rnd * 0.02 : 0.18), rnd ? 0.08 : 0.04, Math.min(rnd, 2)), glass);
   bodyMesh.castShadow = glassMesh.castShadow = true;
   body.add(bodyMesh, glassMesh);
@@ -241,7 +278,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     add(new THREE.BoxGeometry(0.16, 0.012, roofLen), trim, sx, roofY + 0.032, roofZ);
   }
   for (const side of [-1, 1]) {
-    add(new THREE.BoxGeometry(0.01, 0.1, (front - rear) * 0.82), trim, side * (W / 2 + 0.003), 0.5, (front + rear) / 2 + 0.05);
+    add(new THREE.BoxGeometry(0.01, 0.1, (front - rear) * 0.82), trim, side * (W / 2 + 0.003), Math.max(0.5, WR + ar + 0.06), (front + rear) / 2 + 0.05);
   }
 
   // Windscreen sun-strip.
@@ -334,7 +371,6 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   // Box-flared wheel arches and mud flaps.
   if (prof.flares) {
     // Curved arch flares over each wheel: a paint shell with a dark lip.
-    const ar = WR + 0.07;
     const archGeo = new THREE.CylinderGeometry(ar, ar, fw, 18, 1, true, 0, Math.PI);
     archGeo.rotateZ(Math.PI / 2);
     const lipGeo = new THREE.TorusGeometry(ar, 0.03, 4, 18, Math.PI);
@@ -362,7 +398,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     for (const side of [-1, 1]) {
       add(new THREE.BoxGeometry(0.02, Math.max(0.1, py1 - py0), 0.09), paint, side * ((W - (rnd ? 0.24 + rnd * 0.02 : 0.18)) / 2 + 0.005), (py0 + py1) / 2, pz);
       add(new THREE.BoxGeometry(0.012, 0.42, 0.015), dark, side * (W / 2 + 0.004), 0.58, g[3][0] - 0.05);
-      add(new THREE.BoxGeometry(0.012, 0.42, 0.015), dark, side * (W / 2 + 0.004), 0.58, pz - 0.05);
+      add(new THREE.BoxGeometry(0.012, 0.42, 0.015), dark, side * (W / 2 + 0.004), 0.58, g[1][0] + 0.12);   // rear door edge, clear of the number
     }
   }
   // Front grille.
