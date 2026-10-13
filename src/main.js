@@ -17,7 +17,13 @@ import { GhostRecorder, saveGhost, loadGhost, samplePose } from './ghost.js';
 import { buildPaceNotes, CoDriver } from './pacenotes.js';
 import { notesHTML } from './paceicons.js';
 import { Drone } from './drone.js';
-import { facet } from './retro.js';
+import { facet, enableWobble, RetroPass } from './retro.js';
+
+// Retro settings: low-res pixels, dithered colour, vertex wobble.
+const retroSet = { pixels: 'light', dither: true, wobble: true };
+try { Object.assign(retroSet, JSON.parse(localStorage.getItem('sideways.retro') || '{}')); } catch { /* ignore */ }
+if (retroSet.wobble) enableWobble();          // must happen before anything compiles
+const RETRO_LINES = { off: 0, light: 360, heavy: 240 };
 import { MiniMap } from './minimap.js';
 import { Stats } from './stats.js';
 import { WEATHER, pickWeather, weatherTheme, Precip } from './weather.js';
@@ -828,6 +834,12 @@ $('opt-quality').addEventListener('change', (e) => {
   if (stage.detail !== qualityLevel()) toast('SCENERY DETAIL: NEXT RESTART', 1400);
   e.target.blur();
 });
+$('opt-pixels').value = retroSet.pixels;
+$('opt-pixels').addEventListener('change', (e) => { retroSet.pixels = e.target.value; retro.lines = RETRO_LINES[retroSet.pixels]; saveRetro(); resize(); e.target.blur(); });
+$('opt-dither').checked = !!retroSet.dither;
+$('opt-dither').addEventListener('change', (e) => { retroSet.dither = retro.dither = e.target.checked; saveRetro(); resize(); });
+$('opt-wobble').checked = !!retroSet.wobble;
+$('opt-wobble').addEventListener('change', (e) => { retroSet.wobble = e.target.checked; saveRetro(); toast('WOBBLE: RELOADING', 900); setTimeout(() => location.reload(), 700); });
 let droneOn = true;
 try { droneOn = localStorage.getItem('sideways.drone') !== '0'; } catch { /* ignore */ }
 drone.enabled = droneOn;
@@ -873,12 +885,17 @@ if (isTouch) {
 }
 
 // ---------- Resize ----------
+const retro = new RetroPass();
+retro.lines = RETRO_LINES[retroSet.pixels] ?? 360;
+retro.dither = !!retroSet.dither;
+function saveRetro() { try { localStorage.setItem('sideways.retro', JSON.stringify(retroSet)); } catch { /* ignore */ } }
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setSize(w, h, false);
+  retro.setSize(w, h, renderer.getPixelRatio());
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  dust.setViewport(h * renderer.getPixelRatio(), camera.fov);
+  dust.setViewport(retro.active ? retro.size[1] : h * renderer.getPixelRatio(), camera.fov);
   $('rotate').hidden = !(isTouch && h > w);
   minimap.rebuild();
 }
@@ -1420,7 +1437,7 @@ function frame(now) {
   audio.update(car, car.air && car.airTime > 0.06 ? AIR : surface, dt, active);
   if (running) updateHud(dt);
   if (running && mapOn) minimap.draw(car, replay.on ? replay.along : roadAlong, ghostModel ? ghostPose : null, dt);
-  renderer.render(scene, camera);
+  retro.render(renderer, scene, camera);
 }
 // Boot: build today's stage behind the menu, then start the loop.
 loadStage('daily', dateSeed());

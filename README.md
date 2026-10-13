@@ -41,6 +41,7 @@ Driving: tap the brake while turning to kick the rear out. Hold the throttle to 
 - **Garage**: five cars with stat bars, paint swatches or any colour, four wheel styles, a rotating 3D preview. Crashes dent the bodywork (looks only).
 - **Classic stages**: five fixed stages, one per theme, the same for everyone and never rotated, so you can compare times with friends. Hazard-free, with bronze/silver/gold target times.
 - **Past stages** calendar back to launch, a weekly **championship** of five stages (one per theme, total of your bests) and lifetime **stats**.
+- **Retro look**: chunky faceted meshes, blocky textures, low-res pixel rendering (Light 360 / Heavy 240 lines), dithered reduced colour and PS1-style vertex wobble, each switchable in the pause menu.
 - **Graphics** setting (Auto/High/Medium/Low) for phones; volume, mute, scanlines.
 
 Best times, ghosts, stats and settings live in your browser's localStorage. No accounts, no ads.

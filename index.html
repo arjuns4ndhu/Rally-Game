@@ -185,6 +185,15 @@
     <label class="check"><input type="checkbox" id="opt-map" checked> Mini map</label>
     <label class="check select">Volume <span class="vol"><input type="range" id="opt-volume" min="0" max="100" step="5" value="80" aria-label="Volume"><output id="opt-volume-val">80%</output></span></label>
     <label class="check"><input type="checkbox" id="opt-mute"> Mute sound</label>
+    <label class="check select">Retro pixels
+      <select id="opt-pixels">
+        <option value="light">Light (360 lines)</option>
+        <option value="heavy">Heavy (240 lines)</option>
+        <option value="off">Off (sharp)</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="opt-dither" checked> Retro colour (dithering)</label>
+    <label class="check"><input type="checkbox" id="opt-wobble" checked> Vertex wobble (reloads)</label>
     <label class="check select">Graphics
       <select id="opt-quality">
         <option value="auto">Auto</option>
