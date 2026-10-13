@@ -217,7 +217,9 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * Math.PI * 2);
     s.set(sc, sc * (0.85 + rand() * 0.4), sc);
     p.set(x, baseY(x, z, 0.6 * sc) - 0.3, z);
-    const item = { x, z, r: kit.r * sc, m: new THREE.Matrix4().compose(p, q, s), color: kit.color(rand) };
+    const item = { x, z, sc, r: kit.r * sc, m: new THREE.Matrix4().compose(p, q, s), color: kit.color(rand) };
+    // Cacti snap off at the base and topple over when hit.
+    if (kind === 'cactus') item.knock = 'topple';
     (byKind[kind] ||= []).push(item);
     return item;
   });
@@ -354,7 +356,8 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
     }
   }
 
-  // Solid things the car can hit: tree trunks, cacti and big rocks.
+  // Solid things the car can hit: tree trunks and big rocks. Small rocks and
+  // cacti are knockable.
   const obstacles = [];
   for (const o of [...treeItems, ...rockItems]) {
     if (!(o.r > 0)) continue;

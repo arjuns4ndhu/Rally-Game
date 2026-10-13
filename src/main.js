@@ -1214,7 +1214,9 @@ function knockRocks(sim = true) {
         const it = o.item;
         it.m.decompose(_p, _q, _s);
         const nx = d > 1e-3 ? ex / d : fx, nz = d > 1e-3 ? ez / d : fz;
-        const sp = car.speed, mass = it.sc * it.sc * it.sc;
+        const sp = car.speed;
+        if (it.knock === 'topple') { toppleCactus(o, it, sim); continue; }
+        const mass = it.sc * it.sc * it.sc;
         const kick = 1.2 / (0.6 + mass);
         flying.push({
           o, it, pos: _p.clone(), quat: _q.clone(), scale: _s.clone(), r: o.r,
@@ -1238,9 +1240,54 @@ function knockRocks(sim = true) {
     }
   }
 }
+// A cactus hit by the car snaps at the base and falls the way the car is going.
+function toppleCactus(o, it, sim) {
+  if (!it.mesh) { knocked.push(o); return; }        // thinned out by the detail setting
+  it.m.decompose(_p, _q, _s);
+  const sp = car.speed, dx = car.vx / (sp || 1), dz = car.vz / (sp || 1);
+  flying.push({
+    o, it, topple: true, pos: _p.clone(), base: _q.clone(), scale: _s.clone(),
+    axis: new THREE.Vector3(dz, 0, -dx),             // falls along the car's travel
+    ang: 0, w: Math.min(4, 0.6 + sp * 0.12),          // angle and angular speed
+    v: new THREE.Vector3(car.vx * 0.25, 0, car.vz * 0.25), rest: 0,
+  });
+  knocked.push(o);
+  it.mesh.frustumCulled = false;
+  const y = worldGround(o.x, o.z);
+  for (let n = 0; n < 10 + it.sc * 8; n++) {
+    dust.emit(o.x, y + 0.4 + Math.random() * 1.6 * it.sc, o.z, (Math.random() - 0.5) * 3 + car.vx * 0.3, 0.5 + Math.random() * 2, (Math.random() - 0.5) * 3 + car.vz * 0.3,
+      0.18 + Math.random() * 0.15, 0.9, [0.3, 0.5 + Math.random() * 0.15, 0.22]);
+  }
+  if (!sim) return;
+  const slow = Math.min(0.12, 0.04 + 0.04 * it.sc);
+  car.vx *= 1 - slow; car.vz *= 1 - slow;
+  audio.thud(0.25 + 0.15 * it.sc);
+  shakeKick = Math.max(shakeKick, slow);
+  dentAt(o.x, o.z, 0.015);
+}
+const _tq = new THREE.Quaternion();
 function updateFlyingRocks(dt) {
   for (let i = flying.length - 1; i >= 0; i--) {
     const f = flying[i];
+    if (f.topple) {
+      // Gravity pulls it over faster the further it leans; a small bounce on landing.
+      if (f.ang < Math.PI / 2 - 0.08 || f.w > 0.05) {
+        f.w += (2 + 7 * Math.sin(f.ang)) * dt;
+        f.ang += f.w * dt;
+        if (f.ang > Math.PI / 2 - 0.08) {
+          f.ang = Math.PI / 2 - 0.08;
+          if (f.w > 1) { f.w *= -0.25; if (!f.landed) audio.thud(0.15); f.landed = true; } else f.w = 0;
+        }
+      }
+      f.v.multiplyScalar(Math.exp(-dt * 4));
+      f.pos.addScaledVector(f.v, dt);
+      f.pos.y = worldGround(f.pos.x, f.pos.z) - 0.25;
+      _tq.setFromAxisAngle(f.axis, f.ang);
+      f.it.mesh.setMatrixAt(f.it.idx, _m4.compose(f.pos, _q.copy(_tq).multiply(f.base), f.scale));
+      f.it.mesh.instanceMatrix.needsUpdate = true;
+      if (f.w === 0 && f.v.length() < 0.05) flying.splice(i, 1);
+      continue;
+    }
     f.v.y -= 9.81 * dt;
     f.pos.addScaledVector(f.v, dt);
     const g = worldGround(f.pos.x, f.pos.z) + f.scale.y * 0.6;
@@ -1265,6 +1312,7 @@ function resetRocks() {
   for (const o of knocked) {
     o.gone = false;
     o.x = o.item.x; o.z = o.item.z;
+    if (!o.item.mesh) continue;
     o.item.mesh.setMatrixAt(o.item.idx, o.item.m);
     o.item.mesh.instanceMatrix.needsUpdate = true;
   }
