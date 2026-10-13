@@ -79,6 +79,7 @@
     <p class="lede">A new gravel stage every day. Five sectors, one clock, unlimited attempts.</p>
     <div class="picks">
       <button id="btn-daily" class="btn btn-primary">Today's stage<small id="daily-name"></small></button>
+      <button id="btn-classics" class="btn">Classic stages<small>Five fixed stages, the same for everyone: compare times</small></button>
       <button id="btn-random" class="btn">Random stage<small>A brand-new road every time</small></button>
       <button id="btn-practice" class="btn">Practice loop<small>No clock, just driving</small></button>
     </div>
@@ -112,6 +113,15 @@
         <div class="garage-row"><span class="lbl">Wheels</span><div class="chips" id="garage-wheels"></div></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Classic stages -->
+<div id="classics" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><h2 class="logo">CLASSICS</h2><button class="btn btn-sm" data-back>Back</button></div>
+    <table class="champ-table classics-table" id="classics-table"></table>
+    <p class="hint">These five never change and are the same for everyone, so you can race your mates' times. Beat the target times for bronze, silver and gold.</p>
   </div>
 </div>
 
@@ -192,6 +202,7 @@
       <div class="fin-time" id="fin-time">0:00.00</div>
       <div class="newbest" id="fin-newbest" hidden>NEW BEST</div>
     </div>
+    <div class="fin-medal" id="fin-medal" hidden></div>
     <p class="fin-meta"><span id="fin-prev"></span><br><span id="fin-pen"></span></p>
     <div class="fin-table"><table id="fin-splits"></table></div>
     <div class="fin-actions">

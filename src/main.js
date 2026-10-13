@@ -21,7 +21,7 @@ import { MiniMap } from './minimap.js';
 import { Stats } from './stats.js';
 import { WEATHER, pickWeather, weatherTheme, Precip } from './weather.js';
 import { planSurfaces, patchAt, buildSurfaces } from './surfaces.js';
-import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, PAINTS, WHEELS } from './menus.js';
+import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, PAINTS, WHEELS, CLASSICS, MEDAL_ICON, classicOf, medalTimes, medalFor, classicsHTML } from './menus.js';
 import { buildHazards, HAZARD_DEBUG } from './hazards.js';
 
 const $ = (id) => document.getElementById(id);
@@ -232,7 +232,7 @@ function loadStage(kind, seed = 0) {
     for (let k = 0; k < SECTORS - 1; k++) stageGroup.add(buildGate(road, stage.cps[k], `S${k + 2}`, 'sector'));
     stageGroup.add(buildGate(road, stage.finish, 'FINISH', 'finish'));
   }
-  hazards = kind === 'practice' ? null : buildHazards(road, {
+  hazards = kind === 'practice' || kind === 'classic' ? null : buildHazards(road, {
     seed, theme, groundY: worldGround, start: stage.start, finish: stage.finish, cps: stage.cps, corners: road.findSharpCorners(),
   });
   if (hazards) stageGroup.add(hazards.group);
@@ -459,6 +459,17 @@ function finishRun() {
   audio.beep(660, 0.12); setTimeout(() => audio.beep(990, 0.25), 140);
   $('fin-stage').textContent = stageLabel();
   $('btn-next').hidden = !(stage.kind === 'champ' && champIndex(stage.seed) < 5);
+  // Classic stages: medal for this run, and the next target to chase.
+  const cl = stage.kind === 'classic' ? classicOf(stage.seed) : null;
+  const medal = cl ? medalFor(cl, run.t, stage.finish - stage.start) : null;
+  lastResult.medal = medal;
+  $('fin-medal').hidden = !cl;
+  if (cl) {
+    const m = medalTimes(cl, stage.finish - stage.start);
+    const next = !medal ? ['bronze', m.bronze] : medal === 'bronze' ? ['silver', m.silver] : medal === 'silver' ? ['gold', m.gold] : null;
+    $('fin-medal').innerHTML = (medal ? `${MEDAL_ICON[medal]} ${medal.toUpperCase()}` : 'NO MEDAL YET') +
+      `<small>${next ? `${next[0][0].toUpperCase() + next[0].slice(1)} target: ${fmt(next[1])}` : 'Top medal. Now go faster than your mates.'}</small>`;
+  }
   $('fin-time').textContent = fmt(run.t);
   $('fin-newbest').hidden = !isBest;
   $('fin-prev').textContent = prev ? `Best ${fmt(prev.time)} (${fmtDelta(run.t - prev.time)})` : 'First finish on this stage';
@@ -508,6 +519,7 @@ function toast(msg, ms = 1600) {
 
 function stageLabel() {
   if (stage.kind === 'practice') return 'Practice loop';
+  if (stage.kind === 'classic') return `${stage.name} · Classic`;
   if (stage.kind === 'champ') return `${stage.name} · Championship ${champIndex(stage.seed)}/5`;
   if (stage.kind === 'daily') {
     const d = new Date(Math.floor(stage.seed / 10000), Math.floor(stage.seed / 100) % 100 - 1, stage.seed % 100);
@@ -678,7 +690,7 @@ function shareText(r) {
   }).join('');
   return [
     `SIDEWAYS · ${r.label}`,
-    `⏱ ${fmt(r.time)}${r.isBest && r.prev ? ' · NEW BEST' : ''}${r.respawns ? ` · ${r.respawns} reset${r.respawns > 1 ? 's' : ''}` : ''}`,
+    `⏱ ${fmt(r.time)}${r.medal ? ' ' + MEDAL_ICON[r.medal] : ''}${r.isBest && r.prev ? ' · NEW BEST' : ''}${r.respawns ? ` · ${r.respawns} reset${r.respawns > 1 ? 's' : ''}` : ''}`,
     `${squares} · ${r.car}`,
   ].join('\n');
 }
@@ -1328,7 +1340,7 @@ function openPage(id) {
   $(id).querySelector('[data-back]')?.focus();
 }
 function closePages() {
-  for (const id of ['garage', 'past', 'champ', 'statsview']) $(id).hidden = true;
+  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics']) $(id).hidden = true;
   preview.stop();
   $('start').hidden = false;
 }
@@ -1398,6 +1410,16 @@ $('champ-table').addEventListener('click', (e) => {
   start('champ', week.seeds[+b.dataset.champ]);
 });
 
+function renderClassics() {
+  $('classics-table').innerHTML = classicsHTML((seed) => pickWeather(seed, pickTheme(seed).theme).label);
+}
+$('btn-classics').addEventListener('click', () => { openPage('classics'); renderClassics(); });
+$('classics-table').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-classic]');
+  if (!b) return;
+  closePages();
+  start('classic', CLASSICS[+b.dataset.classic].seed);
+});
 $('btn-stats').addEventListener('click', () => { stats.save(); openPage('statsview'); $('stats-grid').innerHTML = statsHTML(stats.d); });
 
 // Exposed for automated smoke tests.

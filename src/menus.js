@@ -219,3 +219,37 @@ export function statsHTML(d) {
   ];
   return tiles.map(([k, v]) => `<div class="stat"><small>${k}</small><b>${esc(v)}</b></div>`).join('');
 }
+
+// ---------- Classic stages ----------
+// Five fixed stages, one per scenery theme, identical for everyone and
+// never rotating, so times can be compared with friends. Hazard-free.
+// Medal targets come from average speed over the stage (slower on snow
+// and in the rain).
+export const CLASSICS = [
+  { seed: 900031, theme: 'Forest', d: 2572, k: 1 },
+  { seed: 900122, theme: 'Canyon', d: 2190, k: 1 },
+  { seed: 900228, theme: 'Snow', d: 2928, k: 0.9 },
+  { seed: 900016, theme: 'Alpine', d: 2524, k: 1 },
+  { seed: 900151, theme: 'Autumn', d: 2124, k: 0.93 },
+];
+export const MEDAL_ICON = { gold: '🥇', silver: '🥈', bronze: '🥉' };
+export const classicOf = (seed) => CLASSICS.find((c) => c.seed === seed) || null;
+export function medalTimes(c, d = c.d) {
+  const [g, s, b] = [78, 66, 54].map((kmh) => d / (kmh / 3.6 * c.k));
+  return { gold: g, silver: s, bronze: b };
+}
+export function medalFor(c, t, d) {
+  if (t == null) return null;
+  const m = medalTimes(c, d);
+  return t <= m.gold ? 'gold' : t <= m.silver ? 'silver' : t <= m.bronze ? 'bronze' : null;
+}
+export function classicsHTML(weatherOf) {
+  const rows = CLASSICS.map((c, i) => {
+    const b = bestFor(c.seed), m = medalTimes(c), medal = medalFor(c, b?.time);
+    return `<tr><td>${esc(stageName(c.seed))}<small>${c.theme} · ${esc(weatherOf(c.seed))} · ${(c.d / 1000).toFixed(1)} km</small></td>
+      <td class="medals"><span>🥇 ${fmtTime(m.gold)}</span><span>🥈 ${fmtTime(m.silver)}</span><span>🥉 ${fmtTime(m.bronze)}</span></td>
+      <td>${b ? `${medal ? MEDAL_ICON[medal] + ' ' : ''}${fmtTime(b.time)}` : '--:--.--'}</td>
+      <td><button class="btn btn-sm${b ? '' : ' btn-primary'}" data-classic="${i}">${b ? 'Improve' : 'Drive'}</button></td></tr>`;
+  }).join('');
+  return `<tr><th>Stage</th><th>Targets</th><th>Your best</th><th></th></tr>${rows}`;
+}

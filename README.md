@@ -39,6 +39,7 @@ Driving: tap the brake while turning to kick the rear out. Hold the throttle to 
 - **Race flow**: 3-2-1-GO standing start, splits and deltas per sector, a live +/- gap to your ghost, a finish screen with a replay (TV-style trackside cameras and drone shots) and a **Copy result** button.
 - **Ghost** of your own best run on each stage, mini map, chase drone (C cycles to the drone camera), pace-note signs, racing-line tyre tracks and an optional line assist.
 - **Garage**: five cars with stat bars, paint swatches or any colour, four wheel styles, a rotating 3D preview. Crashes dent the bodywork (looks only).
+- **Classic stages**: five fixed stages, one per theme, the same for everyone and never rotated, so you can compare times with friends. Hazard-free, with bronze/silver/gold target times.
 - **Past stages** calendar back to launch, a weekly **championship** of five stages (one per theme, total of your bests) and lifetime **stats**.
 - **Graphics** setting (Auto/High/Medium/Low) for phones; volume, mute, scanlines.
 
