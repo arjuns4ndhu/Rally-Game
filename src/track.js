@@ -2,6 +2,7 @@
 // ribbon mesh. Stage generation (seeded) builds on this; the hand-made test
 // loop below is used for driving practice.
 import * as THREE from 'three';
+import { RETRO } from './retro.js';
 
 export const SURFACES = {
   gravel: { name: 'gravel', grip: 1.0, drag: 0.0, dust: [0.74, 0.64, 0.5] },
@@ -331,14 +332,16 @@ export function gravelTexture(pal = { base: '#b59c78', rut: [70, 55, 40], edge: 
   eg.addColorStop(1, `rgba(${er},${eg0},${eb},0.55)`);
   g.fillStyle = eg; g.fillRect(0, 0, 256, 512);
   // Retro: shrink to a chunky 64x128 and sample it blocky.
-  const sm = document.createElement('canvas');
-  sm.width = 64; sm.height = 128;
-  sm.getContext('2d').drawImage(c, 0, 0, 64, 128);
-  const t = new THREE.CanvasTexture(sm);
+  let src = c;
+  if (RETRO.on) {
+    src = document.createElement('canvas');
+    src.width = 64; src.height = 128;
+    src.getContext('2d').drawImage(c, 0, 0, 64, 128);
+  }
+  const t = new THREE.CanvasTexture(src);
   t.wrapS = THREE.ClampToEdgeWrapping; t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
-  t.magFilter = THREE.NearestFilter;
-  t.minFilter = THREE.NearestMipmapLinearFilter;
+  if (RETRO.on) { t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapLinearFilter; } else t.anisotropy = 8;
   return t;
 }
 

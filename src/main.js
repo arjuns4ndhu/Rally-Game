@@ -17,15 +17,17 @@ import { GhostRecorder, saveGhost, loadGhost, samplePose } from './ghost.js';
 import { buildPaceNotes, CoDriver } from './pacenotes.js';
 import { notesHTML } from './paceicons.js';
 import { Drone } from './drone.js';
-import { facet, enableWobble, RetroPass } from './retro.js';
+import { facet, enableWobble, RetroPass, RETRO } from './retro.js';
 
 // Retro settings: low-res pixels, dithered colour, vertex wobble.
-const retroSet = { pixels: 'light', dither: true, wobble: true };
+const retroSet = { on: true, pixels: 'light', dither: true, wobble: true };
 try { Object.assign(retroSet, JSON.parse(localStorage.getItem('sideways.retro') || '{}')); } catch { /* ignore */ }
-if (retroSet.wobble) enableWobble();          // must happen before anything compiles
+RETRO.on = retroSet.on !== false;             // master switch: triangles, textures, pixels, dither, wobble
+if (RETRO.on && retroSet.wobble) enableWobble();          // must happen before anything compiles
 const RETRO_LINES = { off: 0, light: 360, heavy: 240 };
 import { MiniMap } from './minimap.js';
 import { Stats } from './stats.js';
+import { Leaderboard } from './leaderboard.js';
 import { WEATHER, pickWeather, weatherTheme, Precip } from './weather.js';
 import { planSurfaces, patchAt, buildSurfaces } from './surfaces.js';
 import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, PAINTS, WHEELS, CLASSICS, MEDAL_ICON, classicOf, medalTimes, medalFor, classicsHTML } from './menus.js';
@@ -53,6 +55,8 @@ const drone = new Drone(scene);
 const tv = new TVCamera(camera);
 const minimap = new MiniMap($('minimap'));
 const stats = new Stats();
+const board = new Leaderboard();
+board.init();
 const precip = new Precip(scene);
 // Headlights, used at night and dusk.
 const headlights = [-1, 1].map(() => {
@@ -465,9 +469,11 @@ function finishRun() {
     saveGhost(stage.seed, { car: carId, color: model.paint.color.getStyle(), time: run.t, samples: recorder.samples });
   }
   stats.finish(isBest);
+  if (stage.kind !== 'practice' && isBest) board.submit(stage.seed, run.t, CARS[carId].name);
   lastResult = { time: run.t, splits: run.splits.slice(), prev, isBest, label: stageLabel(), respawns: run.respawns, car: CARS[carId].name };
   audio.beep(660, 0.12); setTimeout(() => audio.beep(990, 0.25), 140);
   $('fin-stage').textContent = stageLabel();
+  renderBoard();
   $('btn-next').hidden = !(stage.kind === 'champ' && champIndex(stage.seed) < 5);
   $('btn-retry').classList.toggle('btn-primary', $('btn-next').hidden);
   // Classic stages: medal for this run, and the next target to chase.
@@ -720,6 +726,51 @@ async function copyResult() {
   setTimeout(() => { b.textContent = 'Copy result'; }, 1400);
 }
 
+// ---------- Shared leaderboard (claude.ai only) ----------
+function localBests() {
+  const out = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i), m = /^sideways\.best\.(\d+)$/.exec(k);
+      if (!m) continue;
+      const b = JSON.parse(localStorage.getItem(k));
+      if (b?.time) out[m[1]] = { time: b.time, car: CARS[b.car]?.name || '', date: b.date };
+    }
+  } catch { /* ignore */ }
+  return out;
+}
+function renderBoard() {
+  const box = $('fin-board');
+  box.hidden = !(board.available && board.ready) || stage.kind === 'practice' || run.state !== 'finished';
+  if (box.hidden) return;
+  const list = $('board-list');
+  list.replaceChildren();
+  const top = board.top(stage.seed, 5);
+  for (const r of top) {
+    const li = document.createElement('li');
+    li.className = r.me ? 'me' : '';
+    const name = document.createElement('span');
+    name.textContent = r.nick;
+    const car = document.createElement('small'); car.textContent = r.car; name.append(car);
+    const t = document.createElement('span'); t.textContent = fmt(r.t);
+    li.append(name, t);
+    list.append(li);
+  }
+  const rk = board.rank(stage.seed);
+  $('board-rank').textContent = rk ? `You're #${rk.pos} of ${rk.of}` : '';
+  $('board-name').hidden = !!board.nick || !board.canPost;
+  $('board-note').textContent = !top.length ? 'No times yet. Be the first.' :
+    board.denied ? 'View-only access: the owner can invite you with edit access to post times.' : '';
+}
+board.on(() => { renderBoard(); if (!$('classics').hidden) renderClassics(); });
+$('board-name').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = $('board-nick').value;
+  board.setNick(v, localBests());
+  $('board-nick').blur();
+  renderBoard();
+});
+
 // Live gap to the ghost: when did your best run reach the spot you're at now?
 function ghostAlongs(samples) {
   let hint = -1, mx = -Infinity;
@@ -834,10 +885,13 @@ $('opt-quality').addEventListener('change', (e) => {
   if (stage.detail !== qualityLevel()) toast('SCENERY DETAIL: NEXT RESTART', 1400);
   e.target.blur();
 });
+$('opt-retro').checked = RETRO.on;
+$('opt-retro').addEventListener('change', (e) => { retroSet.on = e.target.checked; saveRetro(); toast(retroSet.on ? 'RETRO ON: RELOADING' : 'RETRO OFF: RELOADING', 900); setTimeout(() => location.reload(), 700); });
+document.querySelectorAll('.retro-sub').forEach((el) => el.classList.toggle('disabled', !RETRO.on));
 $('opt-pixels').value = retroSet.pixels;
-$('opt-pixels').addEventListener('change', (e) => { retroSet.pixels = e.target.value; retro.lines = RETRO_LINES[retroSet.pixels]; saveRetro(); resize(); e.target.blur(); });
+$('opt-pixels').addEventListener('change', (e) => { retroSet.pixels = e.target.value; retro.lines = RETRO.on ? RETRO_LINES[retroSet.pixels] : 0; saveRetro(); resize(); e.target.blur(); });
 $('opt-dither').checked = !!retroSet.dither;
-$('opt-dither').addEventListener('change', (e) => { retroSet.dither = retro.dither = e.target.checked; saveRetro(); resize(); });
+$('opt-dither').addEventListener('change', (e) => { retroSet.dither = e.target.checked; retro.dither = RETRO.on && retroSet.dither; saveRetro(); resize(); });
 $('opt-wobble').checked = !!retroSet.wobble;
 $('opt-wobble').addEventListener('change', (e) => { retroSet.wobble = e.target.checked; saveRetro(); toast('WOBBLE: RELOADING', 900); setTimeout(() => location.reload(), 700); });
 let droneOn = true;
@@ -886,8 +940,8 @@ if (isTouch) {
 
 // ---------- Resize ----------
 const retro = new RetroPass();
-retro.lines = RETRO_LINES[retroSet.pixels] ?? 360;
-retro.dither = !!retroSet.dither;
+retro.lines = RETRO.on ? (RETRO_LINES[retroSet.pixels] ?? 360) : 0;
+retro.dither = RETRO.on && !!retroSet.dither;
 function saveRetro() { try { localStorage.setItem('sideways.retro', JSON.stringify(retroSet)); } catch { /* ignore */ } }
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -1560,6 +1614,19 @@ $('champ-table').addEventListener('click', (e) => {
 
 function renderClassics() {
   $('classics-table').innerHTML = classicsHTML((seed) => pickWeather(seed, pickTheme(seed).theme).label);
+  // Leader of each classic on the shared board, as text (other people's names).
+  if (board.available && board.ready) {
+    $('classics-table').querySelectorAll('[data-classic]').forEach((b) => {
+      const c = CLASSICS[+b.dataset.classic], top = board.top(c.seed, 1)[0];
+      if (!top) return;
+      const td = b.closest('tr').children[0], div = document.createElement('div');
+      div.className = 'leader';
+      div.append('Leader: ');
+      const nm = document.createElement('b'); nm.textContent = `${top.nick} ${fmt(top.t)}`;
+      div.append(nm);
+      td.append(div);
+    });
+  }
 }
 $('btn-classics').addEventListener('click', () => { openPage('classics'); renderClassics(); });
 $('classics-table').addEventListener('click', (e) => {

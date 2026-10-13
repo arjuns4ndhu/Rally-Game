@@ -6,7 +6,15 @@ import * as THREE from 'three';
 // Non-indexed copy of `geo` with a per-triangle colour. Existing vertex
 // colours are averaged per face; otherwise the shade is grey around 1.
 // `amount` is the +/- brightness spread between neighbouring faces.
+// Master switch (set once at startup from the Retro mode setting).
+export const RETRO = { on: true };
+
 export function facet(geo, amount = 0.12, salt = 0) {
+  if (!RETRO.on) {
+    // Retro off: leave the mesh smooth, but materials expect a colour attribute.
+    if (!geo.attributes.color) geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 3).fill(1), 3));
+    return geo;
+  }
   const g = geo.index ? geo.toNonIndexed() : geo;
   const pos = g.attributes.position.array, n = g.attributes.position.count;
   const old = g.attributes.color;
@@ -31,6 +39,7 @@ export function facet(geo, amount = 0.12, salt = 0) {
 
 // Blocky texture sampling up close (mipmaps kept for the distance).
 export function pixelTex(tex) {
+  if (!RETRO.on) return tex;
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestMipmapLinearFilter;
   tex.anisotropy = 1;

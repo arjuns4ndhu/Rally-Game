@@ -391,3 +391,18 @@ button.cal-day:hover, button.cal-day:focus-visible { border-color: var(--accent)
 
 .garage-actions { display: flex; gap: 8px; }
 #garage-go { min-width: 130px; }
+.check.disabled { opacity: 0.4; pointer-events: none; }
+
+/* ---------- Leaderboard ---------- */
+.fin-board { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.board-head { font-weight: 700; letter-spacing: 0.18em; font-size: 12px; color: var(--muted); }
+.board-head small { letter-spacing: 0; margin-left: 6px; color: var(--accent); font-size: 12px; }
+.board-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; counter-reset: pos; }
+.board-list li { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; font-variant-numeric: tabular-nums; font-size: 14px; }
+.board-list li::before { counter-increment: pos; content: counter(pos) "."; color: var(--muted); }
+.board-list li.me { color: var(--accent); font-weight: 700; }
+.board-list li small { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.board-name { display: flex; gap: 8px; }
+.board-name input { flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+.leader { font-size: 12px; color: var(--muted); }
+.leader b { color: var(--text); font-weight: 600; }

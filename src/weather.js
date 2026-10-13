@@ -48,11 +48,11 @@ export function weatherTheme(theme, w) {
       L.sunI *= 0.5; L.hemi *= 1.05;
       break;
     case 'rain':
-      sky.top = '#4a515b'; sky.horizon = '#8a9098'; sky.fog = '#7c838b'; sky.fogDensity *= 1.8; sky.sunGlow = [0.05, 0.05, 0.05];
+      sky.top = '#4a515b'; sky.horizon = '#8a9098'; sky.fog = '#7c838b'; sky.fogDensity *= 1.3; sky.sunGlow = [0.05, 0.05, 0.05];
       L.sunI *= 0.3; L.hemi *= 0.9; L.sun = '#dfe6ee'; L.hemiSky = '#c9d2dc';
       break;
     case 'snowfall':
-      sky.top = '#9aa6b4'; sky.horizon = '#e2e8ee'; sky.fog = '#d6dde5'; sky.fogDensity *= 1.7; sky.sunGlow = [0.1, 0.1, 0.1];
+      sky.top = '#9aa6b4'; sky.horizon = '#e2e8ee'; sky.fog = '#d6dde5'; sky.fogDensity *= 1.3; sky.sunGlow = [0.1, 0.1, 0.1];
       L.sunI *= 0.45;
       break;
     case 'night':
@@ -76,7 +76,7 @@ export class Precip {
     if (this.mesh) { this.scene.remove(this.mesh); this.mesh.geometry.dispose(); this.mesh.material.dispose(); this.mesh = null; }
     this.kind = kind;
     if (!kind) return;
-    const N = Math.round((kind === 'rain' ? 1800 : 1400) * (this.density ?? 1));
+    const N = Math.round((kind === 'rain' ? 650 : 900) * (this.density ?? 1));   // low-res rendering makes each one chunky
     this.N = N;
     this.box = { x: 46, y: 26, z: 46 };
     this.p = new Float32Array(N * 3);
@@ -88,10 +88,10 @@ export class Precip {
     const geo = new THREE.BufferGeometry();
     if (kind === 'rain') {
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 6), 3));
-      this.mesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xc6d2e0, transparent: true, opacity: 0.45, depthWrite: false }));
+      this.mesh = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xc6d2e0, transparent: true, opacity: 0.2, depthWrite: false }));
     } else {
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
-      this.mesh = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.16, transparent: true, opacity: 0.9, depthWrite: false }));
+      this.mesh = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.12, transparent: true, opacity: 0.75, depthWrite: false }));
     }
     this.mesh.frustumCulled = false;
     this.scene.add(this.mesh);
@@ -118,7 +118,7 @@ export class Precip {
       if (rain) {
         const j = i * 6;
         pos[j] = x; pos[j + 1] = y; pos[j + 2] = z;
-        pos[j + 3] = x + sx * 10; pos[j + 4] = y + 0.9; pos[j + 5] = z + sz * 10;
+        pos[j + 3] = x + sx * 6; pos[j + 4] = y + 0.55; pos[j + 5] = z + sz * 6;
       } else {
         pos[k] = x; pos[k + 1] = y; pos[k + 2] = z;
       }

@@ -5,7 +5,7 @@ import { mulberry32 } from './rng.js';
 import { buildTerrain } from './terrain.js';
 import { THEMES } from './themes.js';
 import { distToPolyline } from './track.js';
-import { facet, pixelTex } from './retro.js';
+import { facet, pixelTex, RETRO } from './retro.js';
 
 function skyDome() {
   const geo = new THREE.SphereGeometry(440, 24, 12);
@@ -166,7 +166,7 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
 
   // Ground: shaped terrain around the road, plus a flat apron under the horizon.
   const terrain = buildTerrain(road, {
-    seed, flat, theme,
+    seed, flat, theme, grassMap: RETRO.on ? null : detailTexture(),
     baseAmp: theme.heightAmp * hilliness, hillAmp: theme.hillAmp * hilliness,
   });
   group.add(terrain.mesh);
