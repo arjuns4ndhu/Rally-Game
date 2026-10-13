@@ -1550,8 +1550,6 @@ $('classics-table').addEventListener('click', (e) => {
 });
 $('btn-stats').addEventListener('click', () => { stats.save(); openPage('statsview'); $('stats-grid').innerHTML = statsHTML(stats.d); });
 
-openGarage('boot');
-
 // Exposed for automated smoke tests.
 function stepSim(seconds, inp) {
   for (let t = 0; t < seconds; t += STEP) {

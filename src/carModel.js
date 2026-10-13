@@ -85,6 +85,24 @@ function extrudeProfile(pts, width, bevel = 0.05, round = 0) {
   return geo;
 }
 
+// Merge a few geometries (position + normal only) into one.
+function mergeTyre(geos) {
+  const parts = geos.map((g) => (g.index ? g.toNonIndexed() : g));
+  let n = 0;
+  for (const g of parts) n += g.attributes.position.count;
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3);
+  let o = 0;
+  for (const g of parts) {
+    pos.set(g.attributes.position.array, o * 3);
+    nor.set(g.attributes.normal.array, o * 3);
+    o += g.attributes.position.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  return out;
+}
+
 function numberTexture(num, color) {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -396,16 +414,30 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   add(new THREE.CylinderGeometry(0.01, 0.01, 0.5, 4), dark, 0.4, roofY + 0.25, roofZ - roofLen * 0.3);
 
   // Wheels: pivot (steers) -> spinner (rolls) -> tyre + rim.
-  // Tyre: a lathed profile with rounded shoulders, chunky tread blocks on top.
-  const tw = WR > 0.38 ? 0.32 : 0.25, hw = tw / 2, rIn = WR * 0.62;
-  const prof2 = [[rIn, -hw], [WR - 0.05, -hw], [WR - 0.01, -hw + 0.03], [WR, -hw + 0.07], [WR, hw - 0.07], [WR - 0.01, hw - 0.03], [WR - 0.05, hw], [rIn, hw]]
-    .map(([r, y]) => new THREE.Vector2(r, y));
-  const tyreGeo = new THREE.LatheGeometry(prof2, 20);
-  tyreGeo.rotateZ(Math.PI / 2);
+  // Tyre: round tread, flat sidewalls and rounded shoulders (built along X).
+  const tw = WR > 0.38 ? 0.32 : 0.25, hw = tw / 2, rIn = WR * 0.62, sh = 0.04;
+  const tyreParts = [];
+  const tread = new THREE.CylinderGeometry(WR, WR, tw - sh * 2, 28, 1, true);
+  tread.rotateZ(Math.PI / 2);
+  tyreParts.push(tread);
+  for (const sx of [-1, 1]) {
+    const wall = new THREE.RingGeometry(rIn, WR - sh, 28);
+    wall.rotateY(Math.PI / 2);
+    wall.translate(sx * hw, 0, 0);
+    tyreParts.push(wall);
+    const shoulder = new THREE.TorusGeometry(WR - sh, sh, 6, 28);
+    shoulder.rotateY(Math.PI / 2);
+    shoulder.translate(sx * (hw - sh), 0, 0);
+    tyreParts.push(shoulder);
+  }
+  const tyreGeo = mergeTyre(tyreParts);
   // Dark disc filling the middle of the tyre behind the rim.
-  const hubGeo = new THREE.CircleGeometry(rIn + 0.01, 16);
+  const rimScale = (rIn + 0.01) / 0.3;   // rims are built ~0.3 m in radius; fit them inside the sidewall
+  const hubGeo = new THREE.CircleGeometry(rIn + 0.01, 20);
   hubGeo.rotateY(Math.PI / 2);
   const darkDS = dark.clone(); darkDS.side = THREE.DoubleSide; mats.push(darkDS);
+  const tyreMat = new THREE.MeshStandardMaterial({ color: 0x1b1c1f, roughness: 0.92, side: THREE.DoubleSide });
+  mats.push(tyreMat);
   const rimMat = new THREE.MeshStandardMaterial({ color: RIM_COLORS[wheelStyle], roughness: 0.4, metalness: 0.5, flatShading: true });
   mats.push(rimMat);
   const wheels = [];
@@ -417,12 +449,12 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     const pivot = new THREE.Group();
     pivot.position.set(x, WR, z);
     const spin = new THREE.Group();
-    const tyre = new THREE.Mesh(tyreGeo, dark);
+    const tyre = new THREE.Mesh(tyreGeo, tyreMat);
     tyre.castShadow = true;
     spin.add(tyre, new THREE.Mesh(hubGeo, darkDS));
     const rim = buildRim(wheelStyle, rimMat, dark);
-    rim.position.x = Math.sign(x) * 0.12;
-    rim.scale.setScalar(WR / 0.32);
+    rim.position.x = Math.sign(x) * (hw - 0.01);
+    rim.scale.setScalar(rimScale);
     spin.add(rim);
     spin.userData.rim = rim;
     pivot.add(spin);
@@ -498,8 +530,8 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
       for (const w of wheels) {
         w.spin.remove(w.spin.userData.rim);
         const rim = buildRim(style, rimMat, dark);
-        rim.position.x = w.side * 0.12;
-        rim.scale.setScalar(WR / 0.32);
+        rim.position.x = w.side * (hw - 0.01);
+        rim.scale.setScalar(rimScale);
         w.spin.add(rim);
         w.spin.userData.rim = rim;
       }
