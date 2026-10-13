@@ -240,16 +240,36 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
     if (clear(x, z, road.width / 2 + 2.5)) rockSpots.push([x, z]);
   }
   const [rh, rs, rl] = theme.rockColor;
+  const rockVerts = rockGeo.attributes.position;
+  const v3 = new THREE.Vector3();
   const rockItems = rockSpots.map(([x, z]) => {
     const sc = 0.3 + Math.pow(rand(), 2) * 1.6;
-    q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 3, rand() * 3));
+    // Lying roughly flat: any heading, only a slight tilt.
+    q.setFromEuler(new THREE.Euler((rand() - 0.5) * 0.5, rand() * Math.PI * 2, (rand() - 0.5) * 0.5, 'YXZ'));
     s.set(sc * (1 + rand()), sc * 0.7, sc * (1 + rand()));
     p.set(x, baseY(x, z, 0.8 * sc) + sc * 0.15, z);
     const color = new THREE.Color().setHSL(rh, rs + rand() * 0.1, rl - 0.08 + rand() * 0.2);
+    const m = new THREE.Matrix4().compose(p, q, s);
+    // Hitbox from the rock's real footprint (the part above the ground):
+    // its long axis, half-length and half-width.
+    const gy = groundY(x, z) + 0.12;
+    let ax = 0, az = 0, n = 0;
+    const pts = [];
+    for (let i = 0; i < rockVerts.count; i++) {
+      v3.fromBufferAttribute(rockVerts, i).applyMatrix4(m);
+      if (v3.y < gy) continue;
+      pts.push([v3.x - x, v3.z - z]);
+    }
+    if (!pts.length) pts.push([0, 0]);
+    // Long axis = direction of the furthest point.
+    for (const [dx, dz] of pts) { const d = dx * dx + dz * dz; if (d > ax * ax + az * az) { ax = dx; az = dz; } }
+    const al = Math.hypot(ax, az) || 1, ux = ax / al, uz = az / al;
+    let half = 0, wide = 0;
+    for (const [dx, dz] of pts) { half = Math.max(half, Math.abs(dx * ux + dz * uz)); wide = Math.max(wide, Math.abs(-dx * uz + dz * ux)); n++; }
     // Rocks up to about a metre get knocked aside (they slow you a little);
     // only proper boulders are solid.
     const knock = sc < 1.1;
-    return { x, z, sc, knock, r: knock ? Math.max(s.x, s.z) * 0.7 : Math.min(s.x, s.z) * 0.85, m: new THREE.Matrix4().compose(p, q, s), color };
+    return { x, z, sc, knock, r: knock ? (half + wide) * 0.45 : wide * 0.9, half, ux, uz, m, color };
   });
   addTiled(group, rockGeo, rockMat, rockItems, true, true);
 
@@ -328,8 +348,18 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
   }
 
   // Solid things the car can hit: tree trunks, cacti and big rocks.
-  const obstacles = [...treeItems, ...rockItems].filter((o) => o.r > 0)
-    .map((o) => (o.knock ? { x: o.x, z: o.z, r: o.r, knock: true, item: o } : { x: o.x, z: o.z, r: o.r }));
+  const obstacles = [];
+  for (const o of [...treeItems, ...rockItems]) {
+    if (!(o.r > 0)) continue;
+    if (o.knock) { obstacles.push({ x: o.x, z: o.z, r: o.r, knock: true, item: o }); continue; }
+    // Long boulders: a chain of circles along the long axis covers the shape.
+    const span = Math.max(0, (o.half || 0) - o.r);
+    const nC = span > 0.15 ? Math.ceil(span / (o.r * 0.8)) : 0;
+    for (let k = -nC; k <= nC; k++) {
+      const t = nC ? (k / nC) * span : 0;
+      obstacles.push({ x: o.x + (o.ux || 0) * t, z: o.z + (o.uz || 0) * t, r: o.r, src: o });
+    }
+  }
   return { group, terrain, obstacles };
 }
 
