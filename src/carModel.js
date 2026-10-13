@@ -218,6 +218,11 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   };
 
   const rnd = prof.round || 0;
+  // Wheel fitment: the tyre's outer face sits flush with the arch flare
+  // (or the body side), not tucked in under it. Visual only; physics uses spec.track.
+  const fw = prof.bigFlares ? 0.22 : 0.15;
+  const tw = WR > 0.38 ? 0.32 : 0.25, hw = tw / 2;
+  const wheelX = prof.flares ? W / 2 + fw - 0.07 - hw : W / 2 + 0.01 - hw;
   const bodyMesh = new THREE.Mesh(extrudeProfile(bodyPts, W, rnd ? 0.06 + rnd * 0.015 : 0.05, rnd), paint);
   const glassMesh = new THREE.Mesh(extrudeProfile(g, W - (rnd ? 0.24 + rnd * 0.02 : 0.18), rnd ? 0.08 : 0.04, Math.min(rnd, 2)), glass);
   bodyMesh.castShadow = glassMesh.castShadow = true;
@@ -329,7 +334,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   // Box-flared wheel arches and mud flaps.
   if (prof.flares) {
     // Curved arch flares over each wheel: a paint shell with a dark lip.
-    const fw = prof.bigFlares ? 0.22 : 0.15, ar = WR + 0.1;
+    const ar = WR + 0.07;
     const archGeo = new THREE.CylinderGeometry(ar, ar, fw, 18, 1, true, 0, Math.PI);
     archGeo.rotateZ(Math.PI / 2);
     const lipGeo = new THREE.TorusGeometry(ar, 0.03, 4, 18, Math.PI);
@@ -381,7 +386,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     add(new THREE.CylinderGeometry(0.05, 0.05, Math.max(0.3, g[2][1] - topY(sz)), 8), dark, W / 2 + 0.06, (topY(sz) + g[2][1]) / 2, sz);
   }
   for (const side of [-1, 1]) for (const wz of [spec.a - WR - 0.12, -spec.b - WR - 0.12]) {
-    add(new THREE.BoxGeometry(0.3, 0.24, 0.02), dark, side * (spec.track / 2), Math.max(0.2, WR - 0.12), wz);
+    add(new THREE.BoxGeometry(0.3, 0.24, 0.02), dark, side * wheelX, Math.max(0.2, WR - 0.12), wz);
   }
 
   // Wings.
@@ -415,7 +420,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
 
   // Wheels: pivot (steers) -> spinner (rolls) -> tyre + rim.
   // Tyre: round tread, flat sidewalls and rounded shoulders (built along X).
-  const tw = WR > 0.38 ? 0.32 : 0.25, hw = tw / 2, rIn = WR * 0.62, sh = 0.04;
+  const rIn = WR * 0.62, sh = 0.04;
   const tyreParts = [];
   const tread = new THREE.CylinderGeometry(WR, WR, tw - sh * 2, 28, 1, true);
   tread.rotateZ(Math.PI / 2);
@@ -442,8 +447,8 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   mats.push(rimMat);
   const wheels = [];
   const positions = [
-    [spec.track / 2, spec.a, true], [-spec.track / 2, spec.a, true],
-    [spec.track / 2, -spec.b, false], [-spec.track / 2, -spec.b, false],
+    [wheelX, spec.a, true], [-wheelX, spec.a, true],
+    [wheelX, -spec.b, false], [-wheelX, -spec.b, false],
   ];
   for (const [x, z, isFront] of positions) {
     const pivot = new THREE.Group();
