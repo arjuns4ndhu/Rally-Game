@@ -17,6 +17,7 @@ import { GhostRecorder, saveGhost, loadGhost, samplePose } from './ghost.js';
 import { buildPaceNotes, CoDriver } from './pacenotes.js';
 import { notesHTML } from './paceicons.js';
 import { Drone } from './drone.js';
+import { facet } from './retro.js';
 import { MiniMap } from './minimap.js';
 import { Stats } from './stats.js';
 import { WEATHER, pickWeather, weatherTheme, Precip } from './weather.js';
@@ -102,8 +103,10 @@ try { if (localStorage.getItem('sideways.codriver') === 'off') codriver.mode = '
 // ---------- Stage ----------
 // A stage is a road plus everything built around it. Loading a new one
 // disposes the old meshes.
-const gravelMat = new THREE.MeshStandardMaterial({ map: gravelTexture(THEMES.forest.road), roughness: 0.95 });
-const vergeMat = new THREE.MeshStandardMaterial({ color: 0x6e6340, roughness: 1 });
+const gravelMat = new THREE.MeshStandardMaterial({ map: gravelTexture(THEMES.forest.road), roughness: 0.95, vertexColors: true, flatShading: true });
+const vergeMat = new THREE.MeshStandardMaterial({ color: 0x6e6340, roughness: 1, vertexColors: true, flatShading: true });
+// Retro: per-triangle shading on a built mesh (or every mesh in a group).
+function faceted(obj, amount) { obj.traverse((m) => { if (m.isMesh) m.geometry = facet(m.geometry, amount); }); return obj; }
 let roadTheme = 'forest';
 const SECTORS = 5;
 const PENALTY = 5;            // seconds added for a respawn
@@ -111,7 +114,7 @@ const RESPAWN_DIST = 50;      // metres off the road before you're put back
 let road = null, terrain = null, stageGroup = null, lineMesh = null;
 let hazards = null;  // rare fallen trees / landslides
 let shortcuts = [];   // Road objects for rough cut-through tracks
-const trackMat = new THREE.MeshStandardMaterial({ roughness: 1 });
+const trackMat = new THREE.MeshStandardMaterial({ roughness: 1, vertexColors: true, flatShading: true });
 const stage = { kind: 'practice', seed: 0, name: '', start: 0, finish: 0, cps: [] };
 
 function disposeGroup(g) {
@@ -179,7 +182,7 @@ function loadStage(kind, seed = 0) {
   buildObstacleGrid(built.obstacles);
   stageGroup.add(built.group);
   // Verge shoulders slope from the road edge down to the ground on each side.
-  stageGroup.add(road.buildShoulders(terrain.heightAt, road.width / 2 - 0.2, road.width / 2 + SHOULDER, vergeMat));
+  stageGroup.add(faceted(road.buildShoulders(terrain.heightAt, road.width / 2 - 0.2, road.width / 2 + SHOULDER, vergeMat), 0.1));
   // Shortcut tracks follow the ground; darker, rutted dirt.
   if (trackMat.map) trackMat.map.dispose();
   trackMat.map = gravelTexture({ base: '#6f5a42', rut: [40, 30, 20], edge: [50, 60, 30], stone: [10, 0, -10] });
@@ -199,11 +202,11 @@ function loadStage(kind, seed = 0) {
     let from = 0, to = sc.n;
     while (from < sc.n - 1 && road.nearest(sc.px[from], sc.pz[from], -1).dist < road.width / 2 - 0.3) from++;
     while (to > from + 1 && road.nearest(sc.px[to - 1], sc.pz[to - 1], -1).dist < road.width / 2 - 0.3) to--;
-    stageGroup.add(sc.buildOffsetStrip(() => 0, sc.width, 0.06, trackMat, 1 / 10, Math.max(0, from - 1), Math.min(sc.n, to + 1)));
+    stageGroup.add(faceted(sc.buildOffsetStrip(() => 0, sc.width, 0.06, trackMat, 1 / 10, Math.max(0, from - 1), Math.min(sc.n, to + 1)), 0.08));
     stageGroup.add(buildShortcutMarkers(road, sc));
     return sc;
   });
-  stageGroup.add(road.buildRibbon(road.width, 0.03, gravelMat, 1 / 12));
+  stageGroup.add(faceted(road.buildRibbon(road.width, 0.03, gravelMat, 1 / 12), 0.05));
   // Tarmac sections, mud, puddles, ice or sand.
   surfPlan = null;
   if (kind !== 'practice') {

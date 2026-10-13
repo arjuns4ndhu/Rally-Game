@@ -330,10 +330,15 @@ export function gravelTexture(pal = { base: '#b59c78', rut: [70, 55, 40], edge: 
   eg.addColorStop(0.93, `rgba(${er},${eg0},${eb},0)`);
   eg.addColorStop(1, `rgba(${er},${eg0},${eb},0.55)`);
   g.fillStyle = eg; g.fillRect(0, 0, 256, 512);
-  const t = new THREE.CanvasTexture(c);
+  // Retro: shrink to a chunky 64x128 and sample it blocky.
+  const sm = document.createElement('canvas');
+  sm.width = 64; sm.height = 128;
+  sm.getContext('2d').drawImage(c, 0, 0, 64, 128);
+  const t = new THREE.CanvasTexture(sm);
   t.wrapS = THREE.ClampToEdgeWrapping; t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 8;
+  t.magFilter = THREE.NearestFilter;
+  t.minFilter = THREE.NearestMipmapLinearFilter;
   return t;
 }
 

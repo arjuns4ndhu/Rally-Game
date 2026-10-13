@@ -2,6 +2,7 @@
 // it, blending out into the seeded landform and rolling hills further away.
 import * as THREE from 'three';
 import { makeBaseHeight, makeHillHeight } from './stagegen.js';
+import { facet } from './retro.js';
 
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -44,9 +45,12 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
   };
 
   const flatZone = road.width / 2 + 4;
+  // A little random lumpiness on each grid point away from the road, so
+  // the ground breaks up into visible triangles (retro look).
+  const lump = (x, z) => ((Math.abs(Math.sin(x * 0.3711 + z * 1.913) * 43758.5453) % 1) - 0.5) * 1.8;
   const heightRaw = (x, z) => {
     const nr = nearestRoad(x, z);
-    const far = base(x, z) + hills(x, z) * smooth(25, 200, nr ? nr.d : 999);
+    const far = base(x, z) + hills(x, z) * smooth(25, 200, nr ? nr.d : 999) + lump(x, z) * smooth(flatZone + 8, flatZone + 40, nr ? nr.d : 999);
     if (!nr) return far;
     const s = smooth(flatZone, flatZone + 40, nr.d);
     return (road.py[nr.i] - 0.6) * (1 - s) + far * s;
@@ -106,10 +110,9 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
     col.set([c.r, c.g, c.b], v * 3);
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  geo.computeVertexNormals();
-  if (grassMap) grassMap.repeat.set((nx - 1) * cell / 18, (nz - 1) * cell / 18);
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-    map: grassMap, vertexColors: true, flatShading: true, roughness: 1, color: 0xffffff,
+  // Flat-coloured triangles, each a slightly different shade, no texture.
+  const mesh = new THREE.Mesh(facet(geo, 0.15), new THREE.MeshStandardMaterial({
+    vertexColors: true, flatShading: true, roughness: 1, color: 0xffffff,
   }));
   mesh.receiveShadow = true;
 

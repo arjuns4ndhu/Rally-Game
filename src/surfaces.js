@@ -56,13 +56,14 @@ function canvasTex(w, h, draw, repeat = true) {
   draw(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.magFilter = THREE.NearestFilter;              // blocky, retro
+  t.minFilter = THREE.NearestMipmapLinearFilter;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
 
 function asphaltTexture() {
-  return canvasTex(256, 256, (g, w, h) => {
+  return canvasTex(64, 64, (g, w, h) => {
     g.fillStyle = '#3d3f42'; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 9000; i++) {
       const l = 40 + Math.random() * 60;
@@ -81,7 +82,7 @@ function asphaltTexture() {
 
 function patchTexture(kind) {
   const col = { mud: [70, 52, 34], puddle: [150, 165, 180], ice: [205, 225, 240], sand: [214, 170, 110] }[kind];
-  return canvasTex(128, 128, (g, w, h) => {
+  return canvasTex(32, 32, (g, w, h) => {
     const grd = g.createRadialGradient(w / 2, h / 2, 4, w / 2, h / 2, w / 2);
     const a = kind === 'puddle' ? 0.85 : 0.8;
     grd.addColorStop(0, `rgba(${col},${a})`);

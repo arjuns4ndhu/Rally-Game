@@ -5,6 +5,7 @@ import { mulberry32 } from './rng.js';
 import { buildTerrain } from './terrain.js';
 import { THEMES } from './themes.js';
 import { distToPolyline } from './track.js';
+import { facet, pixelTex } from './retro.js';
 
 function skyDome() {
   const geo = new THREE.SphereGeometry(440, 24, 12);
@@ -112,10 +113,10 @@ export function setupWorld(scene) {
 // Each kind is a list of parts (geometry + material + whether it takes the
 // per-instance colour), a colour picker and a collision radius.
 function buildTreeKits() {
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3626, flatShading: true });
-  const leafMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.9 });
-  const snowMat = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, flatShading: true, roughness: 0.8 });
-  const birchMat = new THREE.MeshStandardMaterial({ color: 0xe8e4da, flatShading: true });
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3626, flatShading: true, vertexColors: true });
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.9, vertexColors: true });
+  const snowMat = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, flatShading: true, roughness: 0.8, vertexColors: true });
+  const birchMat = new THREE.MeshStandardMaterial({ color: 0xe8e4da, flatShading: true, vertexColors: true });
   const at = (geo, y) => { geo.translate(0, y, 0); return geo; };
 
   const trunk = at(new THREE.CylinderGeometry(0.18, 0.28, 2.2, 5), 1.1);
@@ -136,7 +137,9 @@ function buildTreeKits() {
   const shrub = at(new THREE.DodecahedronGeometry(0.9, 0), 0.5);
   const H = (h, s, l) => (r) => new THREE.Color().setHSL(h[0] + r() * h[1], s[0] + r() * s[1], l[0] + r() * l[1]);
 
-  return {
+  // Every part gets per-triangle shading (retro faceted look).
+  const F = (g) => facet(g, 0.2);
+  const kits = {
     pine: { parts: [[trunk, trunkMat, false], [pine, leafMat, true]], color: H([0.24, 0.08], [0.35, 0.2], [0.18, 0.1]), r: 0.42 },
     snowpine: { parts: [[trunk, trunkMat, false], [pine, leafMat, true], [snowCaps, snowMat, false]], color: H([0.36, 0.06], [0.25, 0.15], [0.14, 0.08]), r: 0.42 },
     broadleaf: { parts: [[broadTrunk, trunkMat, false], [canopy, leafMat, true]], color: H([0.02, 0.11], [0.6, 0.25], [0.35, 0.15]), r: 0.42 },
@@ -144,6 +147,9 @@ function buildTreeKits() {
     cactus: { parts: [[cactus, leafMat, true]], color: H([0.26, 0.06], [0.35, 0.15], [0.28, 0.08]), r: 0.35 },
     shrub: { parts: [[shrub, leafMat, true]], color: H([0.12, 0.1], [0.3, 0.2], [0.25, 0.1]), r: 0 },
   };
+  const done = new Map();
+  for (const k of Object.values(kits)) k.parts = k.parts.map(([g, m, c]) => { if (!done.has(g)) done.set(g, F(g)); return [done.get(g), m, c]; });
+  return kits;
 }
 
 // Build the terrain and dressing around a road. Returns { group, terrain, obstacles }.
@@ -160,11 +166,11 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
 
   // Ground: shaped terrain around the road, plus a flat apron under the horizon.
   const terrain = buildTerrain(road, {
-    seed, flat, grassMap: detailTexture(), theme,
+    seed, flat, theme,
     baseAmp: theme.heightAmp * hilliness, hillAmp: theme.hillAmp * hilliness,
   });
   group.add(terrain.mesh);
-  const apronTex = groundTexture(theme);
+  const apronTex = pixelTex(groundTexture(theme));
   apronTex.repeat.set(220, 220);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial({ map: apronTex, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2;
@@ -229,8 +235,8 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
   }
 
   // --- Rocks
-  const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.95 });
+  const rockGeo = facet(new THREE.DodecahedronGeometry(1, 0), 0.18);
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.95, vertexColors: true });
   const rockSpots = [];
   for (let k = 0; k < 500 * theme.rockDensity; k++) {
     const i = Math.floor(rand() * road.n);
@@ -269,7 +275,8 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
     // Rocks up to about a metre get knocked aside (they slow you a little);
     // only proper boulders are solid.
     const knock = sc < 1.1;
-    return { x, z, sc, knock, r: knock ? (half + wide) * 0.45 : wide * 0.9, half, ux, uz, m, color };
+    // (A rock almost buried in the ground still gets a small, sane hitbox.)
+    return { x, z, sc, knock, r: knock ? Math.max(0.15, (half + wide) * 0.45) : Math.max(0.3, wide * 0.9), half, ux, uz, m, color };
   });
   addTiled(group, rockGeo, rockMat, rockItems, true, true);
 
@@ -314,8 +321,8 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
   group.add(postMesh, railMesh);
 
   // --- Horizon: rolling hills, desert mesas or snow-capped alpine peaks.
-  const hillMat = new THREE.MeshStandardMaterial({ color: theme.hills, flatShading: true, roughness: 1 });
-  const capMat = new THREE.MeshStandardMaterial({ color: 0xf2f5f8, flatShading: true, roughness: 0.9 });
+  const hillMat = new THREE.MeshStandardMaterial({ color: theme.hills, flatShading: true, roughness: 1, vertexColors: true });
+  const capMat = new THREE.MeshStandardMaterial({ color: 0xf2f5f8, flatShading: true, roughness: 0.9, vertexColors: true });
   const radius = Math.max(maxX - minX, maxZ - minZ) / 2 + 260;
   const base = terrain.meanH - 8;
   for (let k = 0; k < 26; k++) {
@@ -324,21 +331,21 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
     const px = cx + Math.cos(a) * r, pz = cz + Math.sin(a) * r;
     if (theme.mesas) {
       const w = 60 + rand() * 110, h = 40 + rand() * 70;
-      const mesa = new THREE.Mesh(new THREE.CylinderGeometry(w, w * 1.25, h, 7), hillMat);
+      const mesa = new THREE.Mesh(facet(new THREE.CylinderGeometry(w, w * 1.25, h, 7, 3), 0.14), hillMat);
       mesa.position.set(px, base + h / 2, pz);
       mesa.rotation.y = rand() * 3;
       group.add(mesa);
     } else if (theme.peaks) {
       const w = 110 + rand() * 120, h = 140 + rand() * 160;
-      const peak = new THREE.Mesh(new THREE.ConeGeometry(w, h, 6), hillMat);
+      const peak = new THREE.Mesh(facet(new THREE.ConeGeometry(w, h, 6, 3), 0.14), hillMat);
       peak.position.set(px, base + h / 2, pz);
-      const cap = new THREE.Mesh(new THREE.ConeGeometry(w * 0.32, h * 0.32, 6), capMat);
+      const cap = new THREE.Mesh(facet(new THREE.ConeGeometry(w * 0.32, h * 0.32, 6), 0.1), capMat);
       cap.position.set(0, h * 0.34, 0);
       peak.add(cap);
       peak.rotation.y = rand() * 3;
       group.add(peak);
     } else {
-      const h = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), hillMat);
+      const h = new THREE.Mesh(facet(new THREE.IcosahedronGeometry(1, 1), 0.14), hillMat);
       const w = 90 + rand() * 140;
       h.scale.set(w, (30 + rand() * 70) * Math.max(0.8, hilliness), w * (0.6 + rand() * 0.6));
       h.position.set(px, base, pz);
@@ -354,7 +361,7 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
     if (o.knock) { obstacles.push({ x: o.x, z: o.z, r: o.r, knock: true, item: o }); continue; }
     // Long boulders: a chain of circles along the long axis covers the shape.
     const span = Math.max(0, (o.half || 0) - o.r);
-    const nC = span > 0.15 ? Math.ceil(span / (o.r * 0.8)) : 0;
+    const nC = span > 0.15 ? Math.min(6, Math.ceil(span / (o.r * 0.8))) : 0;
     for (let k = -nC; k <= nC; k++) {
       const t = nC ? (k / nC) * span : 0;
       obstacles.push({ x: o.x + (o.ux || 0) * t, z: o.z + (o.uz || 0) * t, r: o.r, src: o });
