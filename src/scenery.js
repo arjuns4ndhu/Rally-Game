@@ -122,6 +122,8 @@ function buildTreeKits() {
   const pine = mergeGeos([at(new THREE.ConeGeometry(1.9, 5.5, 6), 4.6), at(new THREE.ConeGeometry(1.3, 3.6, 6), 7.0)]);
   const snowCaps = mergeGeos([at(new THREE.ConeGeometry(1.15, 2.0, 6), 6.25), at(new THREE.ConeGeometry(0.8, 1.7, 6), 8.0)]);
   const canopy = at(new THREE.IcosahedronGeometry(2.3, 0), 4.6);
+  // Broadleaf trunks reach up into the canopy (it starts ~2.7 m up).
+  const broadTrunk = at(new THREE.CylinderGeometry(0.2, 0.3, 3.6, 5), 1.8);
   const birchTrunk = at(new THREE.CylinderGeometry(0.12, 0.16, 4.2, 5), 2.1);
   const birchTop = at(new THREE.IcosahedronGeometry(1.4, 0), 4.9);
   const cactus = mergeGeos([
@@ -137,7 +139,7 @@ function buildTreeKits() {
   return {
     pine: { parts: [[trunk, trunkMat, false], [pine, leafMat, true]], color: H([0.24, 0.08], [0.35, 0.2], [0.18, 0.1]), r: 0.42 },
     snowpine: { parts: [[trunk, trunkMat, false], [pine, leafMat, true], [snowCaps, snowMat, false]], color: H([0.36, 0.06], [0.25, 0.15], [0.14, 0.08]), r: 0.42 },
-    broadleaf: { parts: [[trunk, trunkMat, false], [canopy, leafMat, true]], color: H([0.02, 0.11], [0.6, 0.25], [0.35, 0.15]), r: 0.42 },
+    broadleaf: { parts: [[broadTrunk, trunkMat, false], [canopy, leafMat, true]], color: H([0.02, 0.11], [0.6, 0.25], [0.35, 0.15]), r: 0.42 },
     birch: { parts: [[birchTrunk, birchMat, false], [birchTop, leafMat, true]], color: H([0.12, 0.05], [0.6, 0.2], [0.45, 0.12]), r: 0.25 },
     cactus: { parts: [[cactus, leafMat, true]], color: H([0.26, 0.06], [0.35, 0.15], [0.28, 0.08]), r: 0.35 },
     shrub: { parts: [[shrub, leafMat, true]], color: H([0.12, 0.1], [0.3, 0.2], [0.25, 0.1]), r: 0 },
@@ -244,8 +246,10 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
     s.set(sc * (1 + rand()), sc * 0.7, sc * (1 + rand()));
     p.set(x, baseY(x, z, 0.8 * sc) + sc * 0.15, z);
     const color = new THREE.Color().setHSL(rh, rs + rand() * 0.1, rl - 0.08 + rand() * 0.2);
-    // Small stones are drivable; only proper boulders block the car.
-    return { x, z, r: sc > 0.55 ? Math.min(s.x, s.z) * 0.85 : 0, m: new THREE.Matrix4().compose(p, q, s), color };
+    // Rocks up to about a metre get knocked aside (they slow you a little);
+    // only proper boulders are solid.
+    const knock = sc < 1.1;
+    return { x, z, sc, knock, r: knock ? Math.max(s.x, s.z) * 0.7 : Math.min(s.x, s.z) * 0.85, m: new THREE.Matrix4().compose(p, q, s), color };
   });
   addTiled(group, rockGeo, rockMat, rockItems, true, true);
 
@@ -324,7 +328,8 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
   }
 
   // Solid things the car can hit: tree trunks, cacti and big rocks.
-  const obstacles = [...treeItems, ...rockItems].filter((o) => o.r > 0).map(({ x, z, r }) => ({ x, z, r }));
+  const obstacles = [...treeItems, ...rockItems].filter((o) => o.r > 0)
+    .map((o) => (o.knock ? { x: o.x, z: o.z, r: o.r, knock: true, item: o } : { x: o.x, z: o.z, r: o.r }));
   return { group, terrain, obstacles };
 }
 
@@ -342,6 +347,7 @@ function addTiled(group, geo, mat, items, withColor, receive = false) {
     const mesh = new THREE.InstancedMesh(geo, mat, list.length);
     list.forEach((it, i) => {
       mesh.setMatrixAt(i, it.m);
+      it.mesh = mesh; it.idx = i;          // so a single instance can be moved later
       if (withColor) mesh.setColorAt(i, it.color);
     });
     mesh.castShadow = true;

@@ -384,6 +384,7 @@ function restartRun() {
   run.t = 0; run.next = 0; run.splits = []; run.penalty = 0; run.respawns = 0;
   best = loadBest();
   hazards?.reset();
+  resetRocks();
   model.repair();
   placeOnRoad(stage.kind === 'practice' ? 0 : road.indexAt(stage.start - 2.5));   // on the line
   $('finish').hidden = true;
@@ -976,6 +977,7 @@ function collide() {
     }
     for (const list of lists) {
       for (const o of list) {
+        if (o.knock) continue;                                   // handled by knockRocks()
         const ex = cx - o.x, ez = cz - o.z, d = Math.hypot(ex, ez), min = CAR_R + o.r;
         if (d >= min || d < 1e-4) continue;
         const nx = ex / d, nz = ez / d;
@@ -1003,6 +1005,85 @@ function dentAt(wx, wz, depth) {
   const dx = wx - car.x, dz = wz - car.z, c = Math.cos(car.yaw), sn = Math.sin(car.yaw);
   model.dent(dx * c - dz * sn, 0.5 + Math.random() * 0.3, dx * sn + dz * c, depth);
 }
+// ---------- Knockable rocks ----------
+// Small boulders get punted out of the way: they cost you a bit of speed
+// (more for bigger ones), fly off, bounce and roll to a stop.
+const flying = [], knocked = [];
+const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _e = new THREE.Euler();
+function knockRocks(sim = true) {
+  const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw), off = car.spec.length * 0.3;
+  if (car.speed < 1.5) return;
+  for (const k of [off, 0, -off]) {
+    const cx = car.x + fx * k, cz = car.z + fz * k;
+    const gx = Math.floor(cx / OB_CELL), gz = Math.floor(cz / OB_CELL);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      const list = obGrid.get(`${gx + dx},${gz + dz}`);
+      if (!list) continue;
+      for (const o of list) {
+        if (!o.knock || o.gone) continue;
+        const ex = o.x - cx, ez = o.z - cz, d = Math.hypot(ex, ez);
+        if (d >= CAR_R + o.r) continue;
+        o.gone = true;
+        const it = o.item;
+        it.m.decompose(_p, _q, _s);
+        const nx = d > 1e-3 ? ex / d : fx, nz = d > 1e-3 ? ez / d : fz;
+        const sp = car.speed, mass = it.sc * it.sc * it.sc;
+        const kick = 1.2 / (0.6 + mass);
+        flying.push({
+          o, it, pos: _p.clone(), quat: _q.clone(), scale: _s.clone(), r: o.r,
+          v: new THREE.Vector3(car.vx * kick * 0.8 + nx * sp * 0.35 * kick, (1.5 + Math.random() * 2.5) * Math.min(1.5, kick) * Math.min(1, sp / 12), car.vz * kick * 0.8 + nz * sp * 0.35 * kick),
+          spin: new THREE.Vector3((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 14).multiplyScalar(Math.min(1, sp / 15)),
+          rest: 0,
+        });
+        knocked.push(o);
+        it.mesh.frustumCulled = false;               // it can leave its tile's bounds
+        if (!sim) continue;                          // replays don't touch the car
+        const slow = Math.min(0.25, 0.15 * mass + 0.01 * it.sc);
+        car.vx *= 1 - slow; car.vz *= 1 - slow;
+        car.yawRate += (fx * nz - fz * nx) * slow * 2.5;
+        audio.thud(Math.min(0.7, 0.12 + mass * 0.5));
+        shakeKick = Math.max(shakeKick, Math.min(0.2, slow));
+        if (it.sc > 0.6) dentAt(o.x, o.z, Math.min(0.06, slow * 0.25));
+        for (let n = 0; n < 4 + it.sc * 10; n++) {
+          dust.emit(o.x, groundAt(o.x, o.z, 99, 0) + 0.3, o.z, (Math.random() - 0.5) * 3 + car.vx * 0.2, 0.6 + Math.random() * 1.5, (Math.random() - 0.5) * 3 + car.vz * 0.2, 0.8 + Math.random() * 0.6, 1.2, surface.dust);
+        }
+      }
+    }
+  }
+}
+function updateFlyingRocks(dt) {
+  for (let i = flying.length - 1; i >= 0; i--) {
+    const f = flying[i];
+    f.v.y -= 9.81 * dt;
+    f.pos.addScaledVector(f.v, dt);
+    const g = worldGround(f.pos.x, f.pos.z) + f.scale.y * 0.6;
+    if (f.pos.y < g) {
+      f.pos.y = g;
+      if (f.v.y < -1.5) { f.v.y *= -0.35; f.v.x *= 0.7; f.v.z *= 0.7; f.spin.multiplyScalar(0.7); }
+      else { f.v.y = 0; f.v.x *= Math.exp(-dt * 3); f.v.z *= Math.exp(-dt * 3); f.spin.multiplyScalar(Math.exp(-dt * 3)); }
+    }
+    _e.set(f.spin.x * dt, f.spin.y * dt, f.spin.z * dt);
+    f.quat.multiply(_q.setFromEuler(_e));
+    f.it.mesh.setMatrixAt(f.it.idx, _m4.compose(f.pos, f.quat, f.scale));
+    f.it.mesh.instanceMatrix.needsUpdate = true;
+    f.o.x = f.pos.x; f.o.z = f.pos.z;
+    if (Math.hypot(f.v.x, f.v.y, f.v.z) < 0.3 && f.pos.y <= g + 0.01) { if ((f.rest += dt) > 0.3) flying.splice(i, 1); }
+    else f.rest = 0;
+  }
+}
+const _m4 = new THREE.Matrix4();
+// Put every knocked rock back (restart / replay).
+function resetRocks() {
+  flying.length = 0;
+  for (const o of knocked) {
+    o.gone = false;
+    o.x = o.item.x; o.z = o.item.z;
+    o.item.mesh.setMatrixAt(o.item.idx, o.item.m);
+    o.item.mesh.instanceMatrix.needsUpdate = true;
+  }
+  knocked.length = 0;
+}
+
 function crash(impact) {
   stats.crash();
   car.yawRate += (Math.random() - 0.5) * Math.min(3, impact * 0.15);
@@ -1066,6 +1147,7 @@ function stepPhysics(dt, inp) {
   const flying = car.air && car.airTime > 0.06;
   car.step(dt, inp, flying ? AIR : surface);
   collide();
+  knockRocks();
   // Stuck off the road (crawling for 4 s while trying to drive): put back.
   if (q.dist > road.width / 2 + 3 && car.speed < 1.5 && (inp.throttle > 0.5 || inp.brake > 0.5) ) {
     stuckTime += dt;
@@ -1230,6 +1312,7 @@ function startReplay() {
   $('hud-replay').hidden = false;
   document.body.classList.add('replaying');
   hazards?.reset();
+  resetRocks();
   dust.clear();
   tv.reset();
   samplePose(replay.samples, 0, replayPose);
@@ -1279,6 +1362,7 @@ function updateReplay(dt) {
   applyReplayPose(dt);
   hazards?.update(dt, replay.along, hazardFx);
   hazardObs = [];
+  knockRocks(false);
   emitDust(dt);
   $('replay-time').textContent = fmt(Math.min(replay.t, replay.end));
   if (replay.t > replay.end + 2) stopReplay();
@@ -1317,7 +1401,7 @@ function frame(now) {
   if (replay.on) { if (!paused) tv.update(car, dt, road, replay.along, worldGround, drone); }
   else rig.update(car, dt);
   world.sky.position.copy(camera.position);
-  if (!paused) dust.update(dt);
+  if (!paused) { dust.update(dt); updateFlyingRocks(dt); }
   if (!paused) precip.update(dt, camera, { x: car.vx, z: car.vz });
   wasSplash = !!surface.splash;
   if (headlights[0].intensity > 0) {
@@ -1474,7 +1558,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  auto: null, forceWeather: null, get weather() { return weather; }, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
+  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver,
