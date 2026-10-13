@@ -37,7 +37,7 @@
     </div>
   </div>
   <div class="hud-help" id="hud-help">
-    <b>W/S</b> throttle/brake · <b>A/D</b> steer · <b>Space</b> handbrake · <b>C</b> camera · <b>G</b> line assist · <b>R</b> restart · <b>T</b> back to checkpoint · <b>1–6</b> car (practice) · <b>M</b> mute · <b>N</b> map · <b>?</b> tuning · <b>Esc</b> pause
+    <span id="help-drive"><b>W/S</b> throttle/brake · <b>A/D</b> steer · <b>Space</b> handbrake</span> · <b>C</b> camera · <b>G</b> line assist · <b>R</b> restart · <b>T</b> back to checkpoint · <b>1–6</b> car (practice) · <b>M</b> mute · <b>N</b> map · <b>?</b> tuning · <b>Esc</b> pause
   </div>
   <div class="hud-top" id="hud-timing" hidden>
     <div class="timer" id="hud-time">0:00.00</div>
@@ -50,6 +50,11 @@
   <canvas class="minimap" id="minimap" role="img" aria-label="Stage map"></canvas>
   <div class="countdown" id="hud-count" hidden aria-live="assertive"></div>
   <div class="toast" id="toast"></div>
+  <div class="school" id="school" hidden>
+    <div class="eyebrow">Driving school · <span id="school-step"></span></div>
+    <div class="school-text" id="school-text"></div>
+    <div class="school-track"><i id="school-bar"></i></div>
+  </div>
   <div class="replay-tag" id="hud-replay" hidden><span class="rec"></span>REPLAY <b id="replay-time">0:00.00</b><button id="btn-replay-exit" class="btn replay-exit">Exit <small>Esc</small></button></div>
 </div>
 
@@ -83,6 +88,7 @@
       <button id="btn-random" class="btn">Random stage<small>A brand-new road every time</small></button>
       <button id="btn-endurance" class="btn">Endurance stage<small>A long 5–8 km stage: pace yourself</small></button>
       <button id="btn-practice" class="btn">Practice loop<small>No clock, just driving</small></button>
+      <button id="btn-school" class="btn">Driving school<small>Learn to drift in nine quick steps</small></button>
     </div>
     <form id="code-form" class="code-form" autocomplete="off">
       <input id="code-in" inputmode="numeric" maxlength="10" placeholder="Stage code" aria-label="Stage code">
@@ -191,6 +197,7 @@
     <label class="check"><input type="checkbox" id="opt-map" checked> Mini map</label>
     <label class="check select">Volume <span class="vol"><input type="range" id="opt-volume" min="0" max="100" step="5" value="80" aria-label="Volume"><output id="opt-volume-val">80%</output></span></label>
     <label class="check"><input type="checkbox" id="opt-mute"> Mute sound</label>
+    <label class="check"><input type="checkbox" id="opt-music"> Menu music</label>
     <label class="check"><input type="checkbox" id="opt-retro" checked> Retro mode (reloads)</label>
     <label class="check select retro-sub">Retro pixels
       <select id="opt-pixels">
@@ -210,6 +217,12 @@
       </select>
     </label>
     <label class="check"><input type="checkbox" id="opt-scan" checked> Scanlines</label>
+    <label class="check"><input type="checkbox" id="opt-bigtouch"> Big touch buttons</label>
+    <div class="keybinds">
+      <div class="eyebrow">Controls <small>click, then press a key</small></div>
+      <div id="keybinds"></div>
+      <button class="btn btn-sm" id="keys-reset">Default keys</button>
+    </div>
   </div>
 </div>
 

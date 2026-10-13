@@ -19,8 +19,10 @@ export class AudioEngine {
     this.master.connect(ctx.destination);
     this.engineBus = ctx.createGain();
     this.sfxBus = ctx.createGain();
+    this.musicBus = ctx.createGain();
     this.engineBus.connect(this.master);
     this.sfxBus.connect(this.master);
+    this.musicBus.connect(this.master);
     this.applyVolumes();
 
     // --- Engine: three oscillators -> soft clip -> lowpass -> gain
@@ -88,6 +90,7 @@ export class AudioEngine {
     this.master.gain.value = this.muted ? 0 : this.volumes.master;
     this.engineBus.gain.value = this.volumes.engine;
     this.sfxBus.gain.value = this.volumes.sfx;
+    this.musicBus.gain.value = this.musicOn ? 0.5 : 0;
   }
 
   setVolume(v) {
@@ -239,6 +242,89 @@ export class AudioEngine {
     g.gain.exponentialRampToValueAtTime(0.0001, at + 0.3);
     o.connect(g).connect(this.sfxBus);
     o.start(at); o.stop(at + 0.35);
+  }
+
+  // Silence the engine and tyres (back in the menus) without stopping music.
+  idle() {
+    if (!this.ctx) return;
+    const at = this.ctx.currentTime;
+    for (const g of [this.engGain, this.slideGain, this.rollGain]) g?.gain.setTargetAtTime(0, at, 0.05);
+  }
+
+  // Finish jingle: a rising arpeggio, longer and brighter for a new best.
+  fanfare(big = false) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.02;
+    const notes = big ? [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5, 1318.5] : [523.25, 659.25, 783.99, 1046.5];
+    const step = big ? 0.11 : 0.12;
+    notes.forEach((f, i) => {
+      const last = i === notes.length - 1, at = t0 + i * step, dur = last ? 0.7 : step * 0.9;
+      for (const [type, mul, vol] of [['square', 1, 0.12], ['triangle', 0.5, 0.18]]) {
+        const o = ctx.createOscillator(); o.type = type; o.frequency.value = f * mul;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.exponentialRampToValueAtTime(vol, at + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+        o.connect(g).connect(this.sfxBus);
+        o.start(at); o.stop(at + dur + 0.05);
+      }
+    });
+  }
+
+  // Menu music: a small chiptune loop, scheduled a little ahead of time.
+  music(on) {
+    this.musicOn = on;
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    this.musicBus.gain.setTargetAtTime(on ? 0.5 : 0, ctx.currentTime, on ? 0.3 : 0.15);
+    if (!on || this._seq) return;
+    const BPM = 116, S16 = 60 / BPM / 4;
+    // Am - F - C - G, one bar each: [bass root, arpeggio notes] in MIDI.
+    const BARS = [[45, [69, 72, 76, 72]], [41, [65, 69, 72, 69]], [48, [67, 72, 76, 72]], [43, [67, 71, 74, 71]]];
+    const LEAD = [76, null, 79, 76, 74, null, 72, null, 74, null, 76, null, 72, null, 69, null];
+    const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+    const voice = (type, f, at, dur, vol) => {
+      const o = ctx.createOscillator(); o.type = type; o.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(vol, at);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(g).connect(this.musicBus);
+      o.start(at); o.stop(at + dur + 0.02);
+    };
+    const hat = (at, vol) => {
+      const src = ctx.createBufferSource(); src.buffer = this.noiseBuf;
+      const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7000;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(vol, at);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.04);
+      src.connect(f).connect(g).connect(this.musicBus);
+      src.start(at, Math.random()); src.stop(at + 0.05);
+    };
+    const kick = (at) => {
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(140, at);
+      o.frequency.exponentialRampToValueAtTime(45, at + 0.12);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.35, at);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.18);
+      o.connect(g).connect(this.musicBus);
+      o.start(at); o.stop(at + 0.2);
+    };
+    let step = 0, next = ctx.currentTime + 0.1;
+    this._seq = setInterval(() => {
+      if (!this.musicOn && this.musicBus.gain.value < 0.01) { clearInterval(this._seq); this._seq = null; return; }
+      while (next < ctx.currentTime + 0.25) {
+        const bar = Math.floor(step / 16) % 4, s16 = step % 16, [root, arp] = BARS[bar];
+        if (s16 % 4 === 0) voice('square', hz(root - 12 + (s16 === 8 ? 12 : 0)), next, S16 * 3.5, 0.09);
+        voice('triangle', hz(arp[s16 % 4] + 12 * (s16 % 8 < 4 ? 0 : 1) - 12), next, S16 * 0.9, 0.06);
+        const phrase = Math.floor(step / 64) % 2;
+        const ln = phrase ? LEAD[(s16 + bar * 4) % 16] : null;
+        if (ln && s16 % 2 === 0) voice('square', hz(ln), next, S16 * 1.8, 0.035);
+        if (s16 === 0 || s16 === 8 || (s16 === 10 && bar === 3)) kick(next);
+        if (s16 % 2 === 1) hat(next, s16 % 4 === 3 ? 0.06 : 0.03);
+        next += S16; step++;
+      }
+    }, 60);
   }
 
   suspend() { this.ctx?.suspend(); }

@@ -110,6 +110,24 @@ function mergeTyre(geos) {
   return out;
 }
 
+let halo = null;
+function haloTexture() {
+  if (halo) return halo;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(255,255,255,1)');
+  r.addColorStop(0.2, 'rgba(255,255,255,0.55)');
+  r.addColorStop(0.5, 'rgba(255,255,255,0.12)');
+  r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r;
+  g.fillRect(0, 0, 64, 64);
+  halo = new THREE.CanvasTexture(c);
+  halo.colorSpace = THREE.SRGBColorSpace;
+  return halo;
+}
+
 function numberTexture(num, color) {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -315,10 +333,13 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     }
   }
 
-  // Head and tail lights.
+  // Head and tail lights. Halo spots are collected for the night glow.
+  const heads = [], tails = [];
   for (const side of [-1, 1]) {
     add(new THREE.BoxGeometry(0.3, 0.1, 0.05), lightMat, side * (W / 2 - 0.3), topY(front - 0.1) - 0.16, front + 0.05);
     add(new THREE.BoxGeometry(0.34, 0.1, 0.05), tailMat, side * (W / 2 - 0.28), topY(rear + 0.05) - 0.14, rear - 0.05);
+    heads.push([side * (W / 2 - 0.3), topY(front - 0.1) - 0.16, front + 0.1, 1]);
+    tails.push([side * (W / 2 - 0.28), topY(rear + 0.05) - 0.14, rear - 0.1]);
   }
   root.userData.tailMat = tailMat;
 
@@ -340,6 +361,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
       const lens = new THREE.Mesh(new THREE.CircleGeometry(lr * 0.85, 10), lightMat);
       lens.position.set(x, lampY, lampZ + 0.05);
       body.add(lamp, lens);
+      heads.push([x, lampY, lampZ + 0.1, 0.8]);
     }
   }
   // Round headlamps at the front corners (the mini's face).
@@ -348,6 +370,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
       const hl = new THREE.Mesh(new THREE.CircleGeometry(0.1, 12), lightMat);
       hl.position.set(side * (W / 2 - 0.2), topY(front - 0.05) - 0.1, front + 0.06);
       body.add(hl);
+      heads.push([hl.position.x, hl.position.y, front + 0.1, 0.9]);
     }
   }
   // Louvred engine cover behind the cabin.
@@ -521,6 +544,16 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   }
   let brakeHeat = 0;
 
+  // Night glow: soft additive halos on every lamp, off by day.
+  const glow = new THREE.Group();
+  glow.visible = false;
+  const headGlow = new THREE.SpriteMaterial({ map: haloTexture(), color: 0xfff1c8, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false });
+  const tailGlow = new THREE.SpriteMaterial({ map: haloTexture(), color: 0xff2a1a, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false });
+  for (const [x, y, z, k] of heads) { const sp = new THREE.Sprite(headGlow); sp.position.set(x, y, z); sp.scale.setScalar(1.3 * k); glow.add(sp); }
+  for (const [x, y, z] of tails) { const sp = new THREE.Sprite(tailGlow); sp.position.set(x, y, z); sp.scale.setScalar(0.7); glow.add(sp); }
+  if (!ghost) body.add(glow);
+  let glowLevel = 0;
+
   // Cockpit (only shown in the cockpit camera): dash, steering wheel, rev lights.
   const cockpit = new THREE.Group();
   cockpit.visible = false;
@@ -584,6 +617,11 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   const roofH = roofBox.max.y + (prof.rack ? 0.3 : 0);
   const api = {
     root, body, wheels, paint, roofH, seat, cockpit,
+    setGlow(level) {
+      glowLevel = level;
+      glow.visible = level > 0;
+      headGlow.opacity = 0.9 * level;
+    },
     setCockpit(on) { cockpit.visible = on; glassMesh.visible = !on; },
     setColor(c) { paint.color.set(c); for (const m of mats) if (m.userData.followPaint) m.color.set(c); },
     // Purely cosmetic crash damage: push the bodywork in around a point
@@ -670,6 +708,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
         w.spin.rotation.x += w.isFront ? roll2 : roll2 * (1 + car.wheelSpin * 2);
       }
       tailMat.emissiveIntensity = car.brake > 0.1 ? 2.2 : 0.5;
+      if (glowLevel) tailGlow.opacity = (car.brake > 0.1 ? 1 : 0.45) * Math.max(0.6, glowLevel);
       // Discs heat up under hard braking at speed and cool off slowly.
       brakeHeat = Math.max(0, Math.min(1, brakeHeat + ((car.brake || 0) * Math.min(1, car.speed / 25) * 0.9 - 0.18) * dt));
       discMat.emissiveIntensity = brakeHeat * brakeHeat * 3;

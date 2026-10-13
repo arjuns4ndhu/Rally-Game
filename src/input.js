@@ -1,12 +1,36 @@
 // Keyboard + touch input, merged into one analog-ish control state.
 
-const KEYS = {
-  throttle: ['KeyW', 'ArrowUp'],
-  brake: ['KeyS', 'ArrowDown'],
-  left: ['KeyA', 'ArrowLeft'],
-  right: ['KeyD', 'ArrowRight'],
-  handbrake: ['Space'],
-};
+// Each driving action has one key the player can rebind, plus the arrow keys
+// as fixed spares.
+export const ACTIONS = { throttle: 'Throttle', brake: 'Brake / reverse', left: 'Steer left', right: 'Steer right', handbrake: 'Handbrake' };
+const DEFAULTS = { throttle: 'KeyW', brake: 'KeyS', left: 'KeyA', right: 'KeyD', handbrake: 'Space' };
+const SPARE = { throttle: ['ArrowUp'], brake: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'], handbrake: [] };
+export const BINDS = { ...DEFAULTS };
+try {
+  const saved = JSON.parse(localStorage.getItem('sideways.keys') || '{}');
+  for (const a in ACTIONS) if (typeof saved[a] === 'string' && /^[A-Za-z0-9]{2,20}$/.test(saved[a])) BINDS[a] = saved[a];
+} catch { /* ignore */ }
+const KEYS = {};
+function rebuild() { for (const a in ACTIONS) KEYS[a] = [BINDS[a], ...SPARE[a].filter((k) => k !== BINDS[a])]; }
+rebuild();
+function saveBinds() { try { localStorage.setItem('sideways.keys', JSON.stringify(BINDS)); } catch { /* ignore */ } }
+// Bind a key; if another action had it, that action takes this one's old key.
+export function bindKey(action, code) {
+  const other = Object.keys(BINDS).find((a) => a !== action && BINDS[a] === code);
+  if (other) BINDS[other] = BINDS[action];
+  BINDS[action] = code;
+  rebuild(); saveBinds();
+}
+export function resetKeys() { Object.assign(BINDS, DEFAULTS); rebuild(); saveBinds(); }
+// Is this key one of the driving keys (so menu hotkeys should leave it alone)?
+export const isDriveKey = (code) => Object.values(KEYS).some((k) => k.includes(code));
+export function keyLabel(code) {
+  if (code === 'Space') return 'Space';
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code.startsWith('Arrow')) return { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' }[code];
+  return code.replace(/(Left|Right)$/, ' $1');
+}
 
 export class Input {
   constructor() {
@@ -18,6 +42,7 @@ export class Input {
     this._throttle = 0; this._brake = 0;
 
     window.addEventListener('keydown', (e) => {
+      if (this.capture) { e.preventDefault(); e.stopImmediatePropagation(); const fn = this.capture; this.capture = null; fn(e.code); return; }
       const t = e.target;
       if (t && (t.tagName === 'SELECT' || (t.tagName === 'INPUT' && !['range', 'checkbox'].includes(t.type)))) return;
       if (Object.values(KEYS).some((k) => k.includes(e.code))) e.preventDefault();

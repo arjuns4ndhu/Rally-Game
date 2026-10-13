@@ -11,7 +11,8 @@ import { setupWorld, buildScenery } from './scenery.js';
 import { CameraRig, TVCamera } from './camera.js';
 import { Dust } from './particles.js';
 import { AudioEngine } from './audio.js';
-import { Input } from './input.js';
+import { DrivingSchool } from './school.js';
+import { Input, ACTIONS, BINDS, bindKey, resetKeys, isDriveKey, keyLabel } from './input.js';
 import { TyreMarks, buildRacingMarks } from './tyremarks.js';
 import { GhostRecorder, saveGhost, loadGhost, samplePose } from './ghost.js';
 import { buildPaceNotes, CoDriver } from './pacenotes.js';
@@ -139,6 +140,7 @@ function disposeGroup(g) {
   });
 }
 
+let lampGlow = 0;
 function loadStage(kind, seed = 0) {
   if (stageGroup) { scene.remove(stageGroup); disposeGroup(stageGroup); }
   stageGroup = new THREE.Group();
@@ -157,6 +159,8 @@ function loadStage(kind, seed = 0) {
   rain.set(weather.id === 'rain', precip.density ?? 1);
   const lamps = weather.dark ? 140 : weather.id === 'dusk' || weather.id === 'fog' ? 35 : 0;
   headlights.forEach((l) => { l.intensity = lamps; });
+  lampGlow = weather.dark ? 1 : lamps ? 0.45 : 0;
+  model.setGlow(lampGlow);
   // Wet gravel is darker and a little shiny.
   gravelMat.color.setScalar(weather.wet ? 0.7 : 1);
   gravelMat.roughness = weather.wet ? 0.6 : 0.95;
@@ -489,7 +493,7 @@ function finishRun() {
   stats.finish(isBest);
   if (stage.kind !== 'practice' && isBest) board.submit(stage.seed, run.t, CARS[carId].name);
   lastResult = { time: run.t, splits: run.splits.slice(), prev, isBest, label: stageLabel(), respawns: run.respawns, car: CARS[carId].name };
-  audio.beep(660, 0.12); setTimeout(() => audio.beep(990, 0.25), 140);
+  audio.fanfare(isBest && !!prev);
   $('fin-stage').textContent = stageLabel();
   renderBoard();
   $('btn-next').hidden = !(stage.kind === 'champ' && champIndex(stage.seed) < 5);
@@ -529,6 +533,7 @@ function setCar(id, quiet = false) {
   scene.add(model.root);
   rig.roofH = model.roofH;
   rig.model = model;
+  model.setGlow(lampGlow);
   audio.setCar(CARS[id]);
   $('hud-car').textContent = CARS[id].name;
   if (!quiet) toast(`${CARS[id].name} · ${CARS[id].tag}`);
@@ -670,6 +675,9 @@ let running = false, paused = false;
 
 function start(kind = 'daily', seed) {
   audio.init();
+  audio.music(false);
+  if (schoolNext && kind === 'practice') school.start(); else school.stop();
+  schoolNext = false;
   if (kind === 'daily' && seed == null) seed = dateSeed();
   if (kind === 'random' && seed == null) seed = 100000 + Math.floor(Math.random() * 900000);
   if (kind === 'endurance' && seed == null) seed = 3e6 + Math.floor(Math.random() * 1e6);
@@ -689,7 +697,9 @@ function toMenu() {
   codriver.stop();
   $('pause').hidden = true; $('finish').hidden = true; $('hud').hidden = true;
   $('start').hidden = false;
-  audio.suspend();
+  audio.resume(); audio.idle();
+  school.stop();
+  audio.music(musicOn);
 }
 function setPaused(p) {
   if (!running) return;
@@ -699,6 +709,7 @@ function setPaused(p) {
   if (p) audio.suspend(); else audio.resume();
 }
 function resetCar() {
+  school.note('reset');
   if (stage.kind === 'practice') {
     const q = road.nearest(car.x, car.z, roadHint);
     placeOnRoad(q.i);
@@ -843,6 +854,10 @@ $('code-form').addEventListener('submit', (e) => {
   pickThenStart(kind, n);
 });
 $('btn-practice').addEventListener('click', () => pickThenStart('practice'));
+// Driving school: the practice loop with guided steps on top.
+const school = new DrivingSchool({ root: $('school'), step: $('school-step'), text: $('school-text'), bar: $('school-bar') }, (a) => `<b>${keyLabel(BINDS[a])}</b>`);
+let schoolNext = false;
+$('btn-school').addEventListener('click', () => { pickThenStart('practice'); schoolNext = true; });
 $('btn-resume').addEventListener('click', () => setPaused(false));
 $('btn-reset').addEventListener('click', () => { resetCar(); setPaused(false); });
 $('btn-restart').addEventListener('click', () => { restartKey(); setPaused(false); });
@@ -895,6 +910,52 @@ let volume = 80;
 try { const v = parseInt(localStorage.getItem('sideways.volume'), 10); if (v >= 0 && v <= 100) volume = v; } catch { /* ignore */ }
 setVolume(volume);
 $('opt-volume').addEventListener('input', (e) => { audio.init(); setVolume(+e.target.value); });
+// Key rebinding (pause menu).
+function renderKeys() {
+  $('keybinds').innerHTML = Object.entries(ACTIONS).map(([a, label]) =>
+    `<div class="keyrow"><span>${label}</span><button class="chip" data-bind="${a}">${keyLabel(BINDS[a])}</button></div>`).join('');
+  const k = (a) => `<b>${keyLabel(BINDS[a])}</b>`;
+  $('help-drive').innerHTML = `${k('throttle')}/${k('brake')} throttle/brake · ${k('left')}/${k('right')} steer · ${k('handbrake')} handbrake`;
+}
+renderKeys();
+$('keybinds').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-bind]');
+  if (!b) return;
+  b.blur();
+  b.textContent = 'Press a key…';
+  b.classList.add('on');
+  input.capture = (code) => {
+    if (code !== 'Escape' && !['KeyC', 'KeyG', 'KeyR', 'KeyT', 'KeyN', 'KeyM', 'Slash', 'Enter', 'Tab'].includes(code) && !/^Digit[1-6]$/.test(code)) bindKey(b.dataset.bind, code);
+    else toast('THAT KEY IS TAKEN', 1000);
+    renderKeys();
+  };
+});
+$('keys-reset').addEventListener('click', () => { resetKeys(); renderKeys(); });
+// Bigger touch controls for small phones or big thumbs.
+function setBigTouch(on) {
+  document.body.classList.toggle('big-touch', on);
+  $('opt-bigtouch').checked = on;
+  try { localStorage.setItem('sideways.bigtouch', on ? '1' : '0'); } catch { /* ignore */ }
+}
+try { setBigTouch(localStorage.getItem('sideways.bigtouch') === '1'); } catch { /* ignore */ }
+$('opt-bigtouch').addEventListener('change', (e) => setBigTouch(e.target.checked));
+// Menu music: starts with the first click or key press on the title screen.
+let musicOn = true;
+try { musicOn = localStorage.getItem('sideways.music') !== '0'; } catch { /* ignore */ }
+$('opt-music').checked = musicOn;
+$('opt-music').addEventListener('change', (e) => {
+  musicOn = e.target.checked;
+  try { localStorage.setItem('sideways.music', musicOn ? '1' : '0'); } catch { /* ignore */ }
+});
+const firstGesture = () => {
+  window.removeEventListener('pointerdown', firstGesture, true);
+  window.removeEventListener('keydown', firstGesture, true);
+  if (running) return;
+  audio.init();
+  audio.music(musicOn);
+};
+window.addEventListener('pointerdown', firstGesture, true);
+window.addEventListener('keydown', firstGesture, true);
 $('opt-codriver').value = codriver.mode;
 $('opt-codriver').addEventListener('change', (e) => {
   codriver.mode = e.target.value;
@@ -951,6 +1012,7 @@ $('opt-scan').addEventListener('change', (e) => document.body.classList.toggle('
 input.on('key', (code, key) => {
   if (code === 'Escape' && !running && $('start').hidden && $('finish').hidden) { closePages(); return; }
   if (code === 'Escape') { if (replay.on) { stopReplay(); return; } if (running) setPaused(!paused); return; }
+  if (isDriveKey(code)) return;          // a rebound driving key wins over hotkeys
   if (key === '?' || code === 'Slash') { $('debug').hidden = !$('debug').hidden; return; }
   if (code === 'KeyN') { setMap(!mapOn); toast(mapOn ? 'MAP ON' : 'MAP OFF', 800); return; }
   if (code === 'KeyM') { setMuted(!muted); toast(muted ? 'SOUND OFF' : 'SOUND ON', 800); return; }
@@ -960,7 +1022,7 @@ input.on('key', (code, key) => {
     return;
   }
   if (paused) return;
-  if (code === 'KeyC') toast(rig.cycle().toUpperCase() + ' CAM', 800);
+  if (code === 'KeyC') { toast(rig.cycle().toUpperCase() + ' CAM', 800); school.note('camera'); }
   if (code === 'KeyG') { setAssist(!assist.on); toast(assist.on ? `LINE ASSIST ${assist.level.toUpperCase()}` : 'LINE ASSIST OFF', 1000); }
   if (code === 'KeyR') restartKey();
   if (code === 'KeyT') resetCar();
@@ -973,7 +1035,7 @@ input.on('key', (code, key) => {
   }
 });
 input.on('action', (act) => {
-  if (act === 'camera') toast(rig.cycle().toUpperCase() + ' CAM', 800);
+  if (act === 'camera') { toast(rig.cycle().toUpperCase() + ' CAM', 800); school.note('camera'); }
   if (act === 'reset') restartKey();
   if (act === 'pause') setPaused(!paused);
 });
@@ -1504,6 +1566,7 @@ function updateReplay(dt) {
 
 // ---------- Main loop ----------
 let last = performance.now(), acc = 0;
+let lastInp = { throttle: 0, brake: 0, steer: 0, handbrake: false };
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = (now - last) / 1000;
@@ -1515,9 +1578,14 @@ function frame(now) {
   if (active) {
     acc += dt;
     while (acc >= STEP) {
-      stepPhysics(STEP, window.__sideways?.auto ? window.__sideways.auto() : input.update(STEP));
+        const inp = window.__sideways?.auto ? window.__sideways.auto() : input.update(STEP);
+      stepPhysics(STEP, inp);
+      lastInp = inp;
       acc -= STEP;
     }
+    const ev = school.update(dt, car, lastInp);
+    if (ev === 'step') audio.beep(988, 0.12);
+    if (ev === 'done') audio.fanfare(true);
     emitDust(dt);
     layMarks();
     marks.flush();
