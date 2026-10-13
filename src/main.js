@@ -31,7 +31,7 @@ import { Leaderboard } from './leaderboard.js';
 import { buildTrackside } from './trackside.js';
 import { WEATHER, pickWeather, weatherTheme, Precip, Rain } from './weather.js';
 import { planSurfaces, patchAt, buildSurfaces } from './surfaces.js';
-import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, PAINTS, WHEELS, CLASSICS, MEDAL_ICON, classicOf, medalTimes, medalFor, classicsHTML } from './menus.js';
+import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, PAINTS, WHEELS, CLASSICS, MEDAL_ICON, classicOf, medalTimes, medalFor, classicsHTML, SPECIAL_PAINTS, LOCKS, unlockState, carLocked, wheelLocked } from './menus.js';
 import { buildHazards, HAZARD_DEBUG } from './hazards.js';
 
 const $ = (id) => document.getElementById(id);
@@ -304,6 +304,7 @@ function applyLineAssist(q, dt) {
 const garage = { car: 'stiletto', color: '#e8542a', wheels: 'spoke' };
 try { Object.assign(garage, JSON.parse(localStorage.getItem('sideways.garage') || '{}')); } catch { /* ignore */ }
 if (!CARS[garage.car]) garage.car = 'stiletto';
+try { if (carLocked(garage.car, unlockState(JSON.parse(localStorage.getItem('sideways.stats') || '{}').finishes || 0))) garage.car = 'stiletto'; } catch { /* ignore */ }
 if (!WHEELS.includes(garage.wheels)) garage.wheels = 'spoke';
 function saveGarage() { try { localStorage.setItem('sideways.garage', JSON.stringify(garage)); } catch { /* ignore */ } }
 let carId = garage.car;
@@ -311,6 +312,7 @@ const car = new CarPhysics(CARS[carId]);
 let model = buildCarModel(CARS[carId], { color: garage.color, wheelStyle: garage.wheels, number: 7 });
 scene.add(model.root);
 rig.roofH = model.roofH;
+rig.model = model;
 audio.setCar(CARS[carId]);
 $('hud-car').textContent = CARS[carId].name;
 let roadHint = -1;
@@ -523,6 +525,7 @@ function setCar(id, quiet = false) {
   model = buildCarModel(CARS[id], { color: garage.color, wheelStyle: garage.wheels, number: 7 });
   scene.add(model.root);
   rig.roofH = model.roofH;
+  rig.model = model;
   audio.setCar(CARS[id]);
   $('hud-car').textContent = CARS[id].name;
   if (!quiet) toast(`${CARS[id].name} · ${CARS[id].tag}`);
@@ -933,9 +936,13 @@ input.on('key', (code, key) => {
   if (code === 'KeyG') { setAssist(!assist.on); toast(assist.on ? `LINE ASSIST ${assist.level.toUpperCase()}` : 'LINE ASSIST OFF', 1000); }
   if (code === 'KeyR') restartKey();
   if (code === 'KeyT') resetCar();
-  const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].indexOf(code);
+  const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'].indexOf(code);
   // Car is chosen in the garage before a timed stage; quick swaps only in practice.
-  if (n >= 0) { if (stage.kind === 'practice') setCar(CAR_ORDER[n]); else toast('PICK YOUR CAR IN THE GARAGE', 1100); }
+  if (n >= 0) {
+    if (stage.kind !== 'practice') toast('PICK YOUR CAR IN THE GARAGE', 1100);
+    else if (carLocked(CAR_ORDER[n], unlockState(stats.d.finishes))) toast(`LOCKED: ${LOCKS.cars[CAR_ORDER[n]].why.toUpperCase()}`, 1400);
+    else setCar(CAR_ORDER[n]);
+  }
 });
 input.on('action', (act) => {
   if (act === 'camera') toast(rig.cycle().toUpperCase() + ' CAM', 800);
@@ -1085,6 +1092,7 @@ function collide() {
         car.yawRate += (fx * nz - fz * nx) * impact * 0.12 * Math.sign(k || 1);
         audio.thud(Math.min(0.8, 0.15 + impact / 12));
         shakeKick = Math.max(shakeKick, Math.min(0.3, impact * 0.03));
+        if (impact > 3) sparks(cx - nx * CAR_R, (car.y ?? 0) + 0.35, cz - nz * CAR_R, 6 + impact * 2, car.vx, car.vz);
       }
     }
   }
@@ -1132,7 +1140,7 @@ function knockRocks(sim = true) {
         car.yawRate += (fx * nz - fz * nx) * slow * 2.5;
         audio.thud(Math.min(0.7, 0.12 + mass * 0.5));
         shakeKick = Math.max(shakeKick, Math.min(0.2, slow));
-        if (it.sc > 0.6) dentAt(o.x, o.z, Math.min(0.06, slow * 0.25));
+        if (it.sc > 0.6) { dentAt(o.x, o.z, Math.min(0.06, slow * 0.25)); sparks(o.x, (car.y ?? 0) + 0.3, o.z, 8, car.vx, car.vz); }
         for (let n = 0; n < 4 + it.sc * 10; n++) {
           dust.emit(o.x, groundAt(o.x, o.z, 99, 0) + 0.3, o.z, (Math.random() - 0.5) * 3 + car.vx * 0.2, 0.6 + Math.random() * 1.5, (Math.random() - 0.5) * 3 + car.vz * 0.2, 0.8 + Math.random() * 0.6, 1.2, surface.dust);
         }
@@ -1173,8 +1181,16 @@ function resetRocks() {
   knocked.length = 0;
 }
 
+// Bright, short-lived sparks (metal on rock, a hard landing).
+function sparks(x, y, z, n, vx = 0, vz = 0) {
+  for (let k = 0; k < n; k++) {
+    const a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 5;
+    dust.emit(x, y, z, vx * 0.4 + Math.cos(a) * sp, 1 + Math.random() * 3, vz * 0.4 + Math.sin(a) * sp, 0.12 + Math.random() * 0.1, 0.25 + Math.random() * 0.25, [1, 0.72 + Math.random() * 0.2, 0.3]);
+  }
+}
 function crash(impact) {
   stats.crash();
+  sparks(car.x, (car.y ?? 0) + 0.4, car.z, 30, car.vx, car.vz);
   car.yawRate += (Math.random() - 0.5) * Math.min(3, impact * 0.15);
   audio.thud(1);
   shakeKick = 0.45;
@@ -1377,6 +1393,7 @@ function onLanding(impact) {
   car.squash = 0.04 + k * 0.1;
   audio.thud(0.25 + k * 0.6);
   if (impact > 9) { car.vx *= 0.88; car.vz *= 0.88; }   // a heavy landing costs speed
+  if (impact > 6) sparks(car.x, (car.y ?? 0) + 0.15, car.z, Math.min(40, impact * 3), car.vx, car.vz);   // sump on the ground
   const col = surface.dust;
   for (let n = 0; n < 10 + k * 26; n++) {
     const a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 4 * k;
@@ -1486,6 +1503,7 @@ function frame(now) {
   car.squash = (car.squash || 0) * Math.exp(-dt * 9);
   rig.shake = active ? (car.air ? 0 : (surface.name === 'grass' ? 0.05 : 0.012) * Math.min(car.speed / 25, 1)) + shakeKick : 0;
   drone.hidden = replay.on ? tv.kind === 'drone' : rig.mode === 'drone';
+  model.setCockpit(!replay.on && rig.mode === 'cockpit');
   if (!paused) drone.update(car, dt, worldGround);
   if (replay.on) { if (!paused) tv.update(car, dt, road, replay.along, worldGround, drone); }
   else rig.update(car, dt);
@@ -1527,10 +1545,12 @@ function closePages() {
 document.querySelectorAll('[data-back]').forEach((b) => b.addEventListener('click', closePages));
 
 function renderGarage() {
-  $('garage-cars').innerHTML = garageCarsHTML(garage.car);
+  const u = unlockState(stats.d.finishes);
+  $('garage-cars').innerHTML = garageCarsHTML(garage.car, u);
   $('garage-stats').innerHTML = garageStatsHTML(garage.car);
-  $('garage-paint').innerHTML = PAINTS.map((c) => `<button class="swatch${c === garage.color ? ' on' : ''}" style="background:${c}" data-paint="${c}" aria-label="Paint ${c}"></button>`).join('');
-  $('garage-wheels').innerHTML = WHEELS.map((w) => `<button class="chip${w === garage.wheels ? ' on' : ''}" data-wheels="${w}">${w}</button>`).join('');
+  $('garage-paint').innerHTML = PAINTS.map((c) => `<button class="swatch${c === garage.color ? ' on' : ''}" style="background:${c}" data-paint="${c}" aria-label="Paint ${c}"></button>`).join('') +
+    SPECIAL_PAINTS.map((p) => { const ok = p.need(u); return `<button class="swatch special${p.color === garage.color ? ' on' : ''}${ok ? '' : ' locked'}" style="background:${p.color}" data-paint="${p.color}" ${ok ? '' : `data-why="${p.why}"`} title="${p.name}${ok ? '' : ': ' + p.why}" aria-label="${p.name} paint${ok ? '' : ' (locked)'}">${ok ? '' : '🔒'}</button>`; }).join('');
+  $('garage-wheels').innerHTML = WHEELS.map((w) => { const lk = wheelLocked(w, u); return `<button class="chip${w === garage.wheels ? ' on' : ''}${lk ? ' locked' : ''}" data-wheels="${w}" ${lk ? `data-why="${LOCKS.wheels[w].why}"` : ''}>${lk ? '🔒 ' : ''}${w}</button>`; }).join('');
   $('garage-color').value = garage.color;
 }
 // The garage doubles as the car picker: you always land here first, and
@@ -1570,6 +1590,10 @@ $('garage-go').addEventListener('click', (e) => {
   if (p) start(p.kind, p.seed);
 });
 $('garage').addEventListener('click', (e) => {
+  const why = e.target.closest('[data-why]');
+  if (why) { toast(`LOCKED: ${why.dataset.why.toUpperCase()}`, 1600); return; }
+  const lockedCar = e.target.closest('[data-car]');
+  if (lockedCar && carLocked(lockedCar.dataset.car, unlockState(stats.d.finishes))) { toast(`LOCKED: ${LOCKS.cars[lockedCar.dataset.car].why.toUpperCase()}`, 1600); return; }
   const c = e.target.closest('[data-car]'), p = e.target.closest('[data-paint]'), w = e.target.closest('[data-wheels]');
   if (c) { setCar(c.dataset.car, true); preview.show(garage.car, garage); }
   if (p) { garage.color = p.dataset.paint; model.setColor(garage.color); preview.setColor(garage.color); }

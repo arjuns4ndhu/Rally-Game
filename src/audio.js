@@ -109,6 +109,7 @@ export class AudioEngine {
       quattro: [0.5, 0.38, 0.2, 1.5, 3.0],      // offbeat five warble
       focus: [0.46, 0.32, 0.16, 2.0, 2.6],      // turbo four
       dakar: [0.52, 0.5, 0.1, 2.0, 1.8],        // deep V8 rumble
+      groupb: [0.55, 0.36, 0.22, 2.0, 3.8],     // angry Group B four
     }[spec.bodyStyle] || [0.5, 0.35, 0.18, 2.02, 3];
     if (this.ctx) this.oscGains.forEach((g, i) => { g.gain.value = this.tone[i]; });
     this.harm = this.tone[3];

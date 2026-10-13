@@ -9,7 +9,33 @@ import { pickTheme } from './themes.js';
 import { dateSeed } from './rng.js';
 
 export const PAINTS = ['#e8542a', '#f2c230', '#2a7de8', '#1f9e5a', '#f1ede2', '#16181d', '#c4162a', '#7a3fd1', '#3fc6d1', '#d1813f'];
-export const WHEELS = ['spoke', 'dish', 'mesh', 'tarmac'];
+export const WHEELS = ['spoke', 'dish', 'mesh', 'tarmac', 'gold'];
+
+// ---------- Unlocks ----------
+// Medals on the Classic stages (and finishes) unlock special paints, gold
+// wheels and a sixth car.
+export const SPECIAL_PAINTS = [
+  { color: '#d4af37', name: 'Gold', need: (u) => u.gold >= 1, why: 'Gold medal on any Classic' },
+  { color: '#39ff14', name: 'Neon', need: (u) => u.medals >= 3, why: 'Any 3 Classic medals' },
+  { color: '#0f1a3c', name: 'Midnight', need: (u) => u.finishes >= 10, why: 'Finish 10 stages' },
+  { color: '#ff2fa0', name: 'Hot pink', need: (u) => u.silverPlus >= 5, why: 'Silver or better on all 5 Classics' },
+];
+export const LOCKS = {
+  wheels: { gold: { need: (u) => u.gold >= 2, why: 'Gold on 2 Classics' } },
+  cars: { brute: { need: (u) => u.gold >= 3, why: 'Gold on 3 Classics' } },
+};
+export function unlockState(finishes = 0) {
+  const u = { gold: 0, silverPlus: 0, medals: 0, finishes };
+  for (const c of CLASSICS) {
+    const m = medalFor(c, bestFor(c.seed)?.time);
+    if (m) u.medals++;
+    if (m === 'gold') u.gold++;
+    if (m === 'gold' || m === 'silver') u.silverPlus++;
+  }
+  return u;
+}
+export const carLocked = (id, u) => !!(LOCKS.cars[id] && !LOCKS.cars[id].need(u));
+export const wheelLocked = (w, u) => !!(LOCKS.wheels[w] && !LOCKS.wheels[w].need(u));
 export const LAUNCH = 20260901;           // first daily in the calendar
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -127,9 +153,12 @@ export function garageStatsHTML(id) {
     return `<div class="bar"><span>${k}</span><i style="--f:${f.toFixed(2)}"></i></div>`;
   }).join('') + `<div class="bar"><span>Drive</span><b>${CARS[id].drive}</b></div>`;
 }
-export function garageCarsHTML(selected) {
-  return CAR_ORDER.map((k, i) => `<button class="car-pick${k === selected ? ' on' : ''}" data-car="${k}">
-    <b>${i + 1}</b><span>${esc(CARS[k].name)}<small>${esc(CARS[k].tag || '')}</small></span></button>`).join('');
+export function garageCarsHTML(selected, u) {
+  return CAR_ORDER.map((k, i) => {
+    const locked = carLocked(k, u);
+    return `<button class="car-pick${k === selected ? ' on' : ''}${locked ? ' locked' : ''}" data-car="${k}" ${locked ? `title="${esc(LOCKS.cars[k].why)}"` : ''}>
+    <b>${locked ? '🔒' : i + 1}</b><span>${esc(CARS[k].name)}<small>${esc(locked ? 'Locked: ' + LOCKS.cars[k].why : CARS[k].tag || '')}</small></span></button>`;
+  }).join('');
 }
 
 // ---------- Past stages calendar ----------

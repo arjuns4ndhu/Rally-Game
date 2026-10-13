@@ -35,6 +35,13 @@ const PROFILES = {
     width: 1.8, hood: [0.95, 1.85],
     wing: 'hatch', lamps: 'pod', flares: true, scoop: true, vent: true, round: 3, mirrors: 'door', grille: 'mesh',
   },
+  // 80s Group B monster: short mid-engined hatch, huge flares, big wing.
+  groupb: {
+    body: [[-1.95, 0.32], [-1.98, 0.98], [-1.8, 1.04], [0.55, 1.0], [1.6, 0.8], [1.95, 0.58], [1.96, 0.32]],
+    glass: [[-1.25, 1.0], [-0.95, 1.37], [0.2, 1.4], [0.72, 0.98]],
+    width: 1.84, hood: [0.8, 1.8],
+    wing: 'big', lamps: 'bar', flares: true, bigFlares: true, scoop: true, round: 2, mirrors: 'door', grille: 'wide',
+  },
   // Rally-raid SUV: tall body on big tyres, roof rack, spare wheels, light bar.
   dakar: {
     body: [[-2.3, 0.5], [-2.35, 1.15], [-2.2, 1.25], [0.95, 1.22], [1.95, 1.05], [2.33, 0.9], [2.35, 0.5]],
@@ -160,7 +167,7 @@ function buildRim(style, rimMat, darkMat) {
 }
 
 
-const RIM_COLORS = { spoke: 0xd8d4c8, dish: 0x2b2d33, mesh: 0xc9a54a, tarmac: 0xf2f2ee };
+const RIM_COLORS = { spoke: 0xd8d4c8, dish: 0x2b2d33, mesh: 0xc9a54a, tarmac: 0xf2f2ee, gold: 0xe0b23a };
 
 // Dark sun-strip across the top of the windscreen.
 function bannerTexture() {
@@ -503,6 +510,67 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     wheels.push({ pivot, spin, isFront, side: Math.sign(x) });
   }
 
+  // Brake discs behind the rims; they glow after heavy braking.
+  const discMat = new THREE.MeshStandardMaterial({ color: 0x55585e, metalness: 0.6, roughness: 0.4, emissive: 0xff4a10, emissiveIntensity: 0 });
+  mats.push(discMat);
+  const discGeo = new THREE.CylinderGeometry(rIn * 0.85, rIn * 0.85, 0.03, 16).rotateZ(Math.PI / 2);
+  for (const w of wheels) {
+    const d = new THREE.Mesh(discGeo, discMat);
+    d.position.x = w.side * (hw - 0.07);
+    w.pivot.add(d);
+  }
+  let brakeHeat = 0;
+
+  // Cockpit (only shown in the cockpit camera): dash, steering wheel, rev lights.
+  const cockpit = new THREE.Group();
+  cockpit.visible = false;
+  const seatX = -W * 0.2, dashZ = g[3][0] - 0.05, dashY = topY(g[3][0]) + bev + 0.02;
+  const dashMat = new THREE.MeshStandardMaterial({ color: 0x1b1c20, roughness: 0.9 });
+  mats.push(dashMat);
+  const dash = new THREE.Mesh(new THREE.BoxGeometry(W - 0.3, 0.2, 0.45), dashMat);
+  dash.position.set(0, dashY - 0.06, dashZ - 0.2);
+  cockpit.add(dash);
+  // Window frame seen from inside: A-pillars, header rail and headlining.
+  const gw = W - (rnd ? 0.24 + rnd * 0.02 : 0.18);
+  const [bz, by] = g[3], [tz, ty] = g[2];
+  const pl = Math.hypot(tz - bz, ty - by);
+  for (const side of [-1, 1]) {
+    const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, pl), dashMat);
+    pillar.position.set(side * (gw / 2 - 0.05), (by + ty) / 2 - 0.02, (bz + tz) / 2);
+    pillar.rotation.x = Math.atan2(ty - by, bz - tz);
+    cockpit.add(pillar);
+  }
+  const header = new THREE.Mesh(new THREE.BoxGeometry(gw, 0.04, 0.08), dashMat);
+  header.position.set(0, ty - 0.03, tz - 0.03);
+  cockpit.add(header);
+  // Interior tub over the body top between the seat and the dash.
+  const eyeZ = bz - 0.85, sillY = Math.max(topY(eyeZ), topY(bz)) + bev + 0.01;
+  const tub = new THREE.Mesh(new THREE.BoxGeometry(gw + 0.04, 0.02, bz - eyeZ + 0.9), dashMat);
+  tub.position.set(0, sillY, (bz + eyeZ - 0.9) / 2);
+  cockpit.add(tub);
+  const wheelGrp = new THREE.Group();
+  wheelGrp.position.set(seatX, dashY - 0.02, dashZ - 0.4);
+  wheelGrp.rotation.x = -0.45;
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.02, 6, 18), dashMat);
+  const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.03, 0.02), dashMat);
+  const mark = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, 0.025), new THREE.MeshBasicMaterial({ color: 0xffb000 }));
+  mark.position.y = 0.15;
+  const wheelSpin = new THREE.Group();
+  wheelSpin.add(rim, spoke, mark);
+  wheelGrp.add(wheelSpin);
+  cockpit.add(wheelGrp);
+  const revLights = [];
+  for (let i = 0; i < 10; i++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.02, 0.01), new THREE.MeshBasicMaterial({ color: 0x222222 }));
+    m.position.set(seatX - 0.16 + i * 0.036, dashY + 0.05, dashZ - 0.36);
+    m.userData.on = i < 6 ? 0x3ddc84 : i < 8 ? 0xffb000 : 0xff3b30;
+    revLights.push(m);
+    cockpit.add(m);
+  }
+  body.add(cockpit);
+  // Driver's eye point and look direction, in body space.
+  const seat = new THREE.Vector3(seatX, Math.max(sillY + 0.2, ty - 0.08), eyeZ);
+
   if (ghost) {
     root.traverse((o) => {
       o.castShadow = false;
@@ -515,7 +583,8 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   const roofBox = new THREE.Box3().setFromObject(bodyMesh).union(new THREE.Box3().setFromObject(glassMesh));
   const roofH = roofBox.max.y + (prof.rack ? 0.3 : 0);
   const api = {
-    root, body, wheels, paint, roofH,
+    root, body, wheels, paint, roofH, seat, cockpit,
+    setCockpit(on) { cockpit.visible = on; glassMesh.visible = !on; },
     setColor(c) { paint.color.set(c); for (const m of mats) if (m.userData.followPaint) m.color.set(c); },
     // Purely cosmetic crash damage: push the bodywork in around a point
     // (body space: x right, y up, z forward). `depth` in metres.
@@ -601,6 +670,14 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
         w.spin.rotation.x += w.isFront ? roll2 : roll2 * (1 + car.wheelSpin * 2);
       }
       tailMat.emissiveIntensity = car.brake > 0.1 ? 2.2 : 0.5;
+      // Discs heat up under hard braking at speed and cool off slowly.
+      brakeHeat = Math.max(0, Math.min(1, brakeHeat + ((car.brake || 0) * Math.min(1, car.speed / 25) * 0.9 - 0.18) * dt));
+      discMat.emissiveIntensity = brakeHeat * brakeHeat * 3;
+      if (cockpit.visible) {
+        wheelSpin.rotation.z = -(car.steer || 0) * 4;
+        const lit = Math.round(Math.max(0, Math.min(1, (car.rpm - car.spec.idleRpm) / (car.spec.redline - car.spec.idleRpm))) * 10);
+        revLights.forEach((m, i) => m.material.color.setHex(i < lit ? m.userData.on : 0x222222));
+      }
     },
     dispose() {
       root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });

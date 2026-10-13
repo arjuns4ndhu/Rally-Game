@@ -1,7 +1,7 @@
 // Camera rigs: chase, bonnet, far chase. Cycled with C.
 import * as THREE from 'three';
 
-export const CAMERA_MODES = ['chase', 'bonnet', 'far', 'drone'];
+export const CAMERA_MODES = ['chase', 'cockpit', 'bonnet', 'far', 'drone'];
 const RIGS = {
   chase: { dist: 6.4, height: 2.3, look: 1.0, ahead: 3, fov: 62, stiff: 6.5 },
   far: { dist: 11.5, height: 4.4, look: 1.2, ahead: 5, fov: 58, stiff: 5 },
@@ -52,6 +52,19 @@ export class CameraRig {
     const slope = this.slope, down = Math.max(0, -slope);
     // Taller cars (the rally-raid SUV) get the camera higher and further back.
     const ex = Math.max(0, (this.roofH ?? 1.1) - 1.1);
+
+    if (this.mode === 'cockpit' && this.model) {
+      // From the driver's seat, following the car's body (pitch, roll, bumps).
+      const m = this.model;
+      m.root.updateMatrixWorld(true);
+      cam.position.copy(m.seat).applyMatrix4(m.body.matrixWorld);
+      this._v.set(m.seat.x, m.seat.y - 0.12, m.seat.z + 12).applyMatrix4(m.body.matrixWorld);
+      cam.up.set(0, 1, 0);
+      cam.lookAt(this._v);
+      cam.fov = THREE.MathUtils.lerp(cam.fov, 70 + Math.min(car.speed, 50) * 0.12, Math.min(1, dt * 3));
+      cam.updateProjectionMatrix();
+      return;
+    }
 
     if (this.mode === 'bonnet') {
       const camY = y + Math.max(1.5, (this.roofH ?? 1.1) + 0.3);

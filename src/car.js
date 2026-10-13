@@ -37,6 +37,18 @@ export const CARS = {
     driftAssist: 1.15, throttleOversteer: 0.1, driftBoost: 2.4, dragCoef: 0.4,
     track: 1.25, length: 3.05, wheelR: 0.27, offroad: 0, bodyStyle: 'mini', cyl: 4,
   },
+  // Unlockable: gold on three Classic stages.
+  brute: {
+    id: 'brute', name: 'Brutale S4', tag: '80s Group B monster · 4WD, savage power, a handful',
+    mass: 1100, a: 1.15, b: 1.25, h: 0.48, inertia: 0.95,
+    drive: 'AWD', frontDrive: 0.4,
+    torque: 470, peakRpm: 6200, idleRpm: 1000, redline: 8200,
+    gears: [2.9, 2.05, 1.55, 1.22, 0.98], finalDrive: 4.7,
+    muF: 1.12, muR: 1.02, peakF: 0.14, peakR: 0.14, slideF: 0.82, slideR: 0.7,
+    maxSteer: 0.6, steerSpeed: 5.0, counterSteer: 0.65,
+    driftAssist: 0.95, throttleOversteer: 0.7, driftBoost: 2.7, dragCoef: 0.5,
+    track: 1.56, length: 4.0, wheelR: 0.33, offroad: 0, bodyStyle: 'groupb', cyl: 4, turbo: true,
+  },
   quadra: {
     id: 'quadra', name: 'Quadra 5T', tag: '80s turbo coupé · 4WD, huge torque, nose-heavy',
     mass: 1290, a: 1.0, b: 1.52, h: 0.52, inertia: 1.05,
@@ -72,7 +84,7 @@ export const CARS = {
   },
 };
 
-export const CAR_ORDER = ['stiletto', 'pocket', 'quadra', 'vector', 'raider'];
+export const CAR_ORDER = ['stiletto', 'pocket', 'quadra', 'vector', 'raider', 'brute'];
 
 // Global feel knobs, shared by every car (exported so the debug panel can tweak them).
 export const TUNE = {
