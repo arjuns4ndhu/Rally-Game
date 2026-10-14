@@ -339,6 +339,11 @@ try {
 } catch { /* ignore */ }
 if (!WHEELS.includes(garage.wheels)) garage.wheels = 'spoke';
 if (!garage.skins || typeof garage.skins !== 'object') garage.skins = {};
+// A car that's never had a style picked starts in its Works style and colour.
+if (!garage.skins[garage.car]) {
+  const k = carSkins(CARS[garage.car])[0];
+  if (k) { garage.skins[garage.car] = k.id; if (k.paint) garage.color = k.paint; }
+}
 function saveGarage() { try { localStorage.setItem('sideways.garage', JSON.stringify(garage)); } catch { /* ignore */ } }
 let carId = garage.car;
 const car = new CarPhysics(CARS[carId]);
@@ -1999,7 +2004,15 @@ $('garage').addEventListener('click', (e) => {
     return;
   }
   const c = e.target.closest('[data-car]'), p = e.target.closest('[data-paint]'), w = e.target.closest('[data-wheels]');
-  if (c) { setCar(c.dataset.car, true); preview.show(garage.car, garage); }
+  if (c) {
+    // First time in a car: start it in its Works style and colours.
+    const id = c.dataset.car;
+    if (!garage.skins[id]) {
+      const k = carSkins(CARS[id])[0];
+      if (k) { garage.skins[id] = k.id; if (k.paint) garage.color = k.paint; }
+    }
+    setCar(id, true); preview.show(garage.car, garage);
+  }
   if (p) { garage.color = p.dataset.paint; model.setColor(garage.color); preview.setColor(garage.color); }
   if (w) { garage.wheels = w.dataset.wheels; model.setWheelStyle(garage.wheels); preview.setWheels(garage.wheels); }
   if (c || p || w) { saveGarage(); renderGarage(); }

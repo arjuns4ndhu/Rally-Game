@@ -35,6 +35,7 @@ export const LOFTS = {
     cabin: [[-0.8, 0], [-0.72, 1], [0.77, 1], [0.85, 0]],
     // (the top and belt keys at the very back form the ducktail lip)
     glass: { screen: [-0.05, 0.79], side: [-0.55, -0.05], rear: [-0.74, -0.55] },
+    worksPaint: '#f1ede2',              // white base
     accents: [0x1d7f3f, 0xd0282c],      // green, red
     // Livery: a green band with a red pinstripe sweeping up the side from
     // the front wheel to the roof, a chevron on the bonnet, a green roof and
@@ -108,6 +109,7 @@ export const LOFTS = {
     cabinWidth: [[-2.25, 0.7], [-1.45, 0.72], [-1.3, 0.74], [0.75, 0.76], [0.85, 0.7], [2.1, 0.6]],
     cabin: [[-1.42, 0], [-1.32, 1], [0.76, 1], [0.84, 0]],
     glass: { screen: [0.25, 0.78], side: [-0.8, 0.25], rear: [-1.34, -0.8], pillars: [[-0.3, 0.1]] },
+    worksPaint: '#f1ede2',                         // white base
     accents: [0xf2c21b, 0xe8622a, 0x7a3a24],       // yellow, orange, brown
     // White over yellow, split by orange and brown pinstripes that kick up
     // over the rear arch; brown and orange stripes on the bonnet.
@@ -139,6 +141,7 @@ export const LOFTS = {
     cabinWidth: [[-2.12, 0.72], [-1.95, 0.74], [-1.85, 0.76], [0.9, 0.78], [1.0, 0.72], [2.03, 0.6]],
     cabin: [[-2.07, 0], [-2.0, 1], [0.92, 1], [1.0, 0]],
     glass: { screen: [0.15, 0.95], side: [-1.45, 0.15], rear: [-2.08, -1.85], pillars: [[-0.55, 0.09]] },
+    worksPaint: '#f1ede2',                         // white base
     accents: [0x1b2f7a, 0xf06a1c, 0x3fa9e0],       // dark blue, orange, light blue
     rearCap: 'a1',
     // White front, dark blue rear, split by an orange swoosh edged in light
@@ -172,6 +175,7 @@ export const LOFTS = {
     cabinWidth: [[-2.38, 0.78], [-2.2, 0.8], [-2.0, 0.82], [1.1, 0.84], [1.25, 0.76], [2.32, 0.6]],
     cabin: [[-2.3, 0], [-2.22, 1], [1.15, 1], [1.25, 0]],
     glass: { screen: [0.3, 1.2], side: [-1.75, 0.3], rear: [-2.3, -2.0], pillars: [[-0.5, 0.1], [-1.5, 0.14]] },
+    worksPaint: '#e9e6df',                         // off-white base
     accents: [0x1a2a5a, 0xc9a04a, 0xc8252b],       // navy, gold, red
     rearCap: 'a1',
     // Navy below, white above, with a gold and red stripe along the waist
@@ -198,6 +202,7 @@ export const LOFTS = {
     cabinWidth: [[-2.05, 0.72], [-2.0, 0.74], [-1.62, 0.76], [0.7, 0.78], [0.8, 0.7], [1.95, 0.55]],
     cabin: [[-2.04, 0], [-1.99, 1], [0.73, 1], [0.8, 0]],
     glass: { screen: [0.2, 0.75], side: [-1.15, 0.2], rear: [-2.0, -1.62], pillars: [[-0.45, 0.1]] },
+    worksPaint: '#f1ede2',                         // white base
     accents: [0x1c2a5c, 0x2f8fd0, 0xd2232a],       // dark blue, light blue, red
     // White with red, dark blue and light blue bands: flat along the tops of
     // the front wings, then sweeping steeply up the rear quarter to the roof.
@@ -347,13 +352,13 @@ const EXTRA_SKINS = {
 };
 for (const [k, extra] of Object.entries(EXTRA_SKINS)) {
   const d = LOFTS[k];
-  if (!d.skins) { d.skins = { works: { name: 'Works', accents: d.accents, livery: d.livery } }; d.defaultSkin = 'works'; }
+  if (!d.skins) { d.skins = { works: { name: 'Works', paint: d.worksPaint, accents: d.accents, livery: d.livery } }; d.defaultSkin = 'works'; }
   Object.assign(d.skins, extra);
 }
 // Every car also gets a free "Plain" style: just the paint colour you pick,
 // no stripes, accents or door numbers.
 for (const d of Object.values(LOFTS)) {
-  if (!d.skins) { d.skins = { works: { name: 'Works', accents: d.accents, livery: d.livery } }; d.defaultSkin = 'works'; }
+  if (!d.skins) { d.skins = { works: { name: 'Works', paint: d.worksPaint, accents: d.accents, livery: d.livery } }; d.defaultSkin = 'works'; }
   const any = Object.values(d.skins)[0];
   // Trim in plain black so nothing but the paint has colour.
   d.skins.plain = { name: 'Plain', accents: any.accents.map(() => 0x17181b), livery: () => null };
