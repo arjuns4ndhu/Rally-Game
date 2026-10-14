@@ -720,7 +720,7 @@ let running = false, paused = false;
 
 function start(kind = 'daily', seed) {
   // Sound must never stop the stage from starting.
-  try { audio.init(); audio.raceMusic(raceMusicOn); } catch (err) { console.warn('audio', err); }
+  try { audio.init(); audio.music(musicOn); } catch (err) { console.warn('audio', err); }
   if (schoolNext && kind === 'practice') school.start(); else school.stop();
   schoolNext = false;
   if (kind === 'daily' && seed == null) seed = dateSeed();
@@ -744,7 +744,6 @@ function toMenu() {
   $('pause').hidden = true; $('finish').hidden = true; $('hud').hidden = true;
   $('start').hidden = false;
   audio.resume(); audio.idle();
-  audio.raceMusic(false);
   school.stop();
   clearBanner();
   refreshGarageDot();
@@ -912,7 +911,7 @@ $('btn-resume').addEventListener('click', () => setPaused(false));
 $('btn-reset').addEventListener('click', () => { resetCar(); setPaused(false); });
 $('btn-restart').addEventListener('click', () => { restartKey(); setPaused(false); });
 $('btn-pmenu').addEventListener('click', toMenu);
-$('btn-retry').addEventListener('click', () => { restartRun(); audio.raceMusic(raceMusicOn); });   // a fresh song for a fresh go
+$('btn-retry').addEventListener('click', () => { restartRun(); audio.music(musicOn); });   // music back up from the finish-screen level
 // Straight on to the next championship stage in the same car.
 $('btn-next').addEventListener('click', (e) => { e.currentTarget.blur(); start('champ', champWeekOf(stage.seed).seeds[champIndex(stage.seed)]); });
 $('btn-share').addEventListener('click', (e) => { e.currentTarget.blur(); copyResult(); });
@@ -998,23 +997,17 @@ function setBigTouch(on) {
 }
 try { setBigTouch(localStorage.getItem('sideways.bigtouch') === '1'); } catch { /* ignore */ }
 $('opt-bigtouch').addEventListener('change', (e) => setBigTouch(e.target.checked));
-// Menu music: starts with the first click or key press on the title screen.
+// Music: starts with the first click or key press, then plays on through
+// every screen until it's switched off.
 let musicOn = true;
 try { musicOn = localStorage.getItem('sideways.music') !== '0'; } catch { /* ignore */ }
 $('opt-music').checked = musicOn;
 $('opt-music').addEventListener('change', (e) => {
   musicOn = e.target.checked;
   try { localStorage.setItem('sideways.music', musicOn ? '1' : '0'); } catch { /* ignore */ }
+  audio.music(musicOn);
 });
-// Race music: the two race tracks, one per run, on unless switched off.
-let raceMusicOn = true;
-try { raceMusicOn = localStorage.getItem('sideways.racemusic') !== '0'; } catch { /* ignore */ }
-$('opt-racemusic').checked = raceMusicOn;
-$('opt-racemusic').addEventListener('change', (e) => {
-  raceMusicOn = e.target.checked;
-  try { localStorage.setItem('sideways.racemusic', raceMusicOn ? '1' : '0'); } catch { /* ignore */ }
-  if (running) audio.raceMusic(raceMusicOn, false);
-});
+
 const firstGesture = () => {
   window.removeEventListener('pointerdown', firstGesture, true);
   window.removeEventListener('keydown', firstGesture, true);
