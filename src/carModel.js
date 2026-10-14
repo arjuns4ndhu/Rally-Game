@@ -575,6 +575,10 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     for (const side of [-1, 1]) {
       const pl = add(new THREE.BoxGeometry(0.03, Math.hypot(0.09, roofEdge - sillY), 0.1), paint, side * (cw - 0.045 + 0.012), (sillY + roofEdge) / 2, -0.38);
       pl.rotation.z = side * lean;
+      // Rear (C) pillar between the quarter window and the back window.
+      const cz = -1.27, cSill = C.belt(cz) + 0.03, cRoof = C.top(cz) - 0.05;
+      const cp = add(new THREE.BoxGeometry(0.035, Math.hypot(0.09, cRoof - cSill), 0.16), paint, side * (cw - 0.045 + 0.014), (cSill + cRoof) / 2, cz);
+      cp.rotation.z = side * Math.atan2(0.09, cRoof - cSill);
       add(new THREE.BoxGeometry(0.02, 0.025, 0.09), chrome, side * (C.halfWidth(0.1) + 0.012), 0.8, 0.1);
       const mz = 0.45, mx = side * (C.halfWidth(mz) + 0.05);
       add(new THREE.BoxGeometry(0.02, 0.12, 0.02), chrome, mx, 0.92, mz);

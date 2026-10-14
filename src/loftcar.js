@@ -84,10 +84,15 @@ export const LOFTS = {
           return null;
         },
       },
-      // Lime green with a black bonnet... and an armchair strapped to the roof.
+      // Lime green with a black bonnet and white roof... and an armchair strapped on top.
       armchair: {
-        name: 'Armchair', paint: '#a3c13a', accents: [0x17181b],
-        livery(part, x, y, z) { return part === 'top' && z > 0.68 ? 1 : null; },
+        name: 'Armchair', paint: '#a3c13a', accents: [0x17181b, 0xf1ede2],
+        livery(part, x, y, z) {
+          if (part !== 'top') return null;
+          if (z > 0.68) return 1;                       // black bonnet
+          if (z > -1.32 && z < 0.27) return 2;          // white roof
+          return null;
+        },
       },
     },
   },
