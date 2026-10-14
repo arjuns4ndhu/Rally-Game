@@ -826,21 +826,28 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     }
     const splitter = add(new THREE.BoxGeometry(1.8, 0.05, 0.3), acc[2], 0, C.bottom(zf) + 0.03, zf - 0.08, true);
     splitter.rotation.x = 0.05;
-    // Black scoop on the back of the roof.
-    const sy = C.top(-1.55) + 0.05;
-    add(new THREE.BoxGeometry(1.25, 0.1, 0.34), dark, 0, sy, -1.55, true);
-    add(new THREE.BoxGeometry(1.25, 0.02, 0.06), chrome, 0, sy + 0.05, -1.4);
-    // Tail: black panel with engine vents, lamps, pipes.
-    add(new THREE.BoxGeometry(1.5, 0.32, 0.02), dark, 0, 0.6, zr - 0.006);
+    // Black spoiler overhanging the back of the roof; white vent at the front.
+    const sy = C.top(-1.6) + 0.06;
+    const sp = add(new THREE.BoxGeometry(1.3, 0.03, 0.4), dark, 0, sy, -1.72, true);
+    sp.rotation.x = -0.18;
+    for (const side of [-1, 1]) add(new THREE.BoxGeometry(0.03, 0.08, 0.3), dark, side * 0.62, sy - 0.04, -1.66);
+    add(new THREE.BoxGeometry(0.5, 0.07, 0.26), paint, 0, C.top(0.0) + 0.04, 0.0, true);
+    add(new THREE.BoxGeometry(0.44, 0.04, 0.02), dark, 0, C.top(0.0) + 0.05, 0.13);
+    // Tail: black band between tall amber-over-red lamps, single pipe.
+    const amberS4 = new THREE.MeshStandardMaterial({ color: 0xffa23a, emissive: 0xff7a1a, emissiveIntensity: 0.35 });
+    mats.push(amberS4);
+    add(new THREE.BoxGeometry(1.25, 0.14, 0.02), dark, 0, 0.9, zr - 0.006);
     for (const side of [-1, 1]) {
-      add(new THREE.BoxGeometry(0.3, 0.1, 0.025), tailMat, side * 0.66, 0.86, zr - 0.012);
-      tails.push([side * 0.66, 0.86, zr - 0.06]);
-      const p = add(new THREE.CylinderGeometry(0.05, 0.05, 0.18, 10), chrome, side * 0.35, C.bottom(zr) + 0.04, zr - 0.05);
-      p.rotation.x = Math.PI / 2;
+      add(new THREE.BoxGeometry(0.11, 0.1, 0.025), amberS4, side * 0.76, 0.95, zr - 0.012);
+      add(new THREE.BoxGeometry(0.11, 0.12, 0.025), tailMat, side * 0.76, 0.83, zr - 0.012);
+      tails.push([side * 0.76, 0.85, zr - 0.06]);
     }
-    // Rear quarter intakes, B pillars, black mirrors, wipers.
+    const pipe = add(new THREE.CylinderGeometry(0.05, 0.05, 0.22, 10), chrome, 0.4, C.bottom(zr) + 0.02, zr - 0.06);
+    pipe.rotation.x = Math.PI / 2;
+    // Big white mud flaps behind the rear wheels.
+    for (const side of [-1, 1]) add(new THREE.BoxGeometry(0.34, 0.36, 0.02), trim, side * wheelX, 0.24, -spec.b - WR - 0.12);
+    // B pillars, black mirrors, wipers.
     for (const side of [-1, 1]) {
-      add(new THREE.BoxGeometry(0.02, 0.22, 0.32), dark, side * (C.halfWidth(-1.05) + 0.006), 0.84, -1.05);
       const sillY = C.belt(-0.45) + 0.03, roofEdge = C.top(-0.45) - 0.05;
       const pl = add(new THREE.BoxGeometry(0.03, Math.hypot(0.09, roofEdge - sillY), 0.1), paint, side * (0.78 - 0.045 + 0.012), (sillY + roofEdge) / 2, -0.45);
       pl.rotation.z = side * Math.atan2(0.09, roofEdge - sillY);
@@ -850,7 +857,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
       wp.rotation.z = side * 0.06;
     }
     doorNumbers(C, -0.1, 0.62, 0.3);
-    mudFlaps();
+    for (const side of [-1, 1]) add(new THREE.BoxGeometry(0.26, 0.2, 0.02), dark, side * wheelX, Math.max(0.19, WR - 0.12), spec.a - WR - 0.1);
   }
   function buildRider(sy, cz) {
     const g = new THREE.Group();

@@ -193,32 +193,38 @@ export const LOFTS = {
     bottom: [[-2.05, 0.36], [-1.9, 0.24], [1.7, 0.2], [1.95, 0.16]],
     halfWidth: [[-2.05, 0.86], [-1.9, 0.93], [-1.25, 0.94], [-0.6, 0.9], [0.3, 0.88], [1.15, 0.93], [1.7, 0.9], [1.95, 0.84]],
     belt: [[-2.05, 0.98], [-1.6, 1.0], [-0.8, 0.98], [0.4, 0.92], [1.15, 0.9], [1.6, 0.82], [1.85, 0.74], [1.95, 0.6]],
-    top: [[-2.05, 1.0], [-1.98, 1.2], [-1.9, 1.3], [-1.8, 1.34], [0.0, 1.35], [0.2, 1.32], [0.75, 0.96], [1.3, 0.86], [1.8, 0.76], [1.95, 0.62]],
-    cabinWidth: [[-2.05, 0.72], [-1.95, 0.74], [-1.8, 0.76], [0.7, 0.78], [0.8, 0.7], [1.95, 0.55]],
-    cabin: [[-2.0, 0], [-1.94, 1], [0.73, 1], [0.8, 0]],
-    glass: { screen: [0.2, 0.75], side: [-1.2, 0.2], rear: [-2.0, -1.82] },
+    // Roof ends at -1.62, then a big sloping hatch window down to the tail.
+    top: [[-2.05, 1.0], [-2.0, 1.03], [-1.62, 1.33], [-1.5, 1.35], [0.0, 1.35], [0.2, 1.32], [0.75, 0.96], [1.3, 0.86], [1.8, 0.76], [1.95, 0.62]],
+    cabinWidth: [[-2.05, 0.72], [-2.0, 0.74], [-1.62, 0.76], [0.7, 0.78], [0.8, 0.7], [1.95, 0.55]],
+    cabin: [[-2.04, 0], [-1.99, 1], [0.73, 1], [0.8, 0]],
+    glass: { screen: [0.2, 0.75], side: [-1.15, 0.2], rear: [-2.0, -1.62] },
     accents: [0x1c2a5c, 0x2f8fd0, 0xd2232a],       // dark blue, light blue, red
-    // White with red, dark blue and light blue bands sweeping up the side,
-    // the same bands along the front wings, and a red skirt.
+    // White with red, dark blue and light blue bands: flat along the tops of
+    // the front wings, then sweeping steeply up the rear quarter to the roof.
     livery(part, x, y, z) {
       const ax = Math.abs(x);
-      if (part === 'side' || part === 'rocker') {
-        if (y < 0.33) return 3;
-        const S = Math.min(1.1, 0.55 + (1.2 - z) * 0.22);
-        const d = y - S;
-        if (Math.abs(d) < 0.035) return 3;
-        if (d >= 0.035 && d < 0.075) return 1;
-        if (d >= 0.075 && d < 0.11) return 2;
+      const band = (u) => (u < 0 ? null : u < 0.06 ? 2 : u < 0.12 ? 1 : u < 0.2 ? 3 : u < 0.26 ? 1 : u < 0.32 ? 2 : null);
+      const quarter = () => band(-0.45 - (y - 0.45) / 0.85 - z);
+      if (part === 'side') {
+        if (z > 0.55) {
+          const d = y - 0.8;
+          return Math.abs(d) < 0.03 ? 3 : d >= 0.03 && d < 0.07 ? 1 : d >= 0.07 && d < 0.11 ? 2 : null;
+        }
+        if (z < -0.4) return quarter();
         return null;
       }
-      if (part === 'top' && z > 0.8) {
-        if (ax > 0.48 && ax < 0.55) return 3;
-        if (ax >= 0.55 && ax < 0.62) return 1;
-        if (ax >= 0.62 && ax < 0.68) return 2;
+      if (part === 'top') {
+        if (z > 0.8) {
+          if (ax > 0.48 && ax < 0.55) return 3;
+          if (ax >= 0.55 && ax < 0.62) return 1;
+          if (ax >= 0.62 && ax < 0.68) return 2;
+        }
+        if (z < -1.0 && ax > 0.6) return quarter();      // up the roof pillar
       }
       return null;
     },
   },
+
 };
 
 // Points of one half cross-section at z, from the bottom centre out, up the
