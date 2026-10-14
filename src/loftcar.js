@@ -424,6 +424,7 @@ export function buildLoftBody(def, { paint, glass, dark, accents, livery = def.l
   for (let j = 0; j < rings.length - 1; j++) {
     const r0 = rings[j], r1 = rings[j + 1], zc = (r0.z + r1.z) / 2;
     const c = d.cabin(zc);
+    const coreY = (d.bottom(zc) + d.belt(zc)) / 2;
     for (let s = 0; s < r0.pts.length - 1; s++) {
       for (const side of [1, -1]) {
         const A = [r0.pts[s][0] * side, r0.pts[s][1], r0.z], B = [r0.pts[s + 1][0] * side, r0.pts[s + 1][1], r0.z];
@@ -450,8 +451,12 @@ export function buildLoftBody(def, { paint, glass, dark, accents, livery = def.l
           const acc = livery(part === 'rocker' ? 'side' : part, xc, yc, zc);
           if (acc) key = acc === 1 ? 'a1' : acc === 2 ? 'a2' : 'a3';
         }
-        tri(key, A, B, C);
-        tri(key, A, C, D);
+        // Outwards = away from the body's core at this point (half way up
+        // the side, middle of the car), so low noses and forward-sloping
+        // panels face the right way too.
+        const out = [xc, yc - coreY, zc * 0.5];
+        tri(key, A, B, C, out);
+        tri(key, A, C, D, out);
       }
     }
   }
