@@ -30,7 +30,7 @@ export const LOFTS = {
     bottom: [[-1.855, 0.34], [-1.6, 0.24], [1.5, 0.22], [1.855, 0.27]],
     halfWidth: [[-1.855, 0.8], [-1.72, 0.86], [-1.0, 0.88], [-0.45, 0.865], [0.2, 0.835], [0.8, 0.85], [1.18, 0.86], [1.55, 0.82], [1.75, 0.72], [1.855, 0.56]],
     belt: [[-1.855, 0.9], [-1.79, 0.9], [-1.62, 0.85], [-1.0, 0.87], [-0.6, 0.83], [-0.25, 0.77], [0.5, 0.76], [0.95, 0.79], [1.3, 0.78], [1.6, 0.7], [1.78, 0.6], [1.855, 0.5]],
-    top: [[-1.855, 0.95], [-1.8, 0.94], [-1.66, 0.865], [-1.5, 0.86], [-0.8, 0.89], [-0.74, 0.98], [-0.64, 1.09], [-0.55, 1.11], [-0.05, 1.115], [0.2, 1.03], [0.5, 0.85], [0.77, 0.71], [1.2, 0.645], [1.6, 0.56], [1.78, 0.49], [1.855, 0.44]],
+    top: [[-1.855, 0.95], [-1.8, 0.94], [-1.66, 0.865], [-1.5, 0.86], [-0.8, 0.89], [-0.74, 0.98], [-0.64, 1.09], [-0.55, 1.11], [-0.05, 1.115], [0.2, 1.03], [0.5, 0.85], [0.77, 0.73], [1.0, 0.74], [1.2, 0.74], [1.42, 0.69], [1.6, 0.58], [1.78, 0.49], [1.855, 0.44]],   // bonnet domed over the front wells
     cabinWidth: [[-1.855, 0.5], [-0.8, 0.56], [-0.72, 0.6], [-0.55, 0.62], [-0.05, 0.64], [0.5, 0.72], [0.77, 0.76], [0.87, 0.56], [1.855, 0.32]],
     cabin: [[-0.8, 0], [-0.72, 1], [0.77, 1], [0.85, 0]],
     // (the top and belt keys at the very back form the ducktail lip)
@@ -72,7 +72,7 @@ export const LOFTS = {
     top: [[-1.71, 0.82], [-1.55, 0.86], [-1.46, 0.89], [-1.34, 1.29], [-1.22, 1.33], [-0.4, 1.345], [0.15, 1.33], [0.27, 1.29], [0.6, 0.91], [0.68, 0.89], [1.2, 0.83], [1.34, 0.77]],
     cabinWidth: [[-1.71, 0.52], [-1.52, 0.6], [-1.44, 0.665], [0.6, 0.665], [0.7, 0.6], [1.34, 0.5]],
     cabin: [[-1.52, 0], [-1.44, 1], [0.62, 1], [0.7, 0]],
-    glass: { screen: [0.26, 0.64], side: [-1.32, 0.26], rear: [-1.46, -1.32] },
+    glass: { screen: [0.26, 0.64], side: [-1.32, 0.26], rear: [-1.46, -1.32], pillars: [[-0.38, 0.1], [-1.27, 0.14]] },
     defaultSkin: 'rally',
     skins: {
       // Works rally car: contrast roof, white door panels for the numbers.
@@ -107,7 +107,7 @@ export const LOFTS = {
     top: [[-2.25, 0.97], [-2.0, 1.0], [-1.4, 1.03], [-1.3, 1.08], [-0.78, 1.33], [0.1, 1.34], [0.25, 1.3], [0.76, 0.96], [1.5, 0.92], [1.92, 0.88], [2.04, 0.7], [2.1, 0.44]],
     cabinWidth: [[-2.25, 0.7], [-1.45, 0.72], [-1.3, 0.74], [0.75, 0.76], [0.85, 0.7], [2.1, 0.6]],
     cabin: [[-1.42, 0], [-1.32, 1], [0.76, 1], [0.84, 0]],
-    glass: { screen: [0.25, 0.78], side: [-0.8, 0.25], rear: [-1.34, -0.8] },
+    glass: { screen: [0.25, 0.78], side: [-0.8, 0.25], rear: [-1.34, -0.8], pillars: [[-0.3, 0.1]] },
     accents: [0xf2c21b, 0xe8622a, 0x7a3a24],       // yellow, orange, brown
     // White over yellow, split by orange and brown pinstripes that kick up
     // over the rear arch; brown and orange stripes on the bonnet.
@@ -138,7 +138,7 @@ export const LOFTS = {
     top: [[-2.12, 1.02], [-2.06, 1.17], [-1.95, 1.33], [-1.8, 1.38], [-0.8, 1.43], [0.0, 1.44], [0.15, 1.42], [0.5, 1.28], [0.95, 0.98], [1.5, 0.88], [1.9, 0.78], [2.03, 0.66]],
     cabinWidth: [[-2.12, 0.72], [-1.95, 0.74], [-1.85, 0.76], [0.9, 0.78], [1.0, 0.72], [2.03, 0.6]],
     cabin: [[-2.07, 0], [-2.0, 1], [0.92, 1], [1.0, 0]],
-    glass: { screen: [0.15, 0.95], side: [-1.45, 0.15], rear: [-2.08, -1.85] },
+    glass: { screen: [0.15, 0.95], side: [-1.45, 0.15], rear: [-2.08, -1.85], pillars: [[-0.55, 0.09]] },
     accents: [0x1b2f7a, 0xf06a1c, 0x3fa9e0],       // dark blue, orange, light blue
     rearCap: 'a1',
     // White front, dark blue rear, split by an orange swoosh edged in light
@@ -171,7 +171,7 @@ export const LOFTS = {
     top: [[-2.38, 1.15], [-2.3, 1.4], [-2.18, 1.62], [-2.0, 1.7], [-0.5, 1.73], [0.3, 1.71], [0.55, 1.64], [1.2, 1.17], [1.7, 1.08], [2.1, 1.0], [2.25, 0.93], [2.32, 0.84]],
     cabinWidth: [[-2.38, 0.78], [-2.2, 0.8], [-2.0, 0.82], [1.1, 0.84], [1.25, 0.76], [2.32, 0.6]],
     cabin: [[-2.3, 0], [-2.22, 1], [1.15, 1], [1.25, 0]],
-    glass: { screen: [0.3, 1.2], side: [-1.75, 0.3], rear: [-2.3, -2.0] },
+    glass: { screen: [0.3, 1.2], side: [-1.75, 0.3], rear: [-2.3, -2.0], pillars: [[-0.5, 0.1], [-1.5, 0.14]] },
     accents: [0x1a2a5a, 0xc9a04a, 0xc8252b],       // navy, gold, red
     rearCap: 'a1',
     // Navy below, white above, with a gold and red stripe along the waist
@@ -197,7 +197,7 @@ export const LOFTS = {
     top: [[-2.05, 1.0], [-2.0, 1.03], [-1.62, 1.33], [-1.5, 1.35], [0.0, 1.35], [0.2, 1.32], [0.75, 0.96], [1.3, 0.86], [1.8, 0.76], [1.95, 0.62]],
     cabinWidth: [[-2.05, 0.72], [-2.0, 0.74], [-1.62, 0.76], [0.7, 0.78], [0.8, 0.7], [1.95, 0.55]],
     cabin: [[-2.04, 0], [-1.99, 1], [0.73, 1], [0.8, 0]],
-    glass: { screen: [0.2, 0.75], side: [-1.15, 0.2], rear: [-2.0, -1.62] },
+    glass: { screen: [0.2, 0.75], side: [-1.15, 0.2], rear: [-2.0, -1.62], pillars: [[-0.45, 0.1]] },
     accents: [0x1c2a5c, 0x2f8fd0, 0xd2232a],       // dark blue, light blue, red
     // White with red, dark blue and light blue bands: flat along the tops of
     // the front wings, then sweeping steeply up the rear quarter to the roof.
@@ -350,6 +350,14 @@ for (const [k, extra] of Object.entries(EXTRA_SKINS)) {
   if (!d.skins) { d.skins = { works: { name: 'Works', accents: d.accents, livery: d.livery } }; d.defaultSkin = 'works'; }
   Object.assign(d.skins, extra);
 }
+// Every car also gets a free "Plain" style: just the paint colour you pick,
+// no stripes, accents or door numbers.
+for (const d of Object.values(LOFTS)) {
+  if (!d.skins) { d.skins = { works: { name: 'Works', accents: d.accents, livery: d.livery } }; d.defaultSkin = 'works'; }
+  const any = Object.values(d.skins)[0];
+  // Trim in plain black so nothing but the paint has colour.
+  d.skins.plain = { name: 'Plain', accents: any.accents.map(() => 0x17181b), livery: () => null };
+}
 
 // Points of one half cross-section at z, from the bottom centre out, up the
 // side and over the top to the top centre. Always the same count, so rings
@@ -393,6 +401,11 @@ export function buildLoftBody(def, { paint, glass, dark, accents, livery = def.l
   for (let z = zr; z < zf; z += 0.08) zs.add(+z.toFixed(4));
   zs.add(zf);
   for (const w of wells.list) for (const e of [-1, 1]) zs.add(+(w.z + e * w.r * 0.999).toFixed(4));
+  // Window pillars: body-coloured strips through the side glass, with rings
+  // at their edges so they come out crisp and flush with the glass.
+  const pillars = def.glass.pillars || [];
+  for (const [pz, w] of pillars) for (const e of [-1, 1]) zs.add(+(pz + e * w / 2).toFixed(4));
+  const onPillar = (z) => pillars.some(([pz, w]) => Math.abs(z - pz) < w / 2);
   const rings = [...zs].sort((a, b) => a - b).map((z) => ({ z, pts: section(d, z, wells) }));
 
   // Triangles sorted by material.
@@ -419,8 +432,20 @@ export function buildLoftBody(def, { paint, glass, dark, accents, livery = def.l
         const part = partOf(s);
         let key = 'paint';
         if (part === 'under') key = 'dark';
-        else if (s >= SEG.top0 && c > 0.5 && (inRange(zc, def.glass.screen) || inRange(zc, def.glass.rear) ||
-          (inRange(zc, def.glass.side) && s === SEG.top0))) key = 'glass';
+        // Screen and back window: everything above the side row (the side
+        // row there is the A and C pillar). Side windows: the side row, less
+        // the B/C pillars.
+        // (Where the cabin blends into the bonnet or boot the side row stays
+        // glass: that bit of surface is too twisted to show in paint.)
+        else if (s >= SEG.top0 && c > 0.5 && (((inRange(zc, def.glass.screen) || inRange(zc, def.glass.rear)) && (s > SEG.top0 || c < 0.97)) ||
+          (inRange(zc, def.glass.side) && s === SEG.top0 && !onPillar(zc)))) key = 'glass';
+        // Scuttle: where the cabin folds down into the bonnet just ahead of
+        // the screen the surface is badly twisted, so it gets the black
+        // plastic panel real cars have there.
+        if (key === 'paint' && s >= SEG.top0 && c > 0.02 && c <= 0.5 && zc > def.glass.screen[1] - 0.02 && zc < def.glass.screen[1] + 0.3) key = 'dark';
+        // A-pillars: the windscreen's side strip, in black window-surround trim
+        // (in paint its twisted facets look torn).
+        if (key === 'paint' && s === SEG.top0 && c > 0.5 && inRange(zc, def.glass.screen)) key = 'dark';
         if (key === 'paint' && livery) {
           const acc = livery(part === 'rocker' ? 'side' : part, xc, yc, zc);
           if (acc) key = acc === 1 ? 'a1' : acc === 2 ? 'a2' : 'a3';

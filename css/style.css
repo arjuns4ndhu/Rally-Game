@@ -308,6 +308,10 @@ body[data-ui="race"] .toast {
 .tc-go { width: 96px; height: 96px; font-size: 22px; border-color: var(--good); }
 .tc-brake { font-size: 15px; border-color: var(--hot); }
 .tc-small { width: 58px; height: 58px; font-size: 15px; }
+/* Steering: drawn chevrons (text arrows turn into emoji on iPhones). */
+.tc-steer { display: grid; place-items: center; padding: 0; }
+.tc-arrow { width: 46%; height: 46%; fill: none; stroke: currentColor; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.tc-steer.on .tc-arrow { stroke: var(--ink, #0b0d12); }
 .tc-mini {
   font-family: var(--font-ui); font-weight: 700; font-size: 12px; letter-spacing: 0.1em; color: var(--text);
   background: rgba(11,13,18,0.4); border: 1px solid var(--line); border-radius: 4px; padding: 0 12px; min-height: 40px;
@@ -715,3 +719,13 @@ button.cal-day:hover, button.cal-day:focus-visible { border-color: var(--accent)
   #fin-splits td { padding: 2px 6px; }
   body.touch .hud-stack { transform: translateX(-50%) scale(0.66); max-width: calc((100vw - 2 * 250px) / 0.66); }
 }
+/* Phones: pace notes are smaller and show at most two calls, so they don't
+   cover the road ahead. */
+body.touch .pacenote { gap: 4px; }
+body.touch .pacenote > :nth-child(n+4) { display: none; }
+body.touch .pn-tile { width: 42px; padding: 2px; border-width: 1px; background: rgba(11,13,18,0.55); }
+body.touch .pn-tile svg { width: 26px; height: 26px; }
+body.touch .pn-tile b.num { font-size: 14px; }
+body.touch .pn-tile b.word { font-size: 9px; }
+body.touch .pn-tile small { display: none; }
+body.touch .pn-dist { font-size: 10px; padding: 1px 4px; }
