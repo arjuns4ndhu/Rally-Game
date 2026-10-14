@@ -1080,7 +1080,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     root.traverse((o) => {
       o.castShadow = false;
       // A mesh can have one material or a list of them (the lofted bodies).
-      for (const m of [].concat(o.material || [])) if (!mats.includes(m)) mats.push(m);
+      for (const m of [].concat(o.material || [])) if (m && !mats.includes(m)) mats.push(m);
     });
     for (const m of mats) { m.transparent = true; m.opacity = 0.38; m.depthWrite = false; }
   }

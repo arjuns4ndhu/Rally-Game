@@ -36,6 +36,26 @@ import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabe
 import { buildHazards, HAZARD_DEBUG } from './hazards.js';
 
 const $ = (id) => document.getElementById(id);
+
+// Errors show on screen (playtesters can screenshot them) instead of
+// leaving the game silently stuck on a menu.
+function showError(what, err) {
+  let box = $('err-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'err-box';
+    box.className = 'err-box';
+    box.title = 'Tap to close';
+    box.addEventListener('click', () => box.remove());
+    document.body.appendChild(box);
+  }
+  const where = (err?.stack || '').split('\n').find((l) => /\.js/.test(l)) || '';
+  box.textContent = `${what}: ${err?.message || err}${where ? ` (${where.trim().replace(/^at /, '').replace(/\?v=\w+/g, '').replace(/^.*\/src\//, 'src/').replace(/\)$/, '')})` : ''}. Tap to close.`;
+}
+// Only our own code's errors (not the host page's or browser extensions').
+const ours = (err) => err instanceof Error && /\/src\/\w+\.js/.test(err.stack || '');
+window.addEventListener('error', (e) => { if (ours(e.error)) showError('Something went wrong', e.error); });
+window.addEventListener('unhandledrejection', (e) => { if (ours(e.reason)) showError('Something went wrong', e.reason); });
 document.body.classList.add('scanlines');
 const STEP = 1 / 120;
 
@@ -375,8 +395,11 @@ function refreshGhost() {
   if (ghost && !(mine && Math.abs(ghost.time - mine.time) < 0.05)) ghost = null;
   if (ghost) { ghostToLift(ghost.samples); ghost.alongs = ghostAlongs(ghost.samples); }
   if (ghost && ghostOn) {
-    ghostModel = buildCarModel(CARS[ghost.car] || CARS[carId], { ghost: true, color: ghost.color || '#9fe3ff' });
-    scene.add(ghostModel.root);
+    // A ghost that can't be built is skipped; it must never stop the game.
+    try {
+      ghostModel = buildCarModel(CARS[ghost.car] || CARS[carId], { ghost: true, color: ghost.color || '#9fe3ff' });
+      scene.add(ghostModel.root);
+    } catch (err) { console.warn('ghost', err); ghostModel = null; }
   }
 }
 // Replace each sample's height with its lift above today's ground. Ghosts
@@ -1803,25 +1826,6 @@ $('garage-go').addEventListener('click', (e) => {
   }
 });
 
-// Errors show on screen (playtesters can screenshot them) instead of
-// leaving the game silently stuck on a menu.
-function showError(what, err) {
-  let box = $('err-box');
-  if (!box) {
-    box = document.createElement('div');
-    box.id = 'err-box';
-    box.className = 'err-box';
-    box.title = 'Tap to close';
-    box.addEventListener('click', () => box.remove());
-    document.body.appendChild(box);
-  }
-  const where = (err?.stack || '').split('\n').find((l) => /\.js/.test(l)) || '';
-  box.textContent = `${what}: ${err?.message || err}${where ? ` (${where.trim().replace(/^at /, '').replace(/\?v=\w+/g, '').replace(/^.*\/src\//, 'src/').replace(/\)$/, '')})` : ''}. Tap to close.`;
-}
-// Only our own code's errors (not the host page's or browser extensions').
-const ours = (err) => err instanceof Error && /\/src\/\w+\.js/.test(err.stack || '');
-window.addEventListener('error', (e) => { if (ours(e.error)) showError('Something went wrong', e.error); });
-window.addEventListener('unhandledrejection', (e) => { if (ours(e.reason)) showError('Something went wrong', e.reason); });
 $('garage').addEventListener('click', (e) => {
   const why = e.target.closest('[data-why]');
   if (why) { toast(`LOCKED: ${why.dataset.why.toUpperCase()}`, 1600); return; }

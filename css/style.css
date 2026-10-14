@@ -451,3 +451,13 @@ body.touch .school { top: calc(60px + env(safe-area-inset-top, 0px)); transform:
   width: min(560px, calc(100% - 32px)); padding: 10px 14px; border-radius: 8px; cursor: pointer;
   background: #3a0f12; border: 2px solid #ff5a5f; color: #ffe3e3; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere;
 }
+
+/* Title menu: two columns of stages on wider screens so it fits without
+   scrolling; the tips give way on short screens. */
+@media (min-width: 760px) {
+  #start .title-card { width: min(760px, 100%); }
+  #start .picks { display: grid; grid-template-columns: 1fr 1fr; }
+  #start .picks .btn-primary { grid-column: 1 / -1; }
+}
+@media (max-height: 820px) { #start .tips { display: none; } }
+@media (max-height: 680px) { #start .lede { display: none; } #start .title-card { gap: 10px; } }

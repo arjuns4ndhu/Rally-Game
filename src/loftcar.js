@@ -334,7 +334,10 @@ export function buildLoftBody(def, { paint, glass, dark, accents, livery = def.l
     return new THREE.Mesh(geo, mats);
   };
   const darkDS = dark.clone(); darkDS.side = THREE.DoubleSide;
-  const bodyMesh = make(['paint', 'dark', 'a1', 'a2', 'a3'], [paint, darkDS, accents[0], accents[1], accents[2] || accents[0]]);
+  // Skins can have fewer than three accent colours: fill the gaps so every
+  // material slot holds a real material.
+  const acc = [0, 1, 2].map((i) => accents[i] || accents[0] || paint);
+  const bodyMesh = make(['paint', 'dark', 'a1', 'a2', 'a3'], [paint, darkDS, ...acc]);
   const glassMesh = make(['glass'], [glass]);
   bodyMesh.castShadow = glassMesh.castShadow = true;
   return { bodyMesh, glassMesh, curves: d, extraMats: [darkDS] };
