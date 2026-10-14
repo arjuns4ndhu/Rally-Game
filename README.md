@@ -54,16 +54,16 @@ Driving: tap the brake while turning to kick the rear out. Hold the throttle to 
 
 Best times, ghosts, stats and settings live in your browser's localStorage. No accounts, no ads.
 
-Six cars, each modelled on a rally icon's shape and character (no real names or badges):
+Six cars, each modelled on a rally icon from photos: real proportions, built from cross-sections along the car, with period-style stripe liveries (no real names, badges or sponsor logos):
 
 | Key | Car | Based on | Character |
 | --- | --- | --- | --- |
-| 1 | Stiletto V6 | 70s mid-engine wedge (Stratos-style) | short, light RWD; sharp and tail-happy |
-| 2 | Pocket 1275 | 60s mini (original Mini-style) | tiny front-drive; nimble, low power |
-| 3 | Quadra 5T | 80s turbo coupé (Quattro-style) | 4WD, huge torque, nose-heavy |
-| 4 | Vector WRC | 00s world-rally hatch (Focus WRC-style) | grippy, balanced 4WD |
-| 5 | Dune Raider | rally-raid SUV (Cayenne/Macan Dakar-style) | heavy and tall, barely slowed off-road |
-| 6 | Brutale S4 | 80s Group B monster (unlockable) | 4WD, savage power, a handful |
+| 1 | Stiletto V6 | 70s mid-engine wedge (Stratos HF) | short, light RWD; sharp and tail-happy |
+| 2 | Pocket 1275 | 60s mini (Mini Cooper S works car) | tiny front-drive; nimble, low power. Styles: **Rally** or **Armchair** (lime green, black bonnet, a passenger in an armchair on the roof; crash and he falls off, ending the run) |
+| 3 | Quadra 5T | 80s turbo coupé (Sport quattro S1 E2) | 4WD, huge torque, nose-heavy |
+| 4 | Vector WRC | 00s world-rally hatch (2001 Focus WRC) | grippy, balanced 4WD |
+| 5 | Dune Raider | rally-raid SUV (Cayenne "Dakar") | heavy and tall, barely slowed off-road |
+| 6 | Brutale S4 | 80s Group B hatch (Delta S4), unlockable | 4WD, savage power, a handful |
 
 ## Layout
 
@@ -71,7 +71,8 @@ Six cars, each modelled on a rally icon's shape and character (no real names or 
 index.html        page shell, import map, HUD / overlay markup
 css/style.css     retro-arcade theme
 src/car.js        vehicle physics (pure JS, testable in Node)
-src/carModel.js   low-poly car meshes
+src/carModel.js   car meshes: wheels, lamps, details, cockpit
+src/loftcar.js    car bodies lofted from cross-sections (shapes and liveries)
 src/track.js      road centreline, nearest-point queries, ribbon mesh, jumps/crests
 src/stagegen.js   seeded stage generator, stage names, landform noise
 src/terrain.js    heightfield terrain that hugs the road

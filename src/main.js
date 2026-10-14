@@ -422,6 +422,7 @@ function restartRun() {
   hazards?.reset();
   resetRocks();
   model.repair();
+  seatRider();
   placeOnRoad(stage.kind === 'practice' ? 0 : road.indexAt(stage.start - 2.5));   // on the line
   $('finish').hidden = true;
   refreshGhost();
@@ -441,6 +442,7 @@ function respawn() {
 
 // Called every physics step with the car's position along the road.
 function updateRun(q, dt) {
+  if (riderFall.on && run.state === 'running') run.state = 'dnf';   // no passenger, no finish
   // 3-2-1-GO from a standstill on the line; the clock starts on GO.
   if (run.state === 'countdown') {
     run.cd -= dt;
@@ -527,6 +529,7 @@ function finishRun() {
 function setCar(id, quiet = false) {
   carId = id;
   garage.car = id; saveGarage();
+  seatRider();
   scene.remove(model.root);
   model.dispose();
   car.setSpec(CARS[id]);
@@ -714,6 +717,7 @@ function resetCar() {
   if (stage.kind === 'practice') {
     const q = road.nearest(car.x, car.z, roadHint);
     placeOnRoad(q.i);
+    seatRider();
     audio.thud(0.3);
   } else respawn();
 }
@@ -1349,6 +1353,43 @@ function crash(impact) {
     dust.emit(car.x, (car.y ?? 0) + 0.6, car.z, Math.cos(a) * sp, 1 + Math.random() * 2, Math.sin(a) * sp, 1.4, 1.6, [0.55, 0.5, 0.42]);
   }
   toast('CRASH!', 900);
+  ejectRider(impact);
+}
+
+// The armchair passenger is thrown off in a crash, and that's the run over:
+// it takes a restart to put him back in his chair.
+const riderFall = { on: false, obj: null, v: new THREE.Vector3(), spin: new THREE.Vector3(), rest: 0 };
+function ejectRider() {
+  const r = model.rider;
+  if (!r || riderFall.on || replay.on) return;
+  scene.attach(r);                       // keep where he is in the world
+  riderFall.on = true; riderFall.obj = r; riderFall.rest = 0;
+  const rnd = () => Math.random() - 0.5;
+  riderFall.v.set(car.vx * 0.85 + rnd() * 3, 4 + Math.random() * 2.5, car.vz * 0.85 + rnd() * 3);
+  riderFall.spin.set(rnd() * 9, rnd() * 6, rnd() * 9);
+  audio.thud(0.5);
+  if (run.state === 'running') run.state = 'dnf';
+  setTimeout(() => { if (riderFall.on) toast(stage.kind === 'practice' ? 'PASSENGER LOST! PRESS R' : 'PASSENGER LOST! RESTART (R)', 3000); }, 950);
+}
+function updateRider(dt) {
+  const f = riderFall;
+  if (!f.on || !f.obj.parent) return;
+  const o = f.obj;
+  f.v.y -= 9.81 * dt;
+  o.position.addScaledVector(f.v, dt);
+  const g = worldGround(o.position.x, o.position.z) + 0.15;
+  if (o.position.y < g) {
+    o.position.y = g;
+    if (f.v.y < -2) { f.v.y *= -0.3; f.v.x *= 0.55; f.v.z *= 0.55; f.spin.multiplyScalar(0.5); }
+    else { f.v.set(f.v.x * Math.exp(-dt * 5), 0, f.v.z * Math.exp(-dt * 5)); f.spin.multiplyScalar(Math.exp(-dt * 6)); }
+  }
+  o.rotation.x += f.spin.x * dt; o.rotation.y += f.spin.y * dt; o.rotation.z += f.spin.z * dt;
+}
+function seatRider() {
+  if (!riderFall.on) return;
+  riderFall.on = false;
+  if (riderFall.obj?.parent === scene) scene.remove(riderFall.obj);
+  model.seatRider();
 }
 
 // ---------- Physics step ----------
@@ -1663,7 +1704,7 @@ function frame(now) {
   if (replay.on) { if (!paused) tv.update(car, dt, road, replay.along, worldGround, drone); }
   else rig.update(car, dt);
   world.sky.position.copy(camera.position);
-  if (!paused) { dust.update(dt); updateFlyingRocks(dt); }
+  if (!paused) { dust.update(dt); updateFlyingRocks(dt); updateRider(dt); }
   if (!paused && trackside) trackside.update(dt, car.x, car.z);
   if (!paused) { precip.update(dt, camera, { x: car.vx, z: car.vz }); rain.update(dt, camera, { x: car.vx, z: car.vz }, car.y); }
   wasSplash = !!surface.splash;
@@ -1896,7 +1937,7 @@ window.__sideways = {
   get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
-  codriver,
+  codriver, crash, get riderFall() { return riderFall; },
   get ghostModel() { return ghostModel; }, recorder, loadGhost, onLanding, renderer, scene, camera, marks, assist, setAssist, car, input, TUNE, CARS, start, stepSim, placeOnRoad, loadStage, run, stage,
   get road() { return road; }, get terrain() { return terrain; }, get lineMesh() { return lineMesh; }, get surface() { return surface; }, get best() { return best; },
 };

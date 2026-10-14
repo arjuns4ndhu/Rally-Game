@@ -96,12 +96,137 @@ export const LOFTS = {
       },
     },
   },
+  // 80s short-wheelbase turbo coupe, Evo 2 spec: boxy, flared, a deep chin
+  // splitter, steep screen, and a huge wing over the tail.
+  quattro: {
+    length: 4.35,
+    zRange: [-2.25, 2.1],
+    bottom: [[-2.25, 0.36], [-2.0, 0.24], [1.7, 0.2], [2.1, 0.13]],
+    halfWidth: [[-2.25, 0.86], [-2.05, 0.92], [-1.52, 0.935], [-0.9, 0.9], [0.0, 0.87], [0.6, 0.9], [1.0, 0.935], [1.6, 0.93], [2.0, 0.91], [2.1, 0.88]],
+    belt: [[-2.25, 0.95], [-1.8, 0.98], [-1.0, 0.96], [0.0, 0.92], [0.9, 0.93], [1.5, 0.91], [1.92, 0.87], [2.04, 0.68], [2.1, 0.42]],
+    top: [[-2.25, 0.97], [-2.0, 1.0], [-1.4, 1.03], [-1.3, 1.08], [-0.78, 1.33], [0.1, 1.34], [0.25, 1.3], [0.76, 0.96], [1.5, 0.92], [1.92, 0.88], [2.04, 0.7], [2.1, 0.44]],
+    cabinWidth: [[-2.25, 0.7], [-1.45, 0.72], [-1.3, 0.74], [0.75, 0.76], [0.85, 0.7], [2.1, 0.6]],
+    cabin: [[-1.42, 0], [-1.32, 1], [0.76, 1], [0.84, 0]],
+    glass: { screen: [0.25, 0.78], side: [-0.8, 0.25], rear: [-1.34, -0.8] },
+    accents: [0xf2c21b, 0xe8622a, 0x7a3a24],       // yellow, orange, brown
+    // White over yellow, split by orange and brown pinstripes that kick up
+    // over the rear arch; brown and orange stripes on the bonnet.
+    livery(part, x, y, z) {
+      const ax = Math.abs(x);
+      if (part === 'side') {
+        const L = 0.62 + (z < -0.9 ? Math.min(0.2, (-0.9 - z) * 0.35) : 0);
+        if (y < L) return 1;
+        if (y < L + 0.035) return 2;
+        if (y < L + 0.065) return 3;
+        return null;
+      }
+      if (part === 'top' && z > 0.9 && z < 1.9) {
+        if (ax > 0.5 && ax < 0.62) return 3;
+        if (ax >= 0.62 && ax < 0.7) return 2;
+      }
+      return null;
+    },
+  },
+  // 00s world-rally three-door hatch: 4.15 m, raked screen, tall tail lamps
+  // up the rear pillars, wing on the hatch.
+  focus: {
+    length: 4.15,
+    zRange: [-2.12, 2.03],
+    bottom: [[-2.12, 0.4], [-1.95, 0.26], [1.8, 0.24], [2.03, 0.3]],
+    halfWidth: [[-2.12, 0.78], [-2.0, 0.86], [-1.37, 0.885], [-0.6, 0.87], [0.4, 0.87], [1.25, 0.885], [1.75, 0.85], [1.95, 0.78], [2.03, 0.68]],
+    belt: [[-2.12, 1.0], [-1.9, 1.04], [-1.0, 1.0], [0.0, 0.95], [0.7, 0.92], [1.2, 0.88], [1.7, 0.8], [1.95, 0.72], [2.03, 0.62]],
+    top: [[-2.12, 1.02], [-2.06, 1.17], [-1.95, 1.33], [-1.8, 1.38], [-0.8, 1.43], [0.0, 1.44], [0.15, 1.42], [0.5, 1.28], [0.95, 0.98], [1.5, 0.88], [1.9, 0.78], [2.03, 0.66]],
+    cabinWidth: [[-2.12, 0.72], [-1.95, 0.74], [-1.85, 0.76], [0.9, 0.78], [1.0, 0.72], [2.03, 0.6]],
+    cabin: [[-2.07, 0], [-2.0, 1], [0.92, 1], [1.0, 0]],
+    glass: { screen: [0.15, 0.95], side: [-1.45, 0.15], rear: [-2.08, -1.85] },
+    accents: [0x1b2f7a, 0xf06a1c, 0x3fa9e0],       // dark blue, orange, light blue
+    rearCap: 'a1',
+    // White front, dark blue rear, split by an orange swoosh edged in light
+    // blue that climbs from the front wheel to the rear of the roof.
+    livery(part, x, y, z) {
+      const ax = Math.abs(x);
+      if (part === 'side') {
+        const S = Math.min(1.05, 0.3 + (1.25 - z) * 0.3);
+        const d = y - S;
+        if (Math.abs(d) < 0.04) return 2;
+        if (Math.abs(d) < 0.065) return 3;
+        if (d < 0 || z < -1.75) return 1;
+        return null;
+      }
+      if (part === 'top' && z > 1.0 && z < 1.85) {
+        if (ax > 0.28 && ax < 0.34) return 2;
+        if (ax >= 0.34 && ax < 0.38) return 3;
+      }
+      return null;
+    },
+  },
+  // Rally-raid SUV: 4.7 m, raised on big tyres, fender humps either side of
+  // the bonnet, a steep tailgate.
+  dakar: {
+    length: 4.7,
+    zRange: [-2.38, 2.32],
+    bottom: [[-2.38, 0.62], [-2.2, 0.48], [2.1, 0.46], [2.32, 0.6]],
+    halfWidth: [[-2.38, 0.86], [-2.25, 0.93], [-1.45, 0.965], [0.0, 0.95], [1.4, 0.965], [2.0, 0.93], [2.25, 0.86], [2.32, 0.78]],
+    belt: [[-2.38, 1.12], [-2.2, 1.16], [-1.0, 1.17], [0.6, 1.14], [1.0, 1.13], [1.4, 1.12], [2.0, 1.05], [2.25, 0.96], [2.32, 0.86]],
+    top: [[-2.38, 1.15], [-2.3, 1.4], [-2.18, 1.62], [-2.0, 1.7], [-0.5, 1.73], [0.3, 1.71], [0.55, 1.64], [1.2, 1.17], [1.7, 1.08], [2.1, 1.0], [2.25, 0.93], [2.32, 0.84]],
+    cabinWidth: [[-2.38, 0.78], [-2.2, 0.8], [-2.0, 0.82], [1.1, 0.84], [1.25, 0.76], [2.32, 0.6]],
+    cabin: [[-2.3, 0], [-2.22, 1], [1.15, 1], [1.25, 0]],
+    glass: { screen: [0.3, 1.2], side: [-1.75, 0.3], rear: [-2.3, -2.0] },
+    accents: [0x1a2a5a, 0xc9a04a, 0xc8252b],       // navy, gold, red
+    rearCap: 'a1',
+    // Navy below, white above, with a gold and red stripe along the waist
+    // that dips toward the front bumper.
+    livery(part, x, y, z) {
+      if (part !== 'side') return null;
+      const L = 0.97 - Math.max(0, z - 1.5) * 0.3;
+      if (y < L) return 1;
+      if (y < L + 0.05) return 2;
+      if (y < L + 0.08) return 3;
+      return null;
+    },
+  },
+  // 80s Group B supercar-hatch: 4.0 m, huge flares, low nose full of lamps,
+  // steep tailgate and a scoop on the roof.
+  groupb: {
+    length: 4.0,
+    zRange: [-2.05, 1.95],
+    bottom: [[-2.05, 0.36], [-1.9, 0.24], [1.7, 0.2], [1.95, 0.16]],
+    halfWidth: [[-2.05, 0.86], [-1.9, 0.93], [-1.25, 0.94], [-0.6, 0.9], [0.3, 0.88], [1.15, 0.93], [1.7, 0.9], [1.95, 0.84]],
+    belt: [[-2.05, 0.98], [-1.6, 1.0], [-0.8, 0.98], [0.4, 0.92], [1.15, 0.9], [1.6, 0.82], [1.85, 0.74], [1.95, 0.6]],
+    top: [[-2.05, 1.0], [-1.98, 1.2], [-1.9, 1.3], [-1.8, 1.34], [0.0, 1.35], [0.2, 1.32], [0.75, 0.96], [1.3, 0.86], [1.8, 0.76], [1.95, 0.62]],
+    cabinWidth: [[-2.05, 0.72], [-1.95, 0.74], [-1.8, 0.76], [0.7, 0.78], [0.8, 0.7], [1.95, 0.55]],
+    cabin: [[-2.0, 0], [-1.94, 1], [0.73, 1], [0.8, 0]],
+    glass: { screen: [0.2, 0.75], side: [-1.2, 0.2], rear: [-2.0, -1.82] },
+    accents: [0x1c2a5c, 0x2f8fd0, 0xd2232a],       // dark blue, light blue, red
+    // White with red, dark blue and light blue bands sweeping up the side,
+    // the same bands along the front wings, and a red skirt.
+    livery(part, x, y, z) {
+      const ax = Math.abs(x);
+      if (part === 'side' || part === 'rocker') {
+        if (y < 0.33) return 3;
+        const S = Math.min(1.1, 0.55 + (1.2 - z) * 0.22);
+        const d = y - S;
+        if (Math.abs(d) < 0.035) return 3;
+        if (d >= 0.035 && d < 0.075) return 1;
+        if (d >= 0.075 && d < 0.11) return 2;
+        return null;
+      }
+      if (part === 'top' && z > 0.8) {
+        if (ax > 0.48 && ax < 0.55) return 3;
+        if (ax >= 0.55 && ax < 0.62) return 1;
+        if (ax >= 0.62 && ax < 0.68) return 2;
+      }
+      return null;
+    },
+  },
 };
 
 // Points of one half cross-section at z, from the bottom centre out, up the
 // side and over the top to the top centre. Always the same count, so rings
 // join up. Over a wheel the bottom steps up into a real wheel well.
-const SEG = { under: 0, wellWall: 1, wellRoof: 2, rocker: 3, side0: 4, side1: 7, shoulder: 8, sill: 9, top0: 10, top1: 12 };
+// Rows up each side (more rows = cleaner stripes).
+const NS = 8;
+const SEG = { under: 0, wellWall: 1, wellRoof: 2, rocker: 3, shoulder: 4 + NS, sill: 5 + NS, top0: 6 + NS };
 function section(d, z, wells) {
   const hs = d.halfWidth(z), belt = d.belt(z), top = d.top(z), c = d.cabin(z), yb = d.bottom(z);
   const cw = Math.min(d.cabinWidth(z), hs - 0.06);
@@ -114,9 +239,9 @@ function section(d, z, wells) {
   const sideLow = Math.min(yw + 0.05, sideTop - 0.04);
   const mid = lerp(top + 0.03, belt + 0.03, c);
   return [
-    [0, yb], [wells.xin, yb], [wells.xin, yw], [hs - 0.03, yw], [hs, sideLow],
-    [hs, lerp(sideLow, sideTop, 0.25)], [hs, lerp(sideLow, sideTop, 0.5)], [hs, lerp(sideLow, sideTop, 0.75)],
-    [hs, sideTop], [hs - 0.05, belt], [cw, mid],
+    [0, yb], [wells.xin, yb], [wells.xin, yw], [hs - 0.03, yw],
+    ...Array.from({ length: NS + 1 }, (_, k) => [hs, lerp(sideLow, sideTop, k / NS)]),
+    [hs - 0.05, belt], [cw, mid],
     [lerp(cw * 0.72, cw - 0.09, c), lerp(top + 0.012, top - 0.05, c)],
     [cw * lerp(0.36, 0.5, c), lerp(top + 0.004, top - 0.012, c)],
     [0, top],
@@ -184,7 +309,7 @@ export function buildLoftBody(def, { paint, glass, dark, accents, livery = def.l
     const ctr = [0, cy, ring.z];
     for (let i = 0; i < poly.length; i++) {
       const a = poly[i], b = poly[(i + 1) % poly.length];
-      tri('paint', ctr, a, b, [0, 0, dir]);
+      tri((dir < 0 ? def.rearCap : def.frontCap) || 'paint', ctr, a, b, [0, 0, dir]);
     }
   }
 
