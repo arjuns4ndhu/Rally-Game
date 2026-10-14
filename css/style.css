@@ -444,3 +444,10 @@ body.big-touch .tc-right { transform-origin: bottom right; }
 .school-track i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.15s; }
 .school.ok .school-track i { background: var(--good, #3ddc84); }
 body.touch .school { top: calc(60px + env(safe-area-inset-top, 0px)); transform: translateX(-50%) scale(0.85); transform-origin: top center; }
+
+/* On-screen error report (for playtesters to screenshot) */
+.err-box {
+  position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 100;
+  width: min(560px, calc(100% - 32px)); padding: 10px 14px; border-radius: 8px; cursor: pointer;
+  background: #3a0f12; border: 2px solid #ff5a5f; color: #ffe3e3; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere;
+}

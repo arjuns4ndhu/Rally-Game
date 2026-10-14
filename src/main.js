@@ -58,7 +58,7 @@ const tv = new TVCamera(camera);
 const minimap = new MiniMap($('minimap'));
 const stats = new Stats();
 const board = new Leaderboard();
-board.init();
+board.init().catch(() => { /* leaderboard stays off */ });
 const precip = new Precip(scene);
 const rain = new Rain(scene);
 // Headlights, used at night and dusk.
@@ -674,8 +674,8 @@ $('dbg-reset').addEventListener('click', (e) => { resetTuning(); e.currentTarget
 let running = false, paused = false;
 
 function start(kind = 'daily', seed) {
-  audio.init();
-  audio.music(false);
+  // Sound must never stop the stage from starting.
+  try { audio.init(); audio.music(false); } catch (err) { console.warn('audio', err); }
   if (schoolNext && kind === 'practice') school.start(); else school.stop();
   schoolNext = false;
   if (kind === 'daily' && seed == null) seed = dateSeed();
@@ -1690,10 +1690,13 @@ function openPage(id) {
   $(id).hidden = false;
   $(id).querySelector('[data-back]')?.focus();
 }
-function closePages() {
-  if (pendingStart && !$('garage').hidden) pendingStart = null;
+function hidePages() {
   for (const id of ['garage', 'past', 'champ', 'statsview', 'classics']) $(id).hidden = true;
   preview.stop();
+}
+function closePages() {
+  if (pendingStart && !$('garage').hidden) pendingStart = null;
+  hidePages();
   $('start').hidden = false;
 }
 document.querySelectorAll('[data-back]').forEach((b) => b.addEventListener('click', closePages));
@@ -1740,11 +1743,38 @@ function pickThenStart(kind, seed) {
 $('btn-garage').addEventListener('click', () => openGarage('browse'));
 $('garage-go').addEventListener('click', (e) => {
   e.currentTarget.blur();
+  if ($('garage').hidden) return;          // a second click, tap or Enter after the stage already started
   const p = pendingStart;
   pendingStart = null;
-  closePages();
-  if (p) start(p.kind, p.seed);
+  if (!p) { closePages(); return; }
+  hidePages();                             // straight to the stage, no flash of the title menu
+  try {
+    start(p.kind, p.seed);
+  } catch (err) {
+    showError('The stage could not start', err);
+    toMenu();
+  }
 });
+
+// Errors show on screen (playtesters can screenshot them) instead of
+// leaving the game silently stuck on a menu.
+function showError(what, err) {
+  let box = $('err-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'err-box';
+    box.className = 'err-box';
+    box.title = 'Tap to close';
+    box.addEventListener('click', () => box.remove());
+    document.body.appendChild(box);
+  }
+  const where = (err?.stack || '').split('\n').find((l) => /\.js/.test(l)) || '';
+  box.textContent = `${what}: ${err?.message || err}${where ? ` (${where.trim().replace(/^at /, '').replace(/\?v=\w+/g, '').replace(/^.*\/src\//, 'src/').replace(/\)$/, '')})` : ''}. Tap to close.`;
+}
+// Only our own code's errors (not the host page's or browser extensions').
+const ours = (err) => err instanceof Error && /\/src\/\w+\.js/.test(err.stack || '');
+window.addEventListener('error', (e) => { if (ours(e.error)) showError('Something went wrong', e.error); });
+window.addEventListener('unhandledrejection', (e) => { if (ours(e.reason)) showError('Something went wrong', e.reason); });
 $('garage').addEventListener('click', (e) => {
   const why = e.target.closest('[data-why]');
   if (why) { toast(`LOCKED: ${why.dataset.why.toUpperCase()}`, 1600); return; }
