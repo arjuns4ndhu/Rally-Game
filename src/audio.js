@@ -8,7 +8,7 @@ const MUSIC_VOL = 0.5;
 export class AudioEngine {
   constructor() {
     this.ctx = null;
-    this.volumes = { master: 0.8, engine: 0.8, sfx: 0.8 };
+    this.volumes = { master: 0.8, engine: 0.8, sfx: 0.8, music: 1 };
     this.cyl = 4;
     this.lastThrottle = 0;
     this.time = 0;
@@ -28,8 +28,13 @@ export class AudioEngine {
     this.engineBus.connect(this.master);
     this.sfxBus.connect(this.master);
     this.musicBus.connect(this.master);
-    this.trackBus = ctx.createGain();   // streamed music tracks
-    this.trackBus.connect(this.master);
+    // Streamed music tracks: their own volume, then a limiter so turning the
+    // music right up gets louder without crackling.
+    this.trackBus = ctx.createGain();
+    this.trackBus.gain.value = this.volumes.music;
+    const lim = ctx.createDynamicsCompressor();
+    lim.threshold.value = -6; lim.knee.value = 4; lim.ratio.value = 12; lim.attack.value = 0.003; lim.release.value = 0.15;
+    this.trackBus.connect(lim).connect(this.master);
     this.applyVolumes();
 
     // --- Engine: three oscillators -> soft clip -> lowpass -> gain
@@ -103,6 +108,12 @@ export class AudioEngine {
   setVolume(v) {
     this.volumes.master = v;
     if (this.ctx && !this.muted) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
+  }
+
+  // Music level on its own (1 = as mixed; up to 2.5x louder).
+  setMusicVolume(v) {
+    this.volumes.music = v;
+    if (this.ctx) this.trackBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.03);
   }
 
   setMuted(m) {

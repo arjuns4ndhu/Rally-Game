@@ -968,6 +968,18 @@ let volume = 80;
 try { const v = parseInt(localStorage.getItem('sideways.volume'), 10); if (v >= 0 && v <= 100) volume = v; } catch { /* ignore */ }
 setVolume(volume);
 $('opt-volume').addEventListener('input', (e) => { audio.init(); setVolume(+e.target.value); });
+// Music volume, separate from the game: 40% is the music as mixed, 100% is
+// two and a half times louder (a limiter keeps it clean).
+function setMusicVolume(pct) {
+  audio.setMusicVolume(pct / 40);
+  $('opt-musicvol').value = pct;
+  $('opt-musicvol-val').textContent = `${pct}%`;
+  try { localStorage.setItem('sideways.musicvol', String(pct)); } catch { /* ignore */ }
+}
+let musicVol = 60;
+try { const v = parseInt(localStorage.getItem('sideways.musicvol'), 10); if (v >= 0 && v <= 100) musicVol = v; } catch { /* ignore */ }
+setMusicVolume(musicVol);
+$('opt-musicvol').addEventListener('input', (e) => { audio.init(); setMusicVolume(+e.target.value); });
 // Key rebinding (pause menu).
 function renderKeys() {
   $('keybinds').innerHTML = Object.entries(ACTIONS).map(([a, label]) =>
