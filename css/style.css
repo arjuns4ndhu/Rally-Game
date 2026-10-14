@@ -78,9 +78,10 @@ body.scanlines #game { filter: saturate(1.06) contrast(1.04); }
 .hud-help b { color: var(--text); font-weight: 700; }
 
 .toast {
-  position: absolute; top: 22%; left: 50%; transform: translateX(-50%);
-  font-family: var(--font-display); font-size: 30px; color: var(--text);
-  text-shadow: 0 3px 0 rgba(0,0,0,0.6); opacity: 0; transition: opacity 0.25s; white-space: nowrap;
+  position: fixed; top: 22%; left: 50%; transform: translateX(-50%); z-index: 45; pointer-events: none;
+  max-width: calc(100vw - 32px); text-align: center;
+  font-family: var(--font-display); font-size: clamp(18px, 4vw, 30px); color: var(--text);
+  text-shadow: 0 3px 0 rgba(0,0,0,0.6); opacity: 0; transition: opacity 0.25s;
 }
 .toast.on { opacity: 1; }
 
@@ -459,5 +460,118 @@ body.touch .school { top: calc(60px + env(safe-area-inset-top, 0px)); transform:
   #start .picks { display: grid; grid-template-columns: 1fr 1fr; }
   #start .picks .btn-primary { grid-column: 1 / -1; }
 }
-@media (max-height: 820px) { #start .tips { display: none; } }
+
 @media (max-height: 680px) { #start .lede { display: none; } #start .title-card { gap: 10px; } }
+
+/* Run-ending messages stay up until you act (Restart button for touch). */
+.hud-banner {
+  position: absolute; top: 34%; left: 50%; transform: translateX(-50%); pointer-events: auto;
+  display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;
+  padding: 16px 22px; border-radius: 10px; background: rgba(11,13,18,0.86); border: 2px solid var(--hot);
+  max-width: calc(100vw - 32px);
+}
+.hud-banner b { font-family: var(--font-display); font-size: clamp(20px, 4.5vw, 32px); color: var(--text); letter-spacing: 0.02em; }
+.hud-banner .btn { min-width: 160px; min-height: 44px; }
+
+/* Loading screen between stages (the stage builds in one go, so this is a
+   moving stripe rather than real progress). */
+.loading-card { align-items: center; text-align: center; }
+.loading-card .logo { font-size: clamp(26px, 5vw, 40px); }
+.load-bar { width: 220px; height: 10px; border-radius: 5px; border: 1px solid var(--line); overflow: hidden; background: rgba(255,255,255,0.05); }
+.load-bar i { display: block; width: 40%; height: 100%; background: repeating-linear-gradient(45deg, var(--accent) 0 8px, #c98a00 8px 16px); animation: load-slide 0.9s linear infinite; }
+@keyframes load-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .load-bar i { animation: none; width: 100%; } }
+
+/* Phones: one job per corner so nothing overlaps. Map top-left, timing top
+   centre, buttons top-right, speedo bottom centre between the pedals. */
+body.touch .hud-tl { display: none; }
+body.touch .minimap { left: calc(12px + env(safe-area-inset-left, 0px)); right: auto; top: calc(12px + env(safe-area-inset-top, 0px)); width: 104px; height: 104px; }
+body.touch .hud-br { top: auto; right: auto; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%) scale(0.72); transform-origin: bottom center; }
+body.touch .hud-drift { bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
+
+/* Pause: actions on the left, settings in collapsible groups on the right. */
+.pause-card { width: min(860px, 100%); display: grid; grid-template-columns: 290px 1fr; gap: 22px; align-items: start; }
+.pause-actions { display: flex; flex-direction: column; gap: 10px; }
+.pause-actions .logo { font-size: 44px; }
+.pause-settings { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 48px); overflow-y: auto; padding-right: 4px; }
+.set-group { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.set-group summary {
+  cursor: pointer; padding: 11px 14px; list-style: none; display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--font-display); font-size: 15px; letter-spacing: 0.05em; color: var(--text);
+}
+.set-group summary::-webkit-details-marker { display: none; }
+.set-group summary::after { content: '+'; color: var(--accent); font-size: 18px; }
+.set-group[open] summary::after { content: '−'; }
+.set-group summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
+.set-group[open] { padding-bottom: 6px; }
+.set-group > :not(summary) { margin: 0 14px 10px; }
+.check small { font-weight: 400; opacity: 0.7; }
+.btn small.key { display: inline; margin-left: 8px; font-size: 11px; letter-spacing: 0.08em; opacity: 0.55; }
+body.touch .btn small.key, body.touch .set-keys { display: none; }
+@media (max-width: 760px) {
+  .pause-card { grid-template-columns: 1fr; }
+  .pause-settings { max-height: none; overflow: visible; }
+}
+
+/* Title: the drifting tips fold away so the menu fits on one screen. */
+.tips-box { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.tips-box summary { cursor: pointer; padding: 9px 14px; list-style: none; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; font-size: 12px; color: var(--muted); }
+.tips-box summary::-webkit-details-marker { display: none; }
+.tips-box summary::before { content: '▸ '; color: var(--accent); }
+.tips-box[open] summary::before { content: '▾ '; }
+.tips-box .tips { margin: 0 14px 12px; }
+@media (min-width: 900px) { #start .picks { grid-template-columns: repeat(3, 1fr); } }
+@media (max-height: 600px) { #start .picks .btn:not(.btn-primary) small { display: none; } }
+
+/* Garage: NEW badges on fresh unlocks, a dot on the Garage button, and
+   hatched locked items. */
+.badge-new {
+  display: inline-block; margin-left: 8px; padding: 1px 6px 0; border-radius: 3px; vertical-align: 2px;
+  font-style: normal; font-family: var(--font-display); font-size: 10px; letter-spacing: 0.08em;
+  background: var(--hot); color: #fff;
+}
+.swatch.is-new { box-shadow: 0 0 0 2px var(--hot); }
+#btn-garage.has-new { position: relative; }
+#btn-garage.has-new::after {
+  content: ''; position: absolute; top: 6px; right: 6px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--hot); box-shadow: 0 0 0 2px var(--bg, #0b0d12);
+}
+.car-pick.locked { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.04) 0 6px, transparent 6px 12px); }
+.car-pick.locked small { color: var(--accent); opacity: 0.9; }
+
+/* Finish: two big choices, then the extras, then small buttons. */
+.fin-unlock { margin: 0; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--accent); color: var(--accent); font-weight: 700; }
+.fin-actions { display: flex; flex-direction: column; gap: 10px; }
+.fin-actions > div { display: flex; gap: 10px; flex-wrap: wrap; }
+.fin-actions .btn { flex: 1 1 140px; text-align: center; }
+.fin-primary .btn { min-height: 52px; font-size: 18px; }
+.fin-tertiary .btn { flex: 1 1 100px; }
+.fin-table { max-height: 40vh; overflow-y: auto; }
+@media (min-width: 900px) {
+  #finish .title-card { width: min(860px, 100%); }
+  .fin-data:has(#fin-board:not([hidden])) { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+}
+/* Short screens (laptops, phones in landscape): squeeze the finish card so
+   every button stays on screen. */
+@media (max-height: 820px) {
+  #finish .title-card { gap: 8px; padding-top: 14px; padding-bottom: 14px; }
+  #finish .logo { font-size: clamp(26px, 5vh, 40px); margin: 0; }
+  #finish .fin-time { font-size: clamp(30px, 7vh, 52px); }
+  #finish .fin-table, #finish .fin-board { max-height: 26vh; overflow-y: auto; }
+  #finish .fin-primary .btn { min-height: 42px; font-size: 16px; }
+  #finish .fin-actions { gap: 6px; }
+}
+@media (max-height: 500px) {
+  #finish .logo { display: none; }
+  #finish .fin-table, #finish .fin-board { max-height: 22vh; }
+}
+/* Phones in landscape: the result and buttons on the left, splits on the right. */
+@media (max-height: 500px) and (min-width: 640px) {
+  #finish .title-card { width: min(820px, 100%); display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; row-gap: 0; align-items: start; }
+  #finish .title-card > * { grid-column: 1; margin-bottom: 6px; }
+  #finish .title-card > .fin-data { grid-column: 2; grid-row: 1 / span 8; }
+  #finish .fin-data { display: flex; flex-direction: column; gap: 8px; }
+  #finish .fin-table, #finish .fin-board { max-height: 80vh; }
+  #finish .fin-time { font-size: 34px; }
+  #finish .fin-primary .btn { min-height: 38px; }
+}

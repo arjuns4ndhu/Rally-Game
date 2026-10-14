@@ -153,11 +153,12 @@ export function garageStatsHTML(id) {
     return `<div class="bar"><span>${k}</span><i style="--f:${f.toFixed(2)}"></i></div>`;
   }).join('') + `<div class="bar"><span>Drive</span><b>${CARS[id].drive}</b></div>`;
 }
-export function garageCarsHTML(selected, u) {
+export function garageCarsHTML(selected, u, fresh = new Set()) {
   return CAR_ORDER.map((k, i) => {
     const locked = carLocked(k, u);
-    return `<button class="car-pick${k === selected ? ' on' : ''}${locked ? ' locked' : ''}" data-car="${k}" ${locked ? `title="${esc(LOCKS.cars[k].why)}"` : ''}>
-    <b>${locked ? '🔒' : i + 1}</b><span>${esc(CARS[k].name)}<small>${esc(locked ? 'Locked: ' + LOCKS.cars[k].why : CARS[k].tag || '')}</small></span></button>`;
+    const isNew = !locked && fresh.has('car:' + k);
+    return `<button class="car-pick${k === selected ? ' on' : ''}${locked ? ' locked' : ''}" data-car="${k}" ${locked ? `title="${esc(LOCKS.cars[k].why)}" aria-disabled="true"` : ''}>
+    <b>${locked ? '🔒' : i + 1}</b><span>${esc(CARS[k].name)}${isNew ? '<i class="badge-new">NEW</i>' : ''}<small>${esc(locked ? 'Locked: ' + LOCKS.cars[k].why : CARS[k].tag || '')}</small></span></button>`;
   }).join('');
 }
 

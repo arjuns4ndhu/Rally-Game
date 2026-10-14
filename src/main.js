@@ -508,6 +508,7 @@ function passCheckpoint() {
 
 function finishRun() {
   run.state = 'finished';
+  const unlockedBefore = new Set(unlockedKeys());
   const isBest = !best || run.t < best.time;
   const prev = best;
   if (isBest) {
@@ -517,6 +518,11 @@ function finishRun() {
     saveGhost(stage.seed, { car: carId, color: model.paint.color.getStyle(), time: run.t, samples: recorder.samples });
   }
   stats.finish(isBest);
+  // Anything this run unlocked gets a line on the finish screen.
+  const newly = unlockedKeys().filter((k) => !unlockedBefore.has(k));
+  $('fin-unlock').hidden = !newly.length;
+  $('fin-unlock').textContent = newly.length ? `Unlocked: ${newly.map(unlockName).join(', ')}. Have a look in the Garage!` : '';
+  refreshGarageDot();
   if (stage.kind !== 'practice' && isBest) board.submit(stage.seed, run.t, CARS[carId].name);
   lastResult = { time: run.t, splits: run.splits.slice(), prev, isBest, label: stageLabel(), respawns: run.respawns, car: CARS[carId].name };
   audio.fanfare(isBest && !!prev);
@@ -577,6 +583,17 @@ for (let i = 0; i < 20; i++) {
 }
 const rpmSegs = [...rpmEl.children];
 let toastTimer = 0;
+// A message that stays until the player acts on it (e.g. the run is over).
+function banner(msg, label, fn) {
+  $('hud-banner-text').textContent = msg;
+  $('hud-banner-btn').textContent = label;
+  bannerAction = fn;
+  $('hud-banner').hidden = false;
+}
+function clearBanner() { $('hud-banner').hidden = true; bannerAction = null; }
+let bannerAction = null;
+$('hud-banner-btn').addEventListener('click', (e) => { e.currentTarget.blur(); const fn = bannerAction; clearBanner(); fn?.(); });
+
 function toast(msg, ms = 1600) {
   const t = $('toast');
   t.textContent = msg;
@@ -726,6 +743,8 @@ function toMenu() {
   $('start').hidden = false;
   audio.resume(); audio.idle();
   school.stop();
+  clearBanner();
+  refreshGarageDot();
   audio.music(musicOn);
 }
 function setPaused(p) {
@@ -1392,7 +1411,8 @@ function ejectRider() {
   riderFall.spin.set(rnd() * 9, rnd() * 6, rnd() * 9);
   audio.thud(0.5);
   if (run.state === 'running') run.state = 'dnf';
-  setTimeout(() => { if (riderFall.on) toast(stage.kind === 'practice' ? 'PASSENGER LOST! PRESS R' : 'PASSENGER LOST! RESTART (R)', 3000); }, 950);
+  const touch = document.body.classList.contains('touch');
+  setTimeout(() => { if (riderFall.on) banner('PASSENGER LOST!', stage.kind === 'practice' ? (touch ? 'Pick him up' : 'Pick him up (R)') : (touch ? 'Restart' : 'Restart (R)'), restartKey); }, 950);
 }
 function updateRider(dt) {
   const f = riderFall;
@@ -1409,6 +1429,7 @@ function updateRider(dt) {
   o.rotation.x += f.spin.x * dt; o.rotation.y += f.spin.y * dt; o.rotation.z += f.spin.z * dt;
 }
 function seatRider() {
+  clearBanner();
   if (!riderFall.on) return;
   riderFall.on = false;
   if (riderFall.obj?.parent === scene) scene.remove(riderFall.obj);
@@ -1756,6 +1777,7 @@ function openPage(id) {
   $(id).querySelector('[data-back]')?.focus();
 }
 function hidePages() {
+  if (!$('garage').hidden) markUnlocksSeen();     // NEW badges go once you've seen them
   for (const id of ['garage', 'past', 'champ', 'statsview', 'classics']) $(id).hidden = true;
   preview.stop();
 }
@@ -1766,13 +1788,38 @@ function closePages() {
 }
 document.querySelectorAll('[data-back]').forEach((b) => b.addEventListener('click', closePages));
 
+// Unlockables you haven't looked at yet get a NEW badge, and the Garage
+// button gets a dot while there's something new in it.
+let seen;
+try { seen = new Set(JSON.parse(localStorage.getItem('sideways.seen') || '[]')); } catch { seen = new Set(); }
+function unlockedKeys(u = unlockState(stats.d.finishes)) {
+  return [
+    ...Object.keys(LOCKS.cars).filter((k) => !carLocked(k, u)).map((k) => 'car:' + k),
+    ...Object.keys(LOCKS.wheels).filter((w) => !wheelLocked(w, u)).map((w) => 'wheels:' + w),
+    ...SPECIAL_PAINTS.filter((p) => p.need(u)).map((p) => 'paint:' + p.color),
+  ];
+}
+const unlockName = (k) => {
+  const [kind, id] = k.split(':');
+  if (kind === 'car') return CARS[id].name;
+  if (kind === 'wheels') return `${id[0].toUpperCase() + id.slice(1)} wheels`;
+  return `${SPECIAL_PAINTS.find((p) => p.color === id)?.name || 'Special'} paint`;
+};
+function freshUnlocks() { return new Set(unlockedKeys().filter((k) => !seen.has(k))); }
+function refreshGarageDot() { $('btn-garage').classList.toggle('has-new', freshUnlocks().size > 0); }
+function markUnlocksSeen() {
+  for (const k of unlockedKeys()) seen.add(k);
+  try { localStorage.setItem('sideways.seen', JSON.stringify([...seen])); } catch { /* ignore */ }
+  refreshGarageDot();
+}
 function renderGarage() {
   const u = unlockState(stats.d.finishes);
-  $('garage-cars').innerHTML = garageCarsHTML(garage.car, u);
+  const fresh = freshUnlocks();
+  $('garage-cars').innerHTML = garageCarsHTML(garage.car, u, fresh);
   $('garage-stats').innerHTML = garageStatsHTML(garage.car);
   $('garage-paint').innerHTML = PAINTS.map((c) => `<button class="swatch${c === garage.color ? ' on' : ''}" style="background:${c}" data-paint="${c}" aria-label="Paint ${c}"></button>`).join('') +
-    SPECIAL_PAINTS.map((p) => { const ok = p.need(u); return `<button class="swatch special${p.color === garage.color ? ' on' : ''}${ok ? '' : ' locked'}" style="background:${p.color}" data-paint="${p.color}" ${ok ? '' : `data-why="${p.why}"`} title="${p.name}${ok ? '' : ': ' + p.why}" aria-label="${p.name} paint${ok ? '' : ' (locked)'}">${ok ? '' : '🔒'}</button>`; }).join('');
-  $('garage-wheels').innerHTML = WHEELS.map((w) => { const lk = wheelLocked(w, u); return `<button class="chip${w === garage.wheels ? ' on' : ''}${lk ? ' locked' : ''}" data-wheels="${w}" ${lk ? `data-why="${LOCKS.wheels[w].why}"` : ''}>${lk ? '🔒 ' : ''}${w}</button>`; }).join('');
+    SPECIAL_PAINTS.map((p) => { const ok = p.need(u); return `<button class="swatch special${p.color === garage.color ? ' on' : ''}${ok ? '' : ' locked'}${ok && fresh.has('paint:' + p.color) ? ' is-new' : ''}" style="background:${p.color}" data-paint="${p.color}" ${ok ? '' : `data-why="${p.why}"`} title="${p.name}${ok ? '' : ': ' + p.why}" aria-label="${p.name} paint${ok ? '' : ' (locked)'}">${ok ? '' : '🔒'}</button>`; }).join('');
+  $('garage-wheels').innerHTML = WHEELS.map((w) => { const lk = wheelLocked(w, u); return `<button class="chip${w === garage.wheels ? ' on' : ''}${lk ? ' locked' : ''}" data-wheels="${w}" ${lk ? `data-why="${LOCKS.wheels[w].why}"` : ''}>${lk ? '🔒 ' : ''}${w}${!lk && fresh.has('wheels:' + w) ? ' <i class="badge-new">NEW</i>' : ''}</button>`; }).join('');
   $('garage-color').value = garage.color;
   // Style (skins) for the cars that have them.
   const skins = carSkins(CARS[garage.car]);
@@ -1783,6 +1830,7 @@ function renderGarage() {
 // The garage doubles as the car picker: you always land here first, and
 // every stage goes through it so you choose your car before you drive.
 let pendingStart = null;
+let starting = false;                      // a stage is being built: ignore other start requests
 function openGarage(mode, label = '') {
   pendingStart = mode === 'pick' ? pendingStart : null;
   $('garage-for').textContent = mode === 'pick' ? `Next: ${label}` : 'Choose your car';
@@ -1806,6 +1854,7 @@ function stageTitle(kind, seed) {
   return name;
 }
 function pickThenStart(kind, seed) {
+  if (starting) return;
   if (running) toMenu();
   pendingStart = { kind, seed };
   openGarage('pick', stageTitle(kind, seed));
@@ -1818,12 +1867,19 @@ $('garage-go').addEventListener('click', (e) => {
   pendingStart = null;
   if (!p) { closePages(); return; }
   hidePages();                             // straight to the stage, no flash of the title menu
-  try {
-    start(p.kind, p.seed);
-  } catch (err) {
-    showError('The stage could not start', err);
-    toMenu();
-  }
+  // Building a stage takes a moment and blocks the page, so show the loading
+  // screen first and let it paint (two frames) before starting.
+  const needLoad = p.seed == null || p.kind !== stage.kind || p.seed !== stage.seed;
+  const go = () => {
+    try { start(p.kind, p.seed); } catch (err) { showError('The stage could not start', err); toMenu(); }
+    $('loading').hidden = true;
+    starting = false;
+  };
+  if (!needLoad) { go(); return; }
+  starting = true;
+  $('loading-name').textContent = stageTitle(p.kind, p.seed);
+  $('loading').hidden = false;
+  requestAnimationFrame(() => requestAnimationFrame(go));
 });
 
 $('garage').addEventListener('click', (e) => {
@@ -1945,3 +2001,5 @@ window.__sideways = {
   get ghostModel() { return ghostModel; }, recorder, loadGhost, onLanding, renderer, scene, camera, marks, assist, setAssist, car, input, TUNE, CARS, start, stepSim, placeOnRoad, loadStage, run, stage,
   get road() { return road; }, get terrain() { return terrain; }, get lineMesh() { return lineMesh; }, get surface() { return surface; }, get best() { return best; },
 };
+// After everything above is set up: mark the Garage button if there's something new.
+refreshGarageDot();

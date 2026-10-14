@@ -49,13 +49,25 @@
   <div class="pacenote" id="hud-note" role="img"></div>
   <canvas class="minimap" id="minimap" role="img" aria-label="Stage map"></canvas>
   <div class="countdown" id="hud-count" hidden aria-live="assertive"></div>
-  <div class="toast" id="toast"></div>
+  <div class="hud-banner" id="hud-banner" role="alert" hidden><b id="hud-banner-text"></b><button class="btn btn-sm btn-primary" id="hud-banner-btn">Restart</button></div>
   <div class="school" id="school" hidden>
     <div class="eyebrow">Driving school · <span id="school-step"></span></div>
     <div class="school-text" id="school-text"></div>
     <div class="school-track"><i id="school-bar"></i></div>
   </div>
   <div class="replay-tag" id="hud-replay" hidden><span class="rec"></span>REPLAY <b id="replay-time">0:00.00</b><button id="btn-replay-exit" class="btn replay-exit">Exit <small>Esc</small></button></div>
+</div>
+
+<!-- Short messages: shown over menus as well as in play -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Loading a stage -->
+<div id="loading" class="overlay" hidden>
+  <div class="title-card small loading-card">
+    <div class="eyebrow">Loading stage</div>
+    <h2 class="logo" id="loading-name">…</h2>
+    <div class="load-bar" aria-hidden="true"><i></i></div>
+  </div>
 </div>
 
 <!-- Touch controls -->
@@ -100,14 +112,17 @@
       <button id="btn-past" class="btn btn-sm">Past stages</button>
       <button id="btn-stats" class="btn btn-sm">Stats</button>
     </div>
+    <details class="tips-box">
+      <summary>How to drift</summary>
     <ul class="tips">
-      <li><b>Tap brake</b> while turning to kick the rear out.</li>
-      <li><b>Hold throttle</b> to keep the drift going.</li>
-      <li><b>Lift off</b> to rotate more, <b>counter-steer</b> to straighten or flick.</li>
-      <li><b>Space</b> handbrake for hairpins.</li>
-      <li><b>G</b> turns on the racing line assist, a gentle pull toward the ideal line.</li>
-      <li><b>R</b> restarts the stage, <b>T</b> puts you back at the last checkpoint (+5 s).</li>
-    </ul>
+        <li><b>Tap brake</b> while turning to kick the rear out.</li>
+        <li><b>Hold throttle</b> to keep the drift going.</li>
+        <li><b>Lift off</b> to rotate more, <b>counter-steer</b> to straighten or flick.</li>
+        <li><b>Space</b> handbrake for hairpins.</li>
+        <li><b>G</b> turns on the racing line assist, a gentle pull toward the ideal line.</li>
+        <li><b>R</b> restarts the stage, <b>T</b> puts you back at the last checkpoint (+5 s).</li>
+      </ul>
+    </details>
   </div>
 </div>
 
@@ -172,45 +187,40 @@
 
 <!-- Pause -->
 <div id="pause" class="overlay" hidden>
-  <div class="title-card small">
-    <h2 class="logo">PAUSED</h2>
-    <div class="eyebrow" id="pause-code"></div>
-    <button id="btn-resume" class="btn btn-primary">Resume</button>
-    <button id="btn-reset" class="btn">Back to checkpoint</button>
-    <button id="btn-restart" class="btn">Restart stage</button>
-    <button id="btn-pcar" class="btn">Change car</button>
-    <button id="btn-pmenu" class="btn">Menu</button>
-    <label class="check"><input type="checkbox" id="opt-assist"> Racing line assist</label>
-    <label class="check select">Assist strength
+  <div class="pause-card">
+    <div class="pause-actions">
+      <h2 class="logo">PAUSED</h2>
+      <div class="eyebrow" id="pause-code"></div>
+      <button id="btn-resume" class="btn btn-primary">Resume <small class="key">Esc</small></button>
+      <button id="btn-reset" class="btn">Back to checkpoint <small class="key">T</small></button>
+      <button id="btn-restart" class="btn">Restart stage <small class="key">R</small></button>
+      <button id="btn-pcar" class="btn">Change car</button>
+      <button id="btn-pmenu" class="btn">Menu</button>
+    </div>
+    <div class="pause-settings">
+      <details class="set-group" open>
+        <summary>Driving</summary>
+        <label class="check"><input type="checkbox" id="opt-assist"> Racing line assist</label>
+        <label class="check select">Assist strength
       <select id="opt-assist-level">
         <option value="low">Low</option>
         <option value="medium">Medium</option>
         <option value="high">High</option>
       </select>
     </label>
-    <label class="check select">Co-driver
+        <label class="check select">Co-driver
       <select id="opt-codriver">
         <option value="signs">Pace-note signs</option>
         <option value="off">Off</option>
       </select>
     </label>
-    <label class="check"><input type="checkbox" id="opt-ghost" checked> Ghost car (your best run)</label>
-    <label class="check"><input type="checkbox" id="opt-drone" checked> Camera drone</label>
-    <label class="check"><input type="checkbox" id="opt-map" checked> Mini map</label>
-    <label class="check select">Volume <span class="vol"><input type="range" id="opt-volume" min="0" max="100" step="5" value="80" aria-label="Volume"><output id="opt-volume-val">80%</output></span></label>
-    <label class="check"><input type="checkbox" id="opt-mute"> Mute sound</label>
-    <label class="check"><input type="checkbox" id="opt-music"> Menu music</label>
-    <label class="check"><input type="checkbox" id="opt-retro" checked> Retro mode (reloads)</label>
-    <label class="check select retro-sub">Retro pixels
-      <select id="opt-pixels">
-        <option value="light">Light (360 lines)</option>
-        <option value="heavy">Heavy (240 lines)</option>
-        <option value="off">Off (sharp)</option>
-      </select>
-    </label>
-    <label class="check retro-sub"><input type="checkbox" id="opt-dither" checked> Retro colour (dithering)</label>
-    <label class="check retro-sub"><input type="checkbox" id="opt-wobble" checked> Vertex wobble (reloads)</label>
-    <label class="check select">Graphics
+        <label class="check"><input type="checkbox" id="opt-ghost" checked> Ghost car (your best run)</label>
+      </details>
+      <details class="set-group">
+        <summary>Display</summary>
+        <label class="check"><input type="checkbox" id="opt-map" checked> Mini map</label>
+        <label class="check"><input type="checkbox" id="opt-drone" checked> Camera drone</label>
+        <label class="check select">Graphics
       <select id="opt-quality">
         <option value="auto">Auto</option>
         <option value="high">High</option>
@@ -218,12 +228,36 @@
         <option value="low">Low (phones)</option>
       </select>
     </label>
-    <label class="check"><input type="checkbox" id="opt-scan" checked> Scanlines</label>
-    <label class="check"><input type="checkbox" id="opt-bigtouch"> Big touch buttons</label>
-    <div class="keybinds">
-      <div class="eyebrow">Controls <small>click, then press a key</small></div>
+        <label class="check"><input type="checkbox" id="opt-scan" checked> Scanlines</label>
+        <label class="check"><input type="checkbox" id="opt-bigtouch"> Big touch buttons</label>
+      </details>
+      <details class="set-group">
+        <summary>Sound</summary>
+        <label class="check select">Volume <span class="vol"><input type="range" id="opt-volume" min="0" max="100" step="5" value="80" aria-label="Volume"><output id="opt-volume-val">80%</output></span></label>
+        <label class="check"><input type="checkbox" id="opt-mute"> Mute sound</label>
+        <label class="check"><input type="checkbox" id="opt-music"> Menu music</label>
+      </details>
+      <details class="set-group">
+        <summary>Retro look</summary>
+        <label class="check"><input type="checkbox" id="opt-retro" checked> Retro mode <small>(reloads the game)</small></label>
+        <label class="check select retro-sub">Retro pixels
+      <select id="opt-pixels">
+        <option value="light">Light (360 lines)</option>
+        <option value="heavy">Heavy (240 lines)</option>
+        <option value="off">Off (sharp)</option>
+      </select>
+    </label>
+        <label class="check retro-sub"><input type="checkbox" id="opt-dither" checked> Retro colour (dithering)</label>
+        <label class="check retro-sub"><input type="checkbox" id="opt-wobble" checked> Vertex wobble <small>(reloads the game)</small></label>
+      </details>
+      <details class="set-group set-keys">
+        <summary>Controls</summary>
+        <div class="keybinds">
+      <p class="hint">Click an action, then press its new key.</p>
       <div id="keybinds"></div>
       <button class="btn btn-sm" id="keys-reset">Default keys</button>
+    </div>
+      </details>
     </div>
   </div>
 </div>
@@ -238,7 +272,9 @@
       <div class="newbest" id="fin-newbest" hidden>NEW BEST</div>
     </div>
     <div class="fin-medal" id="fin-medal" hidden></div>
+    <p class="fin-unlock" id="fin-unlock" hidden></p>
     <p class="fin-meta"><span id="fin-prev"></span><br><span id="fin-pen"></span></p>
+    <div class="fin-data">
     <div class="fin-table"><table id="fin-splits"></table></div>
     <div class="fin-board" id="fin-board" hidden>
       <div class="board-head">LEADERBOARD <small id="board-rank"></small></div>
@@ -249,14 +285,21 @@
       </form>
       <p class="hint" id="board-note"></p>
     </div>
+    </div>
     <div class="fin-actions">
-      <button id="btn-next" class="btn btn-primary" hidden>Next stage</button>
-      <button id="btn-retry" class="btn btn-primary">Retry</button>
-      <button id="btn-replay" class="btn">Watch replay</button>
-      <button id="btn-share" class="btn">Copy result</button>
-      <button id="btn-new" class="btn">Random stage</button>
-      <button id="btn-fcar" class="btn">Change car</button>
-      <button id="btn-fmenu" class="btn">Menu</button>
+      <div class="fin-primary">
+        <button id="btn-next" class="btn btn-primary" hidden>Next stage</button>
+        <button id="btn-retry" class="btn btn-primary">Retry <small class="key">R</small></button>
+      </div>
+      <div class="fin-secondary">
+        <button id="btn-replay" class="btn">Watch replay</button>
+        <button id="btn-share" class="btn">Copy result</button>
+      </div>
+      <div class="fin-tertiary">
+        <button id="btn-new" class="btn btn-sm">Random stage</button>
+        <button id="btn-fcar" class="btn btn-sm">Change car</button>
+        <button id="btn-fmenu" class="btn btn-sm">Menu</button>
+      </div>
     </div>
   </div>
 </div>
