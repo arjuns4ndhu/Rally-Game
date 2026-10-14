@@ -697,7 +697,8 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   if (ghost) {
     root.traverse((o) => {
       o.castShadow = false;
-      if (o.material && !mats.includes(o.material)) mats.push(o.material);
+      // A mesh can have one material or a list of them (the lofted bodies).
+      for (const m of [].concat(o.material || [])) if (!mats.includes(m)) mats.push(m);
     });
     for (const m of mats) { m.transparent = true; m.opacity = 0.38; m.depthWrite = false; }
   }
@@ -810,7 +811,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     },
     dispose() {
       root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
-      mats.forEach((m) => { m.map?.dispose(); m.dispose(); });
+      mats.forEach((m) => { m.map?.dispose(); m.dispose?.(); });
     },
   };
   return api;
