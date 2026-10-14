@@ -516,7 +516,155 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     body.add(bodyMesh, glassMesh);
     const [zr, zf] = def.zRange || [-def.length / 2, def.length / 2];
     ({ stratos: stratosDetails, mini: miniDetails, quattro: quattroDetails, focus: focusDetails, dakar: dakarDetails, groupb: groupbDetails })[prof.loft](L.curves, acc, zr, zf, skinId);
+    styleKit(prof.loft, skinId, L.curves, acc, zr, zf);
   }
+
+  // ---------- Style kits ----------
+  // Unlockable styles change the car itself, not just its paint: wings,
+  // splitters, bull bars, lamp pods, roof racks, snorkels and so on.
+  function styleKit(loft, skinId, C, acc, zr, zf) {
+    const kit = kitTable()[`${loft}:${skinId}`];
+    if (kit) kit(C, acc, zr, zf);
+  }
+  function tube(r, len, mat, x, y, z, rx = 0, ry = 0, rz = 0) {
+    const t = add(new THREE.CylinderGeometry(r, r, len, 8), mat, x, y, z, true);
+    t.rotation.set(rx, ry, rz);
+    return t;
+  }
+  // A big rear wing on two stalks: centre z, height above the surface below it.
+  function bigWing(C, z, width, rise, chord, mat, endMat = mat) {
+    const base = C.top(z), y = base + rise;
+    const plane = add(new THREE.BoxGeometry(width, 0.035, chord), mat, 0, y, z, true);
+    plane.rotation.x = -0.1;
+    add(new THREE.BoxGeometry(width * 0.98, 0.02, chord * 0.45), mat, 0, y + 0.07, z - chord * 0.2).rotation.x = -0.25;
+    for (const side of [-1, 1]) {
+      add(new THREE.BoxGeometry(0.03, 0.2, chord + 0.06), endMat, side * width / 2, y + 0.02, z);
+      add(new THREE.BoxGeometry(0.04, rise, 0.08), dark, side * width * 0.3, base + rise / 2, z);
+    }
+  }
+  // Flat splitter under the nose, with little dive planes on the corners.
+  function splitter(C, zf, width, mat) {
+    add(new THREE.BoxGeometry(width, 0.035, 0.36), mat, 0, C.bottom(zf) + 0.01, zf + 0.05, true);
+    for (const side of [-1, 1]) {
+      const fin = add(new THREE.BoxGeometry(0.2, 0.025, 0.12), mat, side * (C.halfWidth(zf - 0.2) + 0.02), C.belt(zf - 0.15) - 0.18, zf - 0.15);
+      fin.rotation.z = side * 0.25;
+    }
+  }
+  // Tubular bull bar across the nose.
+  function bullBar(C, zf, width) {
+    const y0 = C.bottom(zf) + 0.08, h = Math.max(0.35, C.belt(zf) - y0 + 0.05), z = zf + 0.12;
+    tube(0.03, width, dark, 0, y0 + h, z, 0, 0, Math.PI / 2);
+    tube(0.03, width * 0.9, dark, 0, y0 + h * 0.45, z, 0, 0, Math.PI / 2);
+    for (const x of [-width * 0.36, width * 0.36]) tube(0.03, h + 0.05, dark, x, y0 + h / 2, z);
+  }
+  // A row of round lamps on a bar, facing forward.
+  function lampPod(n, spacing, y, z, r = 0.09) {
+    add(new THREE.BoxGeometry(spacing * n, 0.05, 0.08), dark, 0, y - r - 0.01, z - 0.03);
+    for (let k = 0; k < n; k++) {
+      const x = (k - (n - 1) / 2) * spacing;
+      const pot = add(new THREE.CylinderGeometry(r, r, r, 12), dark, x, y, z);
+      pot.rotation.x = Math.PI / 2;
+      disc(r * 0.85, x, y, z + r / 2 + 0.003, lightMat);
+      heads.push([x, y, z + 0.1, 0.7]);
+    }
+  }
+  // Snorkel up the right-hand screen pillar.
+  function snorkel(C, zA, zRoof) {
+    const x = -(C.halfWidth(zA) + 0.04), y0 = C.belt(zA) - 0.25, y1 = C.top(zRoof) + 0.12;
+    tube(0.05, y1 - y0, dark, x, (y0 + y1) / 2, zA);
+    const cap = add(new THREE.BoxGeometry(0.12, 0.1, 0.18), dark, x, y1 + 0.03, zA + 0.05, true);
+    cap.rotation.x = 0.2;
+  }
+  // Roof rack: a frame of bars on the roof between z0 and z1.
+  function roofRack(C, z0, z1, width) {
+    const y = Math.max(C.top(z0), C.top(z1), C.top((z0 + z1) / 2)) + 0.06;
+    for (const side of [-1, 1]) add(new THREE.BoxGeometry(0.035, 0.035, z1 - z0), dark, side * width / 2, y, (z0 + z1) / 2);
+    for (const z of [z0 + 0.05, (z0 + z1) / 2, z1 - 0.05]) add(new THREE.BoxGeometry(width, 0.03, 0.035), dark, 0, y, z);
+    return y;
+  }
+  // Tall mud flaps that hang well below the sills.
+  function bigFlaps(mat) {
+    for (const side of [-1, 1]) for (const wz of [spec.a - WR - 0.12, -spec.b - WR - 0.12]) {
+      add(new THREE.BoxGeometry(0.3, 0.3, 0.02), mat, side * (wheelX + 0.02), Math.max(0.17, WR - 0.08), wz);
+    }
+  }
+  function jerryCan(x, y, z, mat) { add(new THREE.BoxGeometry(0.14, 0.32, 0.24), mat, x, y, z, true); }
+  function kitTable() { return {
+    // Safari: bull bar, a four-lamp pod on the roof, tall flaps.
+    'stratos:sunset': (C, acc, zr, zf) => {
+      bullBar(C, zf, 1.5);
+      lampPod(4, 0.22, C.top(-0.3) + 0.14, -0.05, 0.08);
+      bigFlaps(dark);
+    },
+    // Silhouette: a huge race wing on stalks, a splitter and side skirts.
+    'stratos:gold': (C, acc, zr, zf) => {
+      bigWing(C, zr + 0.3, 1.7, 0.42, 0.42, acc[0], dark);
+      splitter(C, zf, 1.8, dark);
+      for (const side of [-1, 1]) add(new THREE.BoxGeometry(0.06, 0.08, 2.1), dark, side * (C.halfWidth(0) + 0.03), C.bottom(0) + 0.06, 0);
+    },
+    // Chequers: a roof rack with two pairs of skis.
+    'mini:checkers': (C, acc, zr, zf) => {
+      const y = roofRack(C, -1.2, 0.15, 1.1);
+      const skiMat = new THREE.MeshStandardMaterial({ color: 0xc4161c, roughness: 0.5, flatShading: true }); mats.push(skiMat);
+      for (const x of [-0.36, -0.24, 0.24, 0.36]) {
+        const ski = add(new THREE.BoxGeometry(0.07, 0.025, 1.7), x < 0 ? skiMat : trim, x, y + 0.04, -0.5, true);
+        ski.rotation.x = 0.04;
+      }
+    },
+    // Arctic: lamp pod on the bonnet, bull bar and tall flaps for snow stages.
+    'quattro:arctic': (C, acc, zr, zf) => {
+      bullBar(C, zf, 1.6);
+      lampPod(4, 0.25, C.top(1.3) + 0.12, 1.4, 0.095);
+      bigFlaps(new THREE.MeshStandardMaterial({ color: 0x2f6f99, roughness: 0.6, flatShading: true }));
+    },
+    // Hillclimb: a giant double wing and a deep splitter with dive planes.
+    'quattro:redline': (C, acc, zr, zf) => {
+      bigWing(C, zr + 0.3, 1.9, 0.5, 0.5, acc[0], acc[1]);
+      splitter(C, zf, 2.0, acc[0]);
+    },
+    // Gravel: roof scoop, bonnet lamp pod, big flaps.
+    'focus:lime': (C, acc, zr, zf) => {
+      add(new THREE.BoxGeometry(0.4, 0.12, 0.5), acc[0], 0, C.top(-0.5) + 0.06, -0.5, true);
+      add(new THREE.BoxGeometry(0.34, 0.09, 0.02), dark, 0, C.top(-0.5) + 0.07, -0.24);
+      lampPod(4, 0.24, C.top(1.4) + 0.12, 1.5, 0.09);
+      bigFlaps(acc[0]);
+    },
+    // Tarmac: a tall race wing over the hatch, splitter and skirts.
+    'focus:heritage': (C, acc, zr, zf) => {
+      bigWing(C, zr + 0.25, 1.7, 0.32, 0.38, acc[1], dark);
+      splitter(C, zf, 1.85, dark);
+      for (const side of [-1, 1]) add(new THREE.BoxGeometry(0.06, 0.08, 2.3), dark, side * (C.halfWidth(0) + 0.03), C.bottom(0) + 0.06, 0);
+    },
+    // Dune: sand ladders on the flanks and jerry cans on the tail.
+    'dakar:dune': (C, acc, zr, zf) => {
+      const ladder = new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.6, flatShading: true }); mats.push(ladder);
+      for (const side of [-1, 1]) {
+        const l = add(new THREE.BoxGeometry(0.04, 0.28, 1.3), ladder, side * (C.halfWidth(-0.9) + 0.03), C.belt(-0.9) - 0.25, -0.9, true);
+        for (let k = 0; k < 6; k++) add(new THREE.BoxGeometry(0.05, 0.22, 0.02), dark, l.position.x, l.position.y, -1.45 + k * 0.22);
+      }
+      for (const x of [-0.45, 0.45]) jerryCan(x, C.bottom(zr) + 0.45, zr - 0.14, acc[0]);
+    },
+    // Expedition: snorkel, winch bull bar and a cargo box on the rack.
+    'dakar:expedition': (C, acc, zr, zf) => {
+      snorkel(C, 1.1, 0.4);
+      bullBar(C, zf, 1.75);
+      add(new THREE.BoxGeometry(0.26, 0.14, 0.2), acc[0], 0, C.bottom(zf) + 0.2, zf + 0.14, true);
+      for (const x of [-0.4, 0, 0.4]) jerryCan(x, C.bottom(zr) + 0.45, zr - 0.14, acc[2]);
+    },
+    // Evo: tall hatch wing, a bigger roof scoop and nose canards.
+    'groupb:rosso': (C, acc, zr, zf) => {
+      bigWing(C, zr + 0.25, 1.7, 0.36, 0.4, acc[1], acc[0]);
+      add(new THREE.BoxGeometry(0.44, 0.14, 0.6), acc[1], 0, C.top(-0.6) + 0.07, -0.6, true);
+      splitter(C, zf, 1.85, acc[1]);
+    },
+    // Safari: bull bar, roof lamp pod, snorkel, tall flaps.
+    'groupb:oro': (C, acc, zr, zf) => {
+      bullBar(C, zf, 1.6);
+      lampPod(4, 0.24, C.top(0) + 0.14, 0.1, 0.085);
+      snorkel(C, 0.6, 0.1);
+      bigFlaps(acc[0]);
+    },
+  }; }
   function disc(r, x, y, z, mat, back = false) {
     const m = add(new THREE.CircleGeometry(r, 14), mat, x, y, z);
     if (back) m.rotation.y = Math.PI;
@@ -537,7 +685,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     }
   }
   function miniDetails(C, acc, zr, zf, skinId) {
-    const rally = skinId === 'rally';
+    const rally = skinId !== 'armchair';   // every style but the armchair gets the works rally kit
     const chrome = new THREE.MeshStandardMaterial({ color: 0xc9ced6, metalness: 0.85, roughness: 0.25, flatShading: true });
     mats.push(chrome);
     // Grille between the wings, with chrome slats and surround.

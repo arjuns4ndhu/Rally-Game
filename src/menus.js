@@ -23,9 +23,30 @@ export const SPECIAL_PAINTS = [
 export const LOCKS = {
   wheels: { gold: { need: (u) => u.gold >= 2, why: 'Gold on 2 Classics' } },
   cars: { brute: { need: (u) => u.gold >= 3, why: 'Gold on 3 Classics' } },
+  // Car styles ("car:style"). Each car's Works style is always free.
+  skins: {
+    'stiletto:sunset': { need: (u) => u.finishes >= 5, why: 'Finish 5 stages' },
+    'stiletto:gold': { need: (u) => u.driftKm >= 5, why: 'Drift 5 km in total' },
+    'pocket:armchair': { need: (u) => u.crashes >= 20, why: 'Crash 20 times' },
+    'pocket:checkers': { need: (u) => u.dailies >= 3, why: 'Play 3 daily stages' },
+    'quadra:arctic': { need: (u) => u.medals >= 2, why: 'Any 2 Classic medals' },
+    'quadra:redline': { need: (u) => u.air >= 30, why: '30 s of air time in total' },
+    'vector:lime': { need: (u) => u.finishes >= 15, why: 'Finish 15 stages' },
+    'vector:heritage': { need: (u) => u.bests >= 5, why: 'Set 5 personal bests' },
+    'raider:dune': { need: (u) => u.air >= 10, why: '10 s of air time in total' },
+    'raider:expedition': { need: (u) => u.distKm >= 50, why: 'Drive 50 km in total' },
+    'brute:rosso': { need: (u) => u.gold >= 4, why: 'Gold on 4 Classics' },
+    'brute:oro': { need: (u) => u.driftKm >= 20, why: 'Drift 20 km in total' },
+  },
 };
-export function unlockState(finishes = 0) {
-  const u = { gold: 0, silverPlus: 0, medals: 0, finishes };
+// Unlock progress from medals and lifetime stats (a stats object, or just
+// the finish count).
+export function unlockState(d = 0) {
+  if (typeof d !== 'object' || !d) d = { finishes: d || 0 };
+  const u = {
+    gold: 0, silverPlus: 0, medals: 0, finishes: d.finishes || 0, bests: d.bests || 0, crashes: d.crashes || 0,
+    air: d.air || 0, driftKm: (d.drift || 0) / 1000, distKm: (d.dist || 0) / 1000, dailies: (d.days || []).length,
+  };
   for (const c of CLASSICS) {
     const m = medalFor(c, bestFor(c.seed)?.time);
     if (m) u.medals++;
@@ -36,6 +57,7 @@ export function unlockState(finishes = 0) {
 }
 export const carLocked = (id, u) => !!(LOCKS.cars[id] && !LOCKS.cars[id].need(u));
 export const wheelLocked = (w, u) => !!(LOCKS.wheels[w] && !LOCKS.wheels[w].need(u));
+export const skinLocked = (car, skin, u) => { const l = LOCKS.skins[`${car}:${skin}`]; return !!(l && !l.need(u)); };
 export const LAUNCH = 20260901;           // first daily in the calendar
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

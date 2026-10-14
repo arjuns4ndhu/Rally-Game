@@ -227,6 +227,130 @@ export const LOFTS = {
 
 };
 
+// ---------- Styles ----------
+// Each car's own livery above is its free "Works" style. These extra styles
+// are unlocked by playing (see LOCKS.skins in menus.js). All are made-up
+// colour schemes: no sponsors, names or badges. Each has its own paint and
+// three accent colours (livery returns 1-3 for an accent, null for paint).
+const EXTRA_SKINS = {
+  stratos: {
+    // Orange with a black sill and roof, a white pinstripe and twin bonnet stripes.
+    sunset: {
+      name: 'Safari', paint: '#f27a1a', accents: [0x17181b, 0xf1ede2, 0x17181b],
+      livery(part, x, y, z) {
+        const ax = Math.abs(x);
+        if (part === 'side') return y < 0.42 ? 1 : y < 0.46 ? 2 : null;
+        if (part === 'top') {
+          if (z > -0.6 && z < -0.02) return 1;
+          if (z > 0.86 && ax > 0.1 && ax < 0.2) return 2;
+        }
+        return null;
+      },
+    },
+    // Black with gold pinstripes and a gold bonnet chevron.
+    gold: {
+      name: 'Silhouette', paint: '#141518', accents: [0xc9a04a, 0x8a6d2b, 0xc9a04a],
+      livery(part, x, y, z) {
+        const ax = Math.abs(x);
+        if (part === 'side') return y > 0.6 && y < 0.63 ? 1 : y > 0.66 && y < 0.675 ? 2 : null;
+        if (part === 'top' && z > 0.86) { const d = ax - (z - 0.86) * 0.62; return d > -0.05 && d < 0 ? 1 : null; }
+        return null;
+      },
+    },
+  },
+  mini: {
+    // White with a chequered roof, black sills and twin red bonnet stripes.
+    checkers: {
+      name: 'Chequers', paint: '#f1ede2', accents: [0x17181b, 0xc4161c, 0x17181b],
+      livery(part, x, y, z) {
+        if (part === 'side') return y < 0.36 ? 1 : null;
+        if (part === 'top') {
+          if (z > -1.32 && z < 0.27) return (Math.floor(x / 0.17 + 10) + Math.floor(z / 0.17 + 20)) % 2 ? 1 : null;
+          if (z > 0.68 && Math.abs(x) > 0.06 && Math.abs(x) < 0.16) return 2;
+        }
+        return null;
+      },
+    },
+  },
+  quattro: {
+    // Ice white over pale blue, with a silver pinstripe.
+    arctic: {
+      name: 'Arctic', paint: '#eef2f6', accents: [0x7cc4e8, 0x9aa3ad, 0x2f6f99],
+      livery(part, x, y, z) {
+        if (part === 'side') return y < 0.55 ? 1 : y < 0.58 ? 2 : null;
+        if (part === 'top' && z > 0.9 && z < 1.9 && Math.abs(x) > 0.55 && Math.abs(x) < 0.62) return 1;
+        return null;
+      },
+    },
+    // Deep red with a black lower body, a white pinstripe and a black bonnet.
+    redline: {
+      name: 'Hillclimb', paint: '#b5121b', accents: [0x17181b, 0xf1ede2, 0x17181b],
+      livery(part, x, y, z) {
+        if (part === 'side') return y < 0.5 ? 1 : y < 0.53 ? 2 : null;
+        if (part === 'top' && z > 0.95 && z < 1.95) return 1;
+        return null;
+      },
+    },
+  },
+  focus: {
+    // Black with a lime swoosh edged in white.
+    lime: {
+      name: 'Gravel', paint: '#16181d', accents: [0x9fe01a, 0xf1ede2, 0x9fe01a],
+      livery(part, x, y, z) {
+        if (part === 'side') { const d = y - Math.min(1.05, 0.3 + (1.25 - z) * 0.3); return Math.abs(d) < 0.05 ? 1 : Math.abs(d) < 0.075 ? 2 : null; }
+        if (part === 'top' && z > 1.0 && z < 1.85 && Math.abs(x) > 0.28 && Math.abs(x) < 0.36) return 1;
+        return null;
+      },
+    },
+    // Dark blue with a white roof and a red waist pinstripe.
+    heritage: {
+      name: 'Tarmac', paint: '#1b2f7a', accents: [0xf1ede2, 0xd2232a, 0xf1ede2],
+      livery(part, x, y, z) {
+        if (part === 'side') return y > 0.78 && y < 0.81 ? 2 : null;
+        if (part === 'top' && z > -1.95 && z < 0.15) return 1;
+        return null;
+      },
+    },
+  },
+  dakar: {
+    // Sand with a brown lower body and a black waist stripe.
+    dune: {
+      name: 'Dune', paint: '#d9b77a', accents: [0x6b4a2b, 0x17181b, 0x6b4a2b],
+      livery(part, x, y, z) {
+        if (part !== 'side') return null;
+        const L = 0.9 - Math.max(0, z - 1.5) * 0.3;
+        return y < L ? 1 : y < L + 0.05 ? 2 : null;
+      },
+    },
+    // Expedition orange with a black lower body and a white stripe.
+    expedition: {
+      name: 'Expedition', paint: '#e8622a', accents: [0x17181b, 0xf1ede2, 0x17181b],
+      livery(part, x, y, z) {
+        if (part === 'side') { const L = 0.78 - Math.max(0, z - 1.5) * 0.3; return y < L ? 1 : y < L + 0.04 ? 2 : null; }
+        if (part === 'top' && z > 1.25 && Math.abs(x) < 0.12) return 1;
+        return null;
+      },
+    },
+  },
+  groupb: {
+    // Red with white and black bands in the works pattern.
+    rosso: {
+      name: 'Evo', paint: '#c4161c', accents: [0xf1ede2, 0x17181b, 0xf1ede2],
+      livery: (part, x, y, z) => LOFTS.groupb.skins.works.livery(part, x, y, z),
+    },
+    // White with gold and green bands in the works pattern.
+    oro: {
+      name: 'Safari', paint: '#f1ede2', accents: [0x1d7f3f, 0xc9a04a, 0x1d7f3f],
+      livery: (part, x, y, z) => LOFTS.groupb.skins.works.livery(part, x, y, z),
+    },
+  },
+};
+for (const [k, extra] of Object.entries(EXTRA_SKINS)) {
+  const d = LOFTS[k];
+  if (!d.skins) { d.skins = { works: { name: 'Works', accents: d.accents, livery: d.livery } }; d.defaultSkin = 'works'; }
+  Object.assign(d.skins, extra);
+}
+
 // Points of one half cross-section at z, from the bottom centre out, up the
 // side and over the top to the top centre. Always the same count, so rings
 // join up. Over a wheel the bottom steps up into a real wheel well.

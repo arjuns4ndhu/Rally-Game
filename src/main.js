@@ -32,7 +32,7 @@ import { Leaderboard } from './leaderboard.js';
 import { buildTrackside } from './trackside.js';
 import { WEATHER, pickWeather, weatherTheme, Precip, Rain } from './weather.js';
 import { planSurfaces, patchAt, buildSurfaces } from './surfaces.js';
-import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, weekTheme, LAUNCH, PAINTS, WHEELS, CLASSICS, MEDAL_ICON, classicOf, medalTimes, medalFor, classicsHTML, SPECIAL_PAINTS, LOCKS, unlockState, carLocked, wheelLocked } from './menus.js';
+import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, weekTheme, LAUNCH, PAINTS, WHEELS, CLASSICS, MEDAL_ICON, classicOf, medalTimes, medalFor, classicsHTML, SPECIAL_PAINTS, LOCKS, unlockState, carLocked, wheelLocked, skinLocked } from './menus.js';
 import { buildHazards, HAZARD_DEBUG } from './hazards.js';
 
 const $ = (id) => document.getElementById(id);
@@ -331,7 +331,12 @@ function applyLineAssist(q, dt) {
 const garage = { car: 'stiletto', color: '#e8542a', wheels: 'spoke', skins: {} };
 try { Object.assign(garage, JSON.parse(localStorage.getItem('sideways.garage') || '{}')); } catch { /* ignore */ }
 if (!CARS[garage.car]) garage.car = 'stiletto';
-try { if (carLocked(garage.car, unlockState(JSON.parse(localStorage.getItem('sideways.stats') || '{}').finishes || 0))) garage.car = 'stiletto'; } catch { /* ignore */ }
+try {
+  const u = unlockState(JSON.parse(localStorage.getItem('sideways.stats') || '{}'));
+  if (carLocked(garage.car, u)) garage.car = 'stiletto';
+  // A style that's locked (e.g. saved before styles became unlocks) falls back to Works.
+  for (const [c, sk] of Object.entries(garage.skins)) if (skinLocked(c, sk, u)) delete garage.skins[c];
+} catch { /* ignore */ }
 if (!WHEELS.includes(garage.wheels)) garage.wheels = 'spoke';
 if (!garage.skins || typeof garage.skins !== 'object') garage.skins = {};
 function saveGarage() { try { localStorage.setItem('sideways.garage', JSON.stringify(garage)); } catch { /* ignore */ } }
@@ -1103,7 +1108,7 @@ input.on('key', (code, key) => {
   // Car is chosen in the garage before a timed stage; quick swaps only in practice.
   if (n >= 0) {
     if (stage.kind !== 'practice') toast('PICK YOUR CAR IN THE GARAGE', 1100);
-    else if (carLocked(CAR_ORDER[n], unlockState(stats.d.finishes))) toast(`LOCKED: ${LOCKS.cars[CAR_ORDER[n]].why.toUpperCase()}`, 1400);
+    else if (carLocked(CAR_ORDER[n], unlockState(stats.d))) toast(`LOCKED: ${LOCKS.cars[CAR_ORDER[n]].why.toUpperCase()}`, 1400);
     else setCar(CAR_ORDER[n]);
   }
 });
@@ -1840,16 +1845,18 @@ document.querySelectorAll('[data-back]').forEach((b) => b.addEventListener('clic
 // button gets a dot while there's something new in it.
 let seen;
 try { seen = new Set(JSON.parse(localStorage.getItem('sideways.seen') || '[]')); } catch { seen = new Set(); }
-function unlockedKeys(u = unlockState(stats.d.finishes)) {
+function unlockedKeys(u = unlockState(stats.d)) {
   return [
     ...Object.keys(LOCKS.cars).filter((k) => !carLocked(k, u)).map((k) => 'car:' + k),
     ...Object.keys(LOCKS.wheels).filter((w) => !wheelLocked(w, u)).map((w) => 'wheels:' + w),
+    ...Object.keys(LOCKS.skins).filter((k) => !skinLocked(...k.split(':'), u)).map((k) => 'skin:' + k),
     ...SPECIAL_PAINTS.filter((p) => p.need(u)).map((p) => 'paint:' + p.color),
   ];
 }
 const unlockName = (k) => {
-  const [kind, id] = k.split(':');
+  const [kind, id, sub] = k.split(':');
   if (kind === 'car') return CARS[id].name;
+  if (kind === 'skin') return `${CARS[id].name} ${carSkins(CARS[id]).find((x) => x.id === sub)?.name || sub} style`;
   if (kind === 'wheels') return `${id[0].toUpperCase() + id.slice(1)} wheels`;
   return `${SPECIAL_PAINTS.find((p) => p.color === id)?.name || 'Special'} paint`;
 };
@@ -1861,7 +1868,7 @@ function markUnlocksSeen() {
   refreshGarageDot();
 }
 function renderGarage() {
-  const u = unlockState(stats.d.finishes);
+  const u = unlockState(stats.d);
   const fresh = freshUnlocks();
   $('garage-cars').innerHTML = garageCarsHTML(garage.car, u, fresh);
   $('garage-stats').innerHTML = garageStatsHTML(garage.car);
@@ -1869,11 +1876,14 @@ function renderGarage() {
     SPECIAL_PAINTS.map((p) => { const ok = p.need(u); return `<button class="swatch special${p.color === garage.color ? ' on' : ''}${ok ? '' : ' locked'}${ok && fresh.has('paint:' + p.color) ? ' is-new' : ''}" style="background:${p.color}" data-paint="${p.color}" ${ok ? '' : `data-why="${p.why}"`} title="${p.name}${ok ? '' : ': ' + p.why}" aria-label="${p.name} paint${ok ? '' : ' (locked)'}">${ok ? '' : '🔒'}</button>`; }).join('');
   $('garage-wheels').innerHTML = WHEELS.map((w) => { const lk = wheelLocked(w, u); return `<button class="chip${w === garage.wheels ? ' on' : ''}${lk ? ' locked' : ''}" data-wheels="${w}" ${lk ? `data-why="${LOCKS.wheels[w].why}"` : ''}>${lk ? '🔒 ' : ''}${w}${!lk && fresh.has('wheels:' + w) ? ' <i class="badge-new">NEW</i>' : ''}</button>`; }).join('');
   $('garage-color').value = garage.color;
-  // Style (skins) for the cars that have them.
+  // Styles: each car's Works livery is free, the others unlock by playing.
   const skins = carSkins(CARS[garage.car]);
   $('garage-skin-row').hidden = !skins.length;
   const cur = garage.skins[garage.car] || skins[0]?.id;
-  $('garage-skin').innerHTML = skins.map((k) => `<button class="chip${k.id === cur ? ' on' : ''}" data-skin="${k.id}">${k.name}</button>`).join('');
+  $('garage-skin').innerHTML = skins.map((k) => {
+    const key = `${garage.car}:${k.id}`, lk = skinLocked(garage.car, k.id, u);
+    return `<button class="chip${k.id === cur ? ' on' : ''}${lk ? ' locked' : ''}" data-skin="${k.id}" ${lk ? `data-why="${LOCKS.skins[key].why}"` : ''}>${lk ? '🔒 ' : ''}${k.name}${!lk && fresh.has('skin:' + key) ? ' <i class="badge-new">NEW</i>' : ''}</button>`;
+  }).join('');
 }
 // The garage doubles as the car picker: you always land here first, and
 // every stage goes through it so you choose your car before you drive.
@@ -1934,7 +1944,7 @@ $('garage').addEventListener('click', (e) => {
   const why = e.target.closest('[data-why]');
   if (why) { toast(`LOCKED: ${why.dataset.why.toUpperCase()}`, 1600); return; }
   const lockedCar = e.target.closest('[data-car]');
-  if (lockedCar && carLocked(lockedCar.dataset.car, unlockState(stats.d.finishes))) { toast(`LOCKED: ${LOCKS.cars[lockedCar.dataset.car].why.toUpperCase()}`, 1600); return; }
+  if (lockedCar && carLocked(lockedCar.dataset.car, unlockState(stats.d))) { toast(`LOCKED: ${LOCKS.cars[lockedCar.dataset.car].why.toUpperCase()}`, 1600); return; }
   const sk = e.target.closest('[data-skin]');
   if (sk) {
     // A style comes with its own paint; the paint can still be changed after.
