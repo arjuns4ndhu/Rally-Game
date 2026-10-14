@@ -20,10 +20,11 @@ const PROFILES = {
   },
   // 60s mini: a small upright box on tiny wheels, contrast roof, grille lamps.
   mini: {
-    body: [[-1.5, 0.27], [-1.53, 0.84], [-1.45, 0.9], [0.75, 0.9], [1.35, 0.82], [1.52, 0.66], [1.53, 0.27]],
-    glass: [[-1.42, 0.89], [-1.36, 1.3], [0.4, 1.32], [0.66, 0.89]],
-    width: 1.42, hood: [0.78, 1.4],
-    wing: 'none', lamps: 'grille', flares: true, roofContrast: true, roundLights: true, round: 1, mirrors: 'door', grille: 'mini',
+    loft: 'mini',
+    body: [[-1.71, 0.34], [-1.71, 0.8], [-1.45, 0.87], [0.5, 0.88], [1.2, 0.81], [1.34, 0.76], [1.34, 0.32]],
+    glass: [[-1.46, 0.89], [-1.34, 1.29], [0.27, 1.29], [0.62, 0.9]],
+    width: 1.41, hood: [0.7, 1.3],
+    wing: 'none', lamps: null, flares: false, round: 0, mirrors: false,
   },
   // 80s turbo coupe: boxy three-box shape with big blistered arches.
   quattro: {
@@ -206,7 +207,13 @@ function bannerTexture() {
   return t;
 }
 
-export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', number = 7, ghost = false } = {}) {
+// Skins a car offers in the garage ([] for most cars).
+export function carSkins(spec) {
+  const def = LOFTS[(PROFILES[spec.bodyStyle] || {}).loft];
+  return def?.skins ? Object.entries(def.skins).map(([id, s]) => ({ id, name: s.name, paint: s.paint })) : [];
+}
+
+export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', number = 7, ghost = false, skin = null } = {}) {
   const prof = PROFILES[spec.bodyStyle] || PROFILES.focus;
   const WR = spec.wheelR || 0.32;
   const root = new THREE.Group();
@@ -494,21 +501,134 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     bodyMesh.geometry.dispose(); glassMesh.geometry.dispose();
     heads.length = 0; tails.length = 0;
     const def = LOFTS[prof.loft];
-    const acc = def.accents.map((col) => new THREE.MeshStandardMaterial({ color: col, roughness: 0.45, metalness: 0.2, flatShading: true }));
+    const skinId = def.skins ? (def.skins[skin] ? skin : def.defaultSkin) : null;
+    const sk = skinId ? def.skins[skinId] : null;
+    const acc = (sk ? sk.accents : def.accents).map((col) => new THREE.MeshStandardMaterial({ color: col, roughness: 0.45, metalness: 0.2, flatShading: true }));
     mats.push(...acc);
-    const L = buildLoftBody(def, { paint, glass, dark, accents: acc, wheelZ: [spec.a, -spec.b], wheelY: WR, archR: ar, wellX: wheelX - hw - 0.035 });
+    const L = buildLoftBody(def, { paint, glass, dark, accents: acc, livery: sk ? sk.livery : def.livery, wheelZ: [spec.a, -spec.b], wheelY: WR, archR: ar, wellX: wheelX - hw - 0.035 });
     mats.push(...L.extraMats);
     bodyMesh = L.bodyMesh; glassMesh = L.glassMesh;
     body.add(bodyMesh, glassMesh);
-    loftDetails(def, L.curves, acc);
+    const [zr, zf] = def.zRange || [-def.length / 2, def.length / 2];
+    ({ stratos: stratosDetails, mini: miniDetails })[prof.loft](L.curves, acc, zr, zf, skinId);
   }
-  function loftDetails(def, C, acc) {
-    const half = def.length / 2;
-    const disc = (r, x, y, z, mat, back = false) => {
-      const m = add(new THREE.CircleGeometry(r, 14), mat, x, y, z);
-      if (back) m.rotation.y = Math.PI;
-      return m;
-    };
+  function disc(r, x, y, z, mat, back = false) {
+    const m = add(new THREE.CircleGeometry(r, 14), mat, x, y, z);
+    if (back) m.rotation.y = Math.PI;
+    return m;
+  }
+  function doorNumbers(C, z, y, size) {
+    if (ghost) return;
+    const roundMat = new THREE.MeshBasicMaterial({ map: numberTexture(number, '#111'), transparent: true });
+    mats.push(roundMat);
+    for (const side of [-1, 1]) {
+      const r = add(new THREE.PlaneGeometry(size, size), roundMat, side * (C.halfWidth(z) + 0.008), y, z);
+      r.rotation.y = side * Math.PI / 2;
+    }
+  }
+  function mudFlaps() {
+    for (const side of [-1, 1]) for (const wz of [spec.a - WR - 0.1, -spec.b - WR - 0.1]) {
+      add(new THREE.BoxGeometry(0.26, 0.2, 0.02), dark, side * wheelX, Math.max(0.19, WR - 0.12), wz);
+    }
+  }
+  function miniDetails(C, acc, zr, zf, skinId) {
+    const rally = skinId === 'rally';
+    const chrome = new THREE.MeshStandardMaterial({ color: 0xc9ced6, metalness: 0.85, roughness: 0.25, flatShading: true });
+    mats.push(chrome);
+    // Grille between the wings, with chrome slats and surround.
+    const gy = C.belt(zf) - 0.17;
+    add(new THREE.BoxGeometry(0.62, 0.2, 0.03), dark, 0, gy, zf + 0.005);
+    for (let n = 0; n < 5; n++) add(new THREE.BoxGeometry(0.6, 0.012, 0.035), chrome, 0, gy - 0.08 + n * 0.04, zf + 0.01);
+    add(new THREE.BoxGeometry(0.66, 0.025, 0.04), chrome, 0, gy + 0.11, zf + 0.006);
+    // Round headlamps in the wing fronts, indicators below.
+    const amber = new THREE.MeshStandardMaterial({ color: 0xffa23a, emissive: 0xff7a1a, emissiveIntensity: 0.35 });
+    mats.push(amber);
+    for (const side of [-1, 1]) {
+      const hx = side * 0.5, hy = C.belt(zf - 0.05) - 0.08, hz = zf + 0.005;
+      const ring = add(new THREE.CylinderGeometry(0.095, 0.095, 0.06, 14), chrome, hx, hy, hz);
+      ring.rotation.x = Math.PI / 2;
+      disc(0.08, hx, hy, hz + 0.032, lightMat);
+      heads.push([hx, hy, hz + 0.08, 1]);
+      add(new THREE.BoxGeometry(0.07, 0.04, 0.02), amber, hx, hy - 0.15, zf + 0.01);
+    }
+    // Chrome bumpers with over-riders.
+    const bw = 2 * C.halfWidth(zf - 0.1) + 0.04;
+    add(new THREE.BoxGeometry(bw, 0.05, 0.06), chrome, 0, C.bottom(zf) + 0.1, zf + 0.04);
+    add(new THREE.BoxGeometry(2 * C.halfWidth(zr + 0.1) + 0.04, 0.05, 0.06), chrome, 0, C.bottom(zr) + 0.06, zr - 0.04);
+    for (const side of [-1, 1]) {
+      add(new THREE.BoxGeometry(0.04, 0.16, 0.05), chrome, side * 0.3, C.bottom(zf) + 0.14, zf + 0.06);
+      add(new THREE.BoxGeometry(0.04, 0.14, 0.05), chrome, side * 0.3, C.bottom(zr) + 0.1, zr - 0.06);
+    }
+    // Upright tail lamps, boot handle, single exhaust.
+    for (const side of [-1, 1]) {
+      const tx = side * 0.55, tz = zr - 0.012;
+      add(new THREE.BoxGeometry(0.08, 0.13, 0.025), tailMat, tx, 0.6, tz);
+      add(new THREE.BoxGeometry(0.08, 0.05, 0.025), amber, tx, 0.7, tz);
+      tails.push([tx, 0.6, tz - 0.05]);
+    }
+    add(new THREE.BoxGeometry(0.12, 0.025, 0.03), chrome, 0, 0.74, zr - 0.012);
+    const pipe = add(new THREE.CylinderGeometry(0.03, 0.03, 0.2, 8), chrome, 0.3, C.bottom(zr) + 0.0, zr - 0.06);
+    pipe.rotation.x = Math.PI / 2;
+    // Pillars between the door and quarter windows, door handles, mirrors, wipers.
+    const sillY = C.belt(-0.4) + 0.03, roofEdge = C.top(-0.4) - 0.05, cw = 0.665;
+    const lean = Math.atan2(0.09, roofEdge - sillY);
+    for (const side of [-1, 1]) {
+      const pl = add(new THREE.BoxGeometry(0.03, Math.hypot(0.09, roofEdge - sillY), 0.1), paint, side * (cw - 0.045 + 0.012), (sillY + roofEdge) / 2, -0.38);
+      pl.rotation.z = side * lean;
+      add(new THREE.BoxGeometry(0.02, 0.025, 0.09), chrome, side * (C.halfWidth(0.1) + 0.012), 0.8, 0.1);
+      const mz = 0.45, mx = side * (C.halfWidth(mz) + 0.05);
+      add(new THREE.BoxGeometry(0.02, 0.12, 0.02), chrome, mx, 0.92, mz);
+      const mir = add(new THREE.CylinderGeometry(0.055, 0.055, 0.03, 10), chrome, mx, 1.0, mz);
+      mir.rotation.x = Math.PI / 2;
+      const wp = add(new THREE.BoxGeometry(0.36, 0.015, 0.02), dark, side * 0.18, C.top(0.62) + 0.03, 0.62);
+      wp.rotation.z = side * 0.06;
+    }
+    if (rally) {
+      // Four spot lamps on a bar across the grille, sump guard, arch extensions,
+      // door numbers on the white panels, mud flaps.
+      const lz = zf + 0.1, ly = gy - 0.02;
+      add(new THREE.BoxGeometry(0.66, 0.03, 0.05), dark, 0, ly - 0.08, lz - 0.02);
+      for (let n = 0; n < 4; n++) {
+        const x = (n - 1.5) * 0.16;
+        const pot = add(new THREE.CylinderGeometry(0.068, 0.068, 0.08, 12), chrome, x, ly, lz);
+        pot.rotation.x = Math.PI / 2;
+        disc(0.058, x, ly, lz + 0.042, lightMat);
+        heads.push([x, ly, lz + 0.1, 0.7]);
+      }
+      const guard = add(new THREE.BoxGeometry(0.9, 0.03, 0.5), new THREE.MeshStandardMaterial({ color: 0x8b8f96, metalness: 0.6, roughness: 0.45, flatShading: true }), 0, C.bottom(zf) - 0.03, zf - 0.12, true);
+      guard.rotation.x = -0.18;
+      mats.push(guard.material);
+      const lip = new THREE.TorusGeometry(ar + 0.01, 0.035, 4, 16, Math.PI);
+      lip.rotateY(Math.PI / 2);
+      for (const side of [-1, 1]) for (const wz of [spec.a, -spec.b]) add(lip, dark, side * (C.halfWidth(wz) + 0.01), WR, wz);
+      doorNumbers(C, -0.01, 0.6, 0.3);
+      mudFlaps();
+    } else {
+      // Armchair strapped to the roof.
+      const fabric = new THREE.MeshStandardMaterial({ color: 0xa48a66, roughness: 0.95, flatShading: true });
+      mats.push(fabric);
+      const ry = C.top(-0.5) - 0.01, cz = -0.45;
+      add(new THREE.BoxGeometry(0.72, 0.16, 0.6), fabric, 0, ry + 0.11, cz, true);
+      add(new THREE.BoxGeometry(0.62, 0.08, 0.5), fabric, 0, ry + 0.23, cz + 0.03);
+      const back = add(new THREE.BoxGeometry(0.72, 0.62, 0.16), fabric, 0, ry + 0.45, cz - 0.24, true);
+      back.rotation.x = -0.12;
+      for (const side of [-1, 1]) {
+        add(new THREE.BoxGeometry(0.13, 0.3, 0.6), fabric, side * 0.36, ry + 0.27, cz);
+        add(new THREE.BoxGeometry(0.05, 0.04, 0.05), dark, side * 0.3, ry + 0.02, cz + 0.25);
+        add(new THREE.BoxGeometry(0.05, 0.04, 0.05), dark, side * 0.3, ry + 0.02, cz - 0.25);
+      }
+      // Straps from the arms down to the door frames.
+      const rope = new THREE.MeshStandardMaterial({ color: 0x3a2c1e, roughness: 1, flatShading: true });
+      mats.push(rope);
+      for (const side of [-1, 1]) for (const dz of [-0.2, 0.15]) {
+        const x0 = side * 0.42, y0 = ry + 0.3, x1 = side * 0.63, y1 = ry - 0.12;
+        const st = add(new THREE.BoxGeometry(0.025, Math.hypot(x1 - x0, y1 - y0), 0.04), rope, (x0 + x1) / 2, (y0 + y1) / 2, cz + dz);
+        st.rotation.z = Math.atan2(x1 - x0, y0 - y1);
+      }
+    }
+  }
+  function stratosDetails(C, acc, zr, zf) {
+    const half = zf;
     // Four rally lamps across the bonnet, round headlamps in the fender ends.
     const lz = half - 0.13, ly = C.top(lz) + 0.08;
     add(new THREE.BoxGeometry(0.98, 0.05, 0.1), dark, 0, ly - 0.09, lz - 0.03);

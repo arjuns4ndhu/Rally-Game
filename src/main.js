@@ -1,7 +1,7 @@
 // Sideways: build 2, seeded daily / random stages plus the practice loop.
 import * as THREE from 'three';
 import { CarPhysics, CARS, CAR_ORDER, TUNE } from './car.js';
-import { buildCarModel } from './carModel.js';
+import { buildCarModel, carSkins } from './carModel.js';
 import { Road, createTestRoad, gravelTexture, SURFACES, findShortcuts } from './track.js';
 import { generateStage, stageName, isEndurance } from './stagegen.js';
 import { buildGate, buildSign, buildCornerWarnings, buildShortcutMarkers } from './gates.js';
@@ -308,15 +308,16 @@ function applyLineAssist(q, dt) {
 }
 // ---------- Car ----------
 // Garage choice (car, paint, wheels), remembered between visits.
-const garage = { car: 'stiletto', color: '#e8542a', wheels: 'spoke' };
+const garage = { car: 'stiletto', color: '#e8542a', wheels: 'spoke', skins: {} };
 try { Object.assign(garage, JSON.parse(localStorage.getItem('sideways.garage') || '{}')); } catch { /* ignore */ }
 if (!CARS[garage.car]) garage.car = 'stiletto';
 try { if (carLocked(garage.car, unlockState(JSON.parse(localStorage.getItem('sideways.stats') || '{}').finishes || 0))) garage.car = 'stiletto'; } catch { /* ignore */ }
 if (!WHEELS.includes(garage.wheels)) garage.wheels = 'spoke';
+if (!garage.skins || typeof garage.skins !== 'object') garage.skins = {};
 function saveGarage() { try { localStorage.setItem('sideways.garage', JSON.stringify(garage)); } catch { /* ignore */ } }
 let carId = garage.car;
 const car = new CarPhysics(CARS[carId]);
-let model = buildCarModel(CARS[carId], { color: garage.color, wheelStyle: garage.wheels, number: 7 });
+let model = buildCarModel(CARS[carId], { color: garage.color, wheelStyle: garage.wheels, number: 7, skin: garage.skins[carId] });
 scene.add(model.root);
 rig.roofH = model.roofH;
 rig.model = model;
@@ -529,7 +530,7 @@ function setCar(id, quiet = false) {
   scene.remove(model.root);
   model.dispose();
   car.setSpec(CARS[id]);
-  model = buildCarModel(CARS[id], { color: garage.color, wheelStyle: garage.wheels, number: 7 });
+  model = buildCarModel(CARS[id], { color: garage.color, wheelStyle: garage.wheels, number: 7, skin: garage.skins[id] });
   scene.add(model.root);
   rig.roofH = model.roofH;
   rig.model = model;
@@ -1709,6 +1710,11 @@ function renderGarage() {
     SPECIAL_PAINTS.map((p) => { const ok = p.need(u); return `<button class="swatch special${p.color === garage.color ? ' on' : ''}${ok ? '' : ' locked'}" style="background:${p.color}" data-paint="${p.color}" ${ok ? '' : `data-why="${p.why}"`} title="${p.name}${ok ? '' : ': ' + p.why}" aria-label="${p.name} paint${ok ? '' : ' (locked)'}">${ok ? '' : '🔒'}</button>`; }).join('');
   $('garage-wheels').innerHTML = WHEELS.map((w) => { const lk = wheelLocked(w, u); return `<button class="chip${w === garage.wheels ? ' on' : ''}${lk ? ' locked' : ''}" data-wheels="${w}" ${lk ? `data-why="${LOCKS.wheels[w].why}"` : ''}>${lk ? '🔒 ' : ''}${w}</button>`; }).join('');
   $('garage-color').value = garage.color;
+  // Style (skins) for the cars that have them.
+  const skins = carSkins(CARS[garage.car]);
+  $('garage-skin-row').hidden = !skins.length;
+  const cur = garage.skins[garage.car] || skins[0]?.id;
+  $('garage-skin').innerHTML = skins.map((k) => `<button class="chip${k.id === cur ? ' on' : ''}" data-skin="${k.id}">${k.name}</button>`).join('');
 }
 // The garage doubles as the car picker: you always land here first, and
 // every stage goes through it so you choose your car before you drive.
@@ -1780,6 +1786,17 @@ $('garage').addEventListener('click', (e) => {
   if (why) { toast(`LOCKED: ${why.dataset.why.toUpperCase()}`, 1600); return; }
   const lockedCar = e.target.closest('[data-car]');
   if (lockedCar && carLocked(lockedCar.dataset.car, unlockState(stats.d.finishes))) { toast(`LOCKED: ${LOCKS.cars[lockedCar.dataset.car].why.toUpperCase()}`, 1600); return; }
+  const sk = e.target.closest('[data-skin]');
+  if (sk) {
+    // A style comes with its own paint; the paint can still be changed after.
+    const k = carSkins(CARS[garage.car]).find((x) => x.id === sk.dataset.skin);
+    garage.skins[garage.car] = k.id;
+    if (k.paint) garage.color = k.paint;
+    setCar(garage.car, true);
+    preview.show(garage.car, garage);
+    saveGarage(); renderGarage();
+    return;
+  }
   const c = e.target.closest('[data-car]'), p = e.target.closest('[data-paint]'), w = e.target.closest('[data-wheels]');
   if (c) { setCar(c.dataset.car, true); preview.show(garage.car, garage); }
   if (p) { garage.color = p.dataset.paint; model.setColor(garage.color); preview.setColor(garage.color); }

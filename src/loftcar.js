@@ -61,6 +61,36 @@ export const LOFTS = {
       return null;
     },
   },
+  // 60s mini: 3.05 m long, 1.41 m wide, 1.35 m tall, wheels right out at
+  // the corners, tall glasshouse, flat bonnet and boot.
+  mini: {
+    length: 3.05,
+    zRange: [-1.71, 1.34],
+    bottom: [[-1.71, 0.34], [-1.6, 0.24], [1.2, 0.22], [1.34, 0.32]],
+    halfWidth: [[-1.71, 0.62], [-1.64, 0.68], [-1.5, 0.7], [1.1, 0.705], [1.26, 0.68], [1.34, 0.62]],
+    belt: [[-1.71, 0.8], [-1.62, 0.85], [-1.45, 0.87], [0.5, 0.88], [0.7, 0.87], [1.2, 0.81], [1.34, 0.76]],
+    top: [[-1.71, 0.82], [-1.55, 0.86], [-1.46, 0.89], [-1.34, 1.29], [-1.22, 1.33], [-0.4, 1.345], [0.15, 1.33], [0.27, 1.29], [0.6, 0.91], [0.68, 0.89], [1.2, 0.83], [1.34, 0.77]],
+    cabinWidth: [[-1.71, 0.52], [-1.52, 0.6], [-1.44, 0.665], [0.6, 0.665], [0.7, 0.6], [1.34, 0.5]],
+    cabin: [[-1.52, 0], [-1.44, 1], [0.62, 1], [0.7, 0]],
+    glass: { screen: [0.26, 0.64], side: [-1.32, 0.26], rear: [-1.46, -1.32] },
+    defaultSkin: 'rally',
+    skins: {
+      // Works rally car: contrast roof, white door panels for the numbers.
+      rally: {
+        name: 'Rally', paint: '#c4161c', accents: [0xf1ede2],
+        livery(part, x, y, z) {
+          if (part === 'top' && z > -1.32 && z < 0.27) return 1;
+          if (part === 'side' && z > -0.3 && z < 0.28 && y > 0.42 && y < 0.8) return 1;
+          return null;
+        },
+      },
+      // Lime green with a black bonnet... and an armchair strapped to the roof.
+      armchair: {
+        name: 'Armchair', paint: '#a3c13a', accents: [0x17181b],
+        livery(part, x, y, z) { return part === 'top' && z > 0.68 ? 1 : null; },
+      },
+    },
+  },
 };
 
 // Points of one half cross-section at z, from the bottom centre out, up the
@@ -90,22 +120,23 @@ function section(d, z, wells) {
 
 // Builds { bodyMesh, glassMesh, curves } for a lofted car. `wells` gives the
 // wheel centres (z), the arch radius and the inner face of the wells (x).
-export function buildLoftBody(def, { paint, glass, dark, accents, wheelZ, wheelY, archR, wellX }) {
+export function buildLoftBody(def, { paint, glass, dark, accents, livery = def.livery, wheelZ, wheelY, archR, wellX }) {
   const d = {
     bottom: curve(def.bottom), halfWidth: curve(def.halfWidth), belt: curve(def.belt), top: curve(def.top),
     cabinWidth: curve(def.cabinWidth), cabin: curve(def.cabin),
   };
   const wells = { list: wheelZ.map((z) => ({ z, y: wheelY, r: archR })), xin: wellX };
-  const half = def.length / 2;
+  // Body from tail to nose (wheels needn't be centred under it).
+  const [zr, zf] = def.zRange || [-def.length / 2, def.length / 2];
   // Ring positions: every 8 cm, plus the arch edges so the wells are crisp.
   const zs = new Set();
-  for (let z = -half; z < half; z += 0.08) zs.add(+z.toFixed(4));
-  zs.add(half);
+  for (let z = zr; z < zf; z += 0.08) zs.add(+z.toFixed(4));
+  zs.add(zf);
   for (const w of wells.list) for (const e of [-1, 1]) zs.add(+(w.z + e * w.r * 0.999).toFixed(4));
   const rings = [...zs].sort((a, b) => a - b).map((z) => ({ z, pts: section(d, z, wells) }));
 
   // Triangles sorted by material.
-  const buckets = { paint: [], dark: [], glass: [], a1: [], a2: [] };
+  const buckets = { paint: [], dark: [], glass: [], a1: [], a2: [], a3: [] };
   const tri = (key, a, b, c, out) => {
     // Wind each triangle to face outwards (reference: away from the car's core).
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
@@ -130,9 +161,9 @@ export function buildLoftBody(def, { paint, glass, dark, accents, wheelZ, wheelY
         if (part === 'under') key = 'dark';
         else if (s >= SEG.top0 && c > 0.5 && (inRange(zc, def.glass.screen) || inRange(zc, def.glass.rear) ||
           (inRange(zc, def.glass.side) && s === SEG.top0))) key = 'glass';
-        if (key === 'paint' && def.livery) {
-          const acc = def.livery(part === 'rocker' ? 'side' : part, xc, yc, zc);
-          if (acc) key = acc === 1 ? 'a1' : 'a2';
+        if (key === 'paint' && livery) {
+          const acc = livery(part === 'rocker' ? 'side' : part, xc, yc, zc);
+          if (acc) key = acc === 1 ? 'a1' : acc === 2 ? 'a2' : 'a3';
         }
         tri(key, A, B, C);
         tri(key, A, C, D);
@@ -167,7 +198,7 @@ export function buildLoftBody(def, { paint, glass, dark, accents, wheelZ, wheelY
     return new THREE.Mesh(geo, mats);
   };
   const darkDS = dark.clone(); darkDS.side = THREE.DoubleSide;
-  const bodyMesh = make(['paint', 'dark', 'a1', 'a2'], [paint, darkDS, accents[0], accents[1]]);
+  const bodyMesh = make(['paint', 'dark', 'a1', 'a2', 'a3'], [paint, darkDS, accents[0], accents[1], accents[2] || accents[0]]);
   const glassMesh = make(['glass'], [glass]);
   bodyMesh.castShadow = glassMesh.castShadow = true;
   return { bodyMesh, glassMesh, curves: d, extraMats: [darkDS] };
