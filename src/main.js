@@ -1025,15 +1025,15 @@ $('opt-music').addEventListener('change', (e) => {
   audio.music(musicOn);
 });
 
+// iPhone Safari only unlocks sound on a finished tap (touchend/click), not on
+// pointerdown, so keep listening until the audio context is really running.
+const GESTURES = ['pointerdown', 'touchend', 'click', 'keydown'];
 const firstGesture = () => {
-  window.removeEventListener('pointerdown', firstGesture, true);
-  window.removeEventListener('keydown', firstGesture, true);
-  if (running) return;
   audio.init();
-  audio.music(musicOn);
+  if (!running) audio.music(musicOn);
+  if (audio.ctx?.state === 'running') GESTURES.forEach((g) => window.removeEventListener(g, firstGesture, true));
 };
-window.addEventListener('pointerdown', firstGesture, true);
-window.addEventListener('keydown', firstGesture, true);
+GESTURES.forEach((g) => window.addEventListener(g, firstGesture, true));
 $('opt-codriver').value = codriver.mode;
 $('opt-codriver').addEventListener('change', (e) => {
   codriver.mode = e.target.value;

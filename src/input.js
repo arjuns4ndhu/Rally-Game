@@ -61,7 +61,7 @@ export class Input {
     root.querySelectorAll('[data-ctl]').forEach((el) => {
       const ctl = el.dataset.ctl;
       const set = (v) => { this.touch[ctl] = v; el.classList.toggle('on', v); };
-      el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.setPointerCapture?.(e.pointerId); set(true); });
+      el.addEventListener('pointerdown', (e) => { e.preventDefault(); try { el.setPointerCapture?.(e.pointerId); } catch { /* pointer already gone */ } set(true); });
       el.addEventListener('pointerup', () => set(false));
       el.addEventListener('pointercancel', () => set(false));
       el.addEventListener('lostpointercapture', () => set(false));
