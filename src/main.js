@@ -733,6 +733,7 @@ function start(kind = 'daily', seed) {
   minimap.rebuild();                 // sized now the HUD is showing
   running = true;
   paused = false;
+  flashHelp();
   toast(kind === 'practice' ? 'PRACTICE' : stage.name.toUpperCase() + (weather.id !== 'clear' ? ` · ${weather.label.toUpperCase()}` : ''), 1600);
 }
 function toMenu() {
@@ -1095,6 +1096,36 @@ input.on('action', (act) => {
   if (act === 'reset') restartKey();
   if (act === 'pause') setPaused(!paused);
 });
+
+// One UI state on <body data-ui>: menu, page, loading, race, pause, finish
+// or replay. It is worked out from which screens are showing, so it can't
+// drift from them, and the CSS uses it to decide what else shows (touch
+// pedals only while driving, the HUD hidden under the finish card, ...).
+const PAGES = ['garage', 'past', 'champ', 'statsview', 'classics'];
+function syncUI() {
+  const open = (id) => !$(id).hidden;
+  document.body.dataset.ui = open('loading') ? 'loading' : open('hud-replay') ? 'replay' : open('pause') ? 'pause'
+    : open('finish') ? 'finish' : open('start') ? 'menu' : PAGES.some(open) ? 'page' : open('hud') ? 'race' : 'menu';
+}
+{
+  const watch = new MutationObserver(syncUI);
+  for (const id of ['loading', 'hud-replay', 'pause', 'finish', 'start', 'hud', ...PAGES]) watch.observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+  syncUI();
+}
+
+// The key list in the corner is there to teach, not to stay: it shows at the
+// start of each run and fades after a few seconds (it's in pause too).
+let helpTimer = 0;
+function flashHelp() {
+  $('hud-help').classList.remove('faded');
+  clearTimeout(helpTimer);
+  helpTimer = setTimeout(() => $('hud-help').classList.add('faded'), 9000);
+}
+
+// Pause settings: one group open at a time, so the menu always fits.
+document.querySelectorAll('.set-group').forEach((d) => d.addEventListener('toggle', () => {
+  if (d.open) document.querySelectorAll('.set-group').forEach((o) => { if (o !== d) o.open = false; });
+}));
 
 // Touch UI
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
