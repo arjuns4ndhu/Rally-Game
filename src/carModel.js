@@ -194,7 +194,9 @@ function buildRim(style, rimMat, darkMat) {
 }
 
 
-const RIM_COLORS = { spoke: 0xd8d4c8, dish: 0x2b2d33, mesh: 0xc9a54a, tarmac: 0xf2f2ee, gold: 0xe0b23a };
+// Every rim is silver; only the unlockable Gold wheels keep their colour.
+const SILVER = 0xc8ccd3;
+const RIM_COLORS = { spoke: SILVER, dish: SILVER, mesh: SILVER, tarmac: SILVER, gold: 0xe0b23a };
 
 // Dark sun-strip across the top of the windscreen.
 function bannerTexture() {

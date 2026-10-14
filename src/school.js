@@ -37,12 +37,12 @@ const LESSONS = [
     },
   },
   {
-    text: (k) => `Hold a drift for 2 seconds: stay on ${k('throttle')} and counter-steer to balance it.`,
+    text: (k) => `Hold a drift for 1 second: stay on ${k('throttle')} and counter-steer to balance it.`,
     check: (c, s, dt) => {
       const a = Math.abs(c.car.driftAngle);
       if (a > 14 * DEG && c.inp.throttle > 0.3) s.t = (s.t || 0) + dt;
       else if (a < 7 * DEG) s.t = 0;
-      return Math.min(1, (s.t || 0) / 2);
+      return Math.min(1, s.t || 0);       // one second of drift
     },
   },
   {
