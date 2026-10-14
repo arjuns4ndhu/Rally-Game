@@ -14,18 +14,18 @@ const G = 9.81;
 // Six cars, each modelled on a classic rally icon (shape and character only;
 // no real names or badges). Engine torque is set so each car's 0-100 km/h
 // on gravel matches its real-life counterpart: Brutale 2.3 s (grip caps it
-// at ~2.7 s here), Quadra 3.1 s (~3.2 s), Vector ~4.0 s, Stiletto 5.5 s,
+// at ~2.7 s here), Quadra 3.1 s, Vector ~4.0 s, Stiletto 5.5 s,
 // Dune Raider 6.5 s, Pocket 11 s. wheelR = tyre radius (m); offroad = 0..1 how much
 // of the grass/verge penalty the car shrugs off.
 export const CARS = {
   stiletto: {
     id: 'stiletto', name: 'Stiletto V6', tag: '70s mid-engine wedge · sharp, tail-happy',
-    mass: 980, a: 1.18, b: 1.0, h: 0.42, inertia: 0.98,
+    mass: 980, a: 1.18, b: 1.0, h: 0.42, inertia: 0.9,
     drive: 'RWD', frontDrive: 0,
     torque: 189, peakRpm: 6000, idleRpm: 1000, redline: 8000,
     gears: [3.0, 2.1, 1.6, 1.25, 1.0], finalDrive: 4.6,
-    muF: 1.12, muR: 1.08, peakF: 0.13, peakR: 0.13, slideF: 0.82, slideR: 0.76,
-    maxSteer: 0.62, steerSpeed: 5.6, counterSteer: 0.72,
+    muF: 1.24, muR: 1.14, peakF: 0.13, peakR: 0.13, slideF: 0.82, slideR: 0.76,
+    maxSteer: 0.66, steerSpeed: 6.2, counterSteer: 0.78,
     driftAssist: 1.0, throttleOversteer: 0.66, driftBoost: 2.6, dragCoef: 0.42,
     track: 1.48, length: 3.71, wheelR: 0.31, offroad: 0, bodyStyle: 'stratos', cyl: 6,
   },
@@ -35,7 +35,7 @@ export const CARS = {
     drive: 'FWD', frontDrive: 1,
     torque: 66, peakRpm: 5200, idleRpm: 950, redline: 7600,
     gears: [3.3, 2.1, 1.5, 1.2, 0.98], finalDrive: 5.2,
-    muF: 1.14, muR: 1.0, peakF: 0.13, peakR: 0.14, slideF: 0.82, slideR: 0.72,
+    muF: 1.32, muR: 1.18, peakF: 0.13, peakR: 0.14, slideF: 0.82, slideR: 0.72,
     maxSteer: 0.64, steerSpeed: 5.8, counterSteer: 0.55,
     driftAssist: 1.15, throttleOversteer: 0.1, driftBoost: 2.4, dragCoef: 0.4,
     track: 1.25, length: 3.05, wheelR: 0.27, offroad: 0, bodyStyle: 'mini', cyl: 4,
@@ -60,10 +60,10 @@ export const CARS = {
     id: 'quadra', name: 'Quadra 5T', tag: '80s turbo coupé · 4WD, huge torque, nose-heavy',
     mass: 1290, a: 1.0, b: 1.52, h: 0.52, inertia: 1.05,
     drive: 'AWD', frontDrive: 0.5,
-    torque: 760, peakRpm: 4800, idleRpm: 900, redline: 7000,
+    torque: 751, peakRpm: 4800, idleRpm: 900, redline: 7000,
     gears: [3.0, 2.0, 1.45, 1.15, 0.92], finalDrive: 4.6,
-    muF: 1.1, muR: 1.0, peakF: 0.14, peakR: 0.15, slideF: 0.82, slideR: 0.72,
-    maxSteer: 0.58, steerSpeed: 4.2, counterSteer: 0.5,
+    muF: 1.15, muR: 1.05, peakF: 0.14, peakR: 0.15, slideF: 0.82, slideR: 0.72,
+    maxSteer: 0.6, steerSpeed: 4.8, counterSteer: 0.5,
     driftAssist: 1.0, throttleOversteer: 0.55, driftBoost: 2.4, dragCoef: 0.6,
     track: 1.5, length: 4.4, wheelR: 0.33, offroad: 0, bodyStyle: 'quattro', cyl: 5, turbo: true,
   },
@@ -73,7 +73,7 @@ export const CARS = {
     drive: 'AWD', frontDrive: 0.42,
     torque: 368, peakRpm: 4500, idleRpm: 900, redline: 7500,
     gears: [3.1, 2.1, 1.6, 1.28, 1.05], finalDrive: 4.4,
-    muF: 1.18, muR: 1.14, peakF: 0.14, peakR: 0.15, slideF: 0.86, slideR: 0.8,
+    muF: 1.15, muR: 1.11, peakF: 0.14, peakR: 0.15, slideF: 0.86, slideR: 0.8,
     maxSteer: 0.6, steerSpeed: 4.8, counterSteer: 0.55,
     driftAssist: 1.1, throttleOversteer: 0.4, driftBoost: 2.4, dragCoef: 0.46,
     track: 1.58, length: 4.15, wheelR: 0.32, offroad: 0, bodyStyle: 'focus', cyl: 4, turbo: true,
@@ -84,7 +84,7 @@ export const CARS = {
     drive: 'AWD', frontDrive: 0.45,
     torque: 362, peakRpm: 4200, idleRpm: 800, redline: 6600,
     gears: [3.6, 2.3, 1.6, 1.2, 0.95], finalDrive: 5.7,
-    muF: 1.02, muR: 0.88, peakF: 0.16, peakR: 0.17, slideF: 0.84, slideR: 0.72,
+    muF: 1.1, muR: 0.96, peakF: 0.16, peakR: 0.17, slideF: 0.84, slideR: 0.72,
     maxSteer: 0.55, steerSpeed: 3.8, counterSteer: 0.5,
     driftAssist: 1.1, throttleOversteer: 0.65, driftBoost: 2.2, dragCoef: 1.0,
     track: 1.7, length: 4.7, wheelR: 0.42, offroad: 0.7, bodyStyle: 'dakar', cyl: 8,
