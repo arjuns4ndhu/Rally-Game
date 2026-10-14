@@ -870,6 +870,15 @@ $('btn-replay').addEventListener('click', (e) => { e.currentTarget.blur(); start
 $('btn-replay-exit').addEventListener('click', (e) => { e.currentTarget.blur(); stopReplay(); });
 $('btn-new').addEventListener('click', () => pickThenStart('random'));
 $('btn-fmenu').addEventListener('click', toMenu);
+// Change car mid-stage: pick in the garage, then the same stage restarts from the line.
+function changeCar() {
+  if (!running || replay.on) return;
+  const inSchool = school.active && !school.done;
+  pickThenStart(stage.kind, stage.seed);
+  schoolNext = inSchool;
+}
+$('btn-pcar').addEventListener('click', changeCar);
+$('btn-fcar').addEventListener('click', changeCar);
 {
   const ds = dateSeed(), w = pickWeather(ds, pickTheme(ds).theme);
   $('daily-name').textContent = `${stageName(ds)} · ${new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}${w.id !== 'clear' ? ` · ${w.label}` : ''}`;
