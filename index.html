@@ -142,7 +142,10 @@
     <div class="garage">
       <div class="garage-cars" id="garage-cars" role="listbox" aria-label="Cars"></div>
       <div class="garage-main">
-        <canvas id="garage-view" aria-label="Car preview"></canvas>
+        <div class="garage-view-wrap">
+          <canvas id="garage-view" aria-label="Car preview"></canvas>
+          <div class="garage-peek" id="garage-peek" role="status" hidden><b>🔒 Preview</b> <span id="garage-peek-why"></span></div>
+        </div>
         <div class="garage-controls">
           <div class="garage-stats" id="garage-stats"></div>
           <div class="garage-row"><span class="lbl">Paint</span><div class="swatches" id="garage-paint"></div><input type="color" id="garage-color" aria-label="Custom paint colour"></div>

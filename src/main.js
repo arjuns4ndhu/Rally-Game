@@ -1830,6 +1830,7 @@ function openPage(id) {
   $(id).querySelector('[data-back]')?.focus();
 }
 function hidePages() {
+  clearPeek();
   if (!$('garage').hidden) markUnlocksSeen();     // NEW badges go once you've seen them
   for (const id of ['garage', 'past', 'champ', 'statsview', 'classics']) $(id).hidden = true;
   preview.stop();
@@ -1920,6 +1921,7 @@ function pickThenStart(kind, seed) {
 $('btn-garage').addEventListener('click', () => openGarage('browse'));
 $('garage-go').addEventListener('click', (e) => {
   e.currentTarget.blur();
+  clearPeek();
   if ($('garage').hidden) return;          // a second click, tap or Enter after the stage already started
   const p = pendingStart;
   pendingStart = null;
@@ -1940,11 +1942,51 @@ $('garage-go').addEventListener('click', (e) => {
   requestAnimationFrame(() => requestAnimationFrame(go));
 });
 
+// Locked cars, paints, wheels and styles can be tried on in the preview:
+// the preview shows them with a label saying how to unlock them, but your
+// own setup doesn't change, so Continue drives what you've actually got.
+let peek = null;
+function showPeek(el, why) {
+  document.querySelectorAll('#garage .peek').forEach((x) => x.classList.remove('peek'));
+  el.classList.add('peek');
+  peek = el;
+  $('garage-peek-why').textContent = `Unlock: ${why}`;
+  $('garage-peek').hidden = false;
+}
+function clearPeek() {
+  if (!peek) return;
+  peek.classList.remove('peek');
+  peek = null;
+  $('garage-peek').hidden = true;
+  preview.show(garage.car, garage);
+  $('garage-stats').innerHTML = garageStatsHTML(garage.car);
+}
+function peekLocked(el) {
+  const u = unlockState(stats.d);
+  if (el.dataset.car && carLocked(el.dataset.car, u)) {
+    const id = el.dataset.car;
+    preview.show(id, { color: garage.color, wheels: garage.wheels, skins: {} });
+    $('garage-stats').innerHTML = garageStatsHTML(id);
+    showPeek(el, LOCKS.cars[id].why);
+    return true;
+  }
+  if (!el.dataset.why) return false;
+  // Start from your own setup, then swap in the one locked thing.
+  preview.show(garage.car, garage);
+  $('garage-stats').innerHTML = garageStatsHTML(garage.car);
+  if (el.dataset.paint) preview.setColor(el.dataset.paint);
+  if (el.dataset.wheels) preview.setWheels(el.dataset.wheels);
+  if (el.dataset.skin) {
+    const k = carSkins(CARS[garage.car]).find((x) => x.id === el.dataset.skin);
+    preview.show(garage.car, { color: k.paint || garage.color, wheels: garage.wheels, skins: { [garage.car]: k.id } });
+  }
+  showPeek(el, el.dataset.why);
+  return true;
+}
 $('garage').addEventListener('click', (e) => {
-  const why = e.target.closest('[data-why]');
-  if (why) { toast(`LOCKED: ${why.dataset.why.toUpperCase()}`, 1600); return; }
-  const lockedCar = e.target.closest('[data-car]');
-  if (lockedCar && carLocked(lockedCar.dataset.car, unlockState(stats.d))) { toast(`LOCKED: ${LOCKS.cars[lockedCar.dataset.car].why.toUpperCase()}`, 1600); return; }
+  const item = e.target.closest('[data-car], [data-paint], [data-wheels], [data-skin]');
+  if (item && peekLocked(item)) return;
+  if (item) clearPeek();
   const sk = e.target.closest('[data-skin]');
   if (sk) {
     // A style comes with its own paint; the paint can still be changed after.
@@ -1963,6 +2005,7 @@ $('garage').addEventListener('click', (e) => {
   if (c || p || w) { saveGarage(); renderGarage(); }
 });
 $('garage-color').addEventListener('input', (e) => {
+  clearPeek();
   garage.color = e.target.value; model.setColor(garage.color); preview.setColor(garage.color); saveGarage();
   document.querySelectorAll('.swatch').forEach((s) => s.classList.toggle('on', s.dataset.paint === garage.color));
 });

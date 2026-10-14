@@ -443,6 +443,15 @@ body.touch .replay-tag { left: calc(18px + var(--safe-l)); transform: none; bott
 .car-pick.locked { opacity: 0.5; background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.04) 0 6px, transparent 6px 12px); }
 .car-pick.locked small { color: var(--accent); opacity: 0.9; }
 .garage-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* Locked things can be tried on in the preview; this label says how to get them. */
+.garage-view-wrap { position: relative; min-height: 0; }
+.garage-peek {
+  position: absolute; left: 10px; right: 10px; bottom: 10px; padding: 7px 12px; border-radius: 6px;
+  background: rgba(11,13,18,0.82); border: 1px solid var(--accent); font-size: 13px; color: var(--text);
+  pointer-events: none;
+}
+.garage-peek b { font-family: var(--font-display); font-weight: 400; color: var(--accent); letter-spacing: 0.04em; margin-right: 4px; }
+.peek { outline: 2px dashed var(--accent); outline-offset: 2px; opacity: 0.9; }
 #garage-view { width: 100%; height: clamp(180px, calc(100dvh - 430px), 300px); display: block; border-radius: 8px; background: radial-gradient(ellipse at 50% 40%, #3a3f4a, #12141a); }
 .garage-controls { display: flex; flex-direction: column; gap: 10px; }
 .garage-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; }
@@ -637,7 +646,9 @@ button.cal-day:hover, button.cal-day:focus-visible { border-color: var(--accent)
   .car-pick span { font-size: 13px; line-height: 1.15; }
   .car-pick small { display: none; }
   .garage-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 12px; min-height: 0; align-items: stretch; }
+  .garage-view-wrap { height: 100%; }
   #garage-view { height: 100%; min-height: 120px; }
+  .garage-peek { font-size: 12px; padding: 5px 9px; left: 6px; right: 6px; bottom: 6px; }
   .garage-controls { justify-content: center; gap: 8px; }
   .garage-stats { gap: 3px 14px; }
   .bar { grid-template-columns: 74px 1fr; font-size: 12px; }
