@@ -2,17 +2,21 @@
 // original design that borrows the silhouette of a classic rally era
 // (no real makes, badges or liveries).
 import * as THREE from 'three';
+import { LOFTS, buildLoftBody } from './loftcar.js';
 
 // Side profiles: [z (forward), y (up)] in metres, traced around the outline:
 // rear-bottom, up and over the top to the front, then front-bottom.
 const PROFILES = {
   // 70s mid-engine wedge: tiny, very low, wraparound screen, roof spoiler,
   // louvred engine cover, light pod on the bonnet.
+  // Built from cross-sections (see loftcar.js); the outline here is only a
+  // rough guide for the cockpit view and must follow the beltline.
   stratos: {
-    body: [[-1.84, 0.3], [-1.86, 0.78], [-1.5, 0.86], [-0.55, 0.92], [0.45, 0.84], [1.6, 0.6], [1.86, 0.44], [1.82, 0.3]],
-    glass: [[-0.62, 0.91], [-0.36, 1.1], [0.0, 1.13], [0.58, 0.83]],
-    width: 1.76, hood: [0.65, 1.7],
-    wing: 'roof', lamps: 'pod', flares: true, louvres: true, round: 3, mirrors: 'stalk',
+    loft: 'stratos',
+    body: [[-1.855, 0.34], [-1.855, 0.8], [-1.0, 0.87], [-0.6, 0.83], [0.77, 0.77], [1.3, 0.7], [1.855, 0.44], [1.855, 0.27]],
+    glass: [[-0.72, 0.92], [-0.55, 1.11], [-0.05, 1.115], [0.77, 0.75]],
+    width: 1.75, hood: [0.85, 1.7],
+    wing: 'none', lamps: null, flares: false, round: 0, mirrors: false,
   },
   // 60s mini: a small upright box on tiny wheels, contrast roof, grille lamps.
   mini: {
@@ -266,7 +270,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   // The outline runs rear-bottom -> over the top -> front-bottom, so the
   // closing bottom edge goes front to rear: front well first, then rear.
   const cutPts = [...bodyPts, ...well(spec.a), ...well(-spec.b)];
-  const bodyMesh = new THREE.Mesh(extrudeProfile(bodyPts, W - 2 * sideW + 4 * bev, bev, rnd), paint);
+  let bodyMesh = new THREE.Mesh(extrudeProfile(bodyPts, W - 2 * sideW + 4 * bev, bev, rnd), paint);
   for (const side of [-1, 1]) {
     const panel = new THREE.Mesh(extrudeProfile(cutPts, sideW, bev, rnd), paint);
     panel.position.x = side * (W / 2 - sideW / 2);
@@ -286,7 +290,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
       add(wall, linerMat, side * (W / 2 - sideW + 0.005), WR, wz);
     }
   }
-  const glassMesh = new THREE.Mesh(extrudeProfile(g, W - (rnd ? 0.24 + rnd * 0.02 : 0.18), rnd ? 0.08 : 0.04, Math.min(rnd, 2)), glass);
+  let glassMesh = new THREE.Mesh(extrudeProfile(g, W - (rnd ? 0.24 + rnd * 0.02 : 0.18), rnd ? 0.08 : 0.04, Math.min(rnd, 2)), glass);
   bodyMesh.castShadow = glassMesh.castShadow = true;
   body.add(bodyMesh, glassMesh);
 
@@ -483,6 +487,92 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   if (prof.vent) add(new THREE.BoxGeometry(0.34, 0.07, 0.3), dark, 0, roofY + 0.05, roofZ + roofLen * 0.3);
   // Roof aerial.
   add(new THREE.CylinderGeometry(0.01, 0.01, 0.5, 4), dark, 0.4, roofY + 0.25, roofZ - roofLen * 0.3);
+
+  // Lofted bodies replace everything above with a shape traced from the real car.
+  if (prof.loft) {
+    for (const c of [...body.children]) { body.remove(c); if (c.geometry && c.geometry !== bodyMesh.geometry) c.geometry.dispose(); }
+    bodyMesh.geometry.dispose(); glassMesh.geometry.dispose();
+    heads.length = 0; tails.length = 0;
+    const def = LOFTS[prof.loft];
+    const acc = def.accents.map((col) => new THREE.MeshStandardMaterial({ color: col, roughness: 0.45, metalness: 0.2, flatShading: true }));
+    mats.push(...acc);
+    const L = buildLoftBody(def, { paint, glass, dark, accents: acc, wheelZ: [spec.a, -spec.b], wheelY: WR, archR: ar, wellX: wheelX - hw - 0.035 });
+    mats.push(...L.extraMats);
+    bodyMesh = L.bodyMesh; glassMesh = L.glassMesh;
+    body.add(bodyMesh, glassMesh);
+    loftDetails(def, L.curves, acc);
+  }
+  function loftDetails(def, C, acc) {
+    const half = def.length / 2;
+    const disc = (r, x, y, z, mat, back = false) => {
+      const m = add(new THREE.CircleGeometry(r, 14), mat, x, y, z);
+      if (back) m.rotation.y = Math.PI;
+      return m;
+    };
+    // Four rally lamps across the bonnet, round headlamps in the fender ends.
+    const lz = half - 0.13, ly = C.top(lz) + 0.08;
+    add(new THREE.BoxGeometry(0.98, 0.05, 0.1), dark, 0, ly - 0.09, lz - 0.03);
+    for (let n = 0; n < 4; n++) {
+      const x = (n - 1.5) * 0.24;
+      const pot = add(new THREE.CylinderGeometry(0.085, 0.085, 0.09, 12), dark, x, ly, lz);
+      pot.rotation.x = Math.PI / 2;
+      disc(0.072, x, ly, lz + 0.047, lightMat);
+      heads.push([x, ly, lz + 0.1, 0.8]);
+    }
+    for (const side of [-1, 1]) {
+      const hx = side * 0.6, hz = half - 0.04, hy = C.belt(hz) - 0.07;
+      const ring = add(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 14), dark, hx, hy, hz);
+      ring.rotation.x = Math.PI / 2;
+      disc(0.085, hx, hy, hz + 0.032, lightMat);
+      heads.push([hx, hy, hz + 0.08, 1]);
+    }
+    // Chin slot, and the black tail panel's round lamps, reversing lights and pipes.
+    add(new THREE.BoxGeometry(1.0, 0.06, 0.03), dark, 0, C.bottom(half) + 0.07, half + 0.005);
+    const panelTop = C.belt(-half) - 0.32, panelBot = C.bottom(-half);
+    add(new THREE.BoxGeometry(2 * C.halfWidth(-half) - 0.1, panelTop - panelBot, 0.02), dark, 0, (panelTop + panelBot) / 2, -half - 0.006);
+    const amber = new THREE.MeshStandardMaterial({ color: 0xff9a2a, emissive: 0xff7a1a, emissiveIntensity: 0.4 });
+    mats.push(amber);
+    for (const side of [-1, 1]) {
+      const tx = side * 0.56, ty = C.belt(-half) - 0.18, tz = -half - 0.01;
+      const ring = add(new THREE.CylinderGeometry(0.115, 0.115, 0.05, 14), dark, tx, ty, tz + 0.01);
+      ring.rotation.x = Math.PI / 2;
+      disc(0.095, tx, ty, tz - 0.02, tailMat, true);
+      disc(0.04, tx, ty, tz - 0.025, amber, true);
+      tails.push([tx, ty, tz - 0.06]);
+      add(new THREE.BoxGeometry(0.13, 0.06, 0.02), trim, side * 0.3, ty, tz);
+    }
+    const chrome = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.8, roughness: 0.3 });
+    mats.push(chrome);
+    for (const side of [-1, 1]) {
+      const p = add(new THREE.CylinderGeometry(0.045, 0.045, 0.2, 10), chrome, side * 0.24, C.bottom(-half) + 0.02, -half - 0.05);
+      p.rotation.x = Math.PI / 2;
+    }
+    // Roof spoiler with end plates, and the louvred engine cover.
+    const sz = -0.62, sy = C.top(-0.58) + 0.07;
+    const wing = add(new THREE.BoxGeometry(1.18, 0.03, 0.24), acc[1], 0, sy, sz, true);
+    wing.rotation.x = -0.12;
+    for (const side of [-1, 1]) add(new THREE.BoxGeometry(0.03, 0.09, 0.26), paint, side * 0.59, sy - 0.03, sz);
+    for (let z = -0.86; z > -half + 0.2; z -= 0.12) add(new THREE.BoxGeometry(1.0, 0.025, 0.04), dark, 0, C.top(z) + 0.02, z);
+    // Stalk mirrors at the base of the screen, wipers, door numbers, mud flaps.
+    for (const side of [-1, 1]) {
+      const mz = 0.62, mx = side * (C.halfWidth(mz) - 0.02), my = C.belt(mz) + 0.1;
+      add(new THREE.BoxGeometry(0.02, 0.12, 0.02), dark, mx, my - 0.06, mz);
+      add(new THREE.BoxGeometry(0.1, 0.07, 0.05), dark, mx + side * 0.03, my + 0.02, mz);
+      const wp = add(new THREE.BoxGeometry(0.42, 0.015, 0.02), dark, side * 0.2, C.top(0.7) + 0.035, 0.7);
+      wp.rotation.z = side * 0.08;
+    }
+    if (!ghost) {
+      const roundMat = new THREE.MeshBasicMaterial({ map: numberTexture(number, '#111'), transparent: true });
+      mats.push(roundMat);
+      for (const side of [-1, 1]) {
+        const r = add(new THREE.PlaneGeometry(0.34, 0.34), roundMat, side * (C.halfWidth(0.15) + 0.008), 0.5, 0.15);
+        r.rotation.y = side * Math.PI / 2;
+      }
+    }
+    for (const side of [-1, 1]) for (const wz of [spec.a - WR - 0.1, -spec.b - WR - 0.1]) {
+      add(new THREE.BoxGeometry(0.28, 0.2, 0.02), dark, side * wheelX, Math.max(0.2, WR - 0.12), wz);
+    }
+  }
 
   // Wheels: pivot (steers) -> spinner (rolls) -> tyre + rim.
   // Tyre: round tread, flat sidewalls and rounded shoulders (built along X).
