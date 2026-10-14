@@ -503,6 +503,7 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   add(new THREE.CylinderGeometry(0.01, 0.01, 0.5, 4), dark, 0.4, roofY + 0.25, roofZ - roofLen * 0.3);
 
   // Lofted bodies replace everything above with a shape traced from the real car.
+  let loftC = null, loftDef = null;   // its shape curves, for placing the cockpit
   if (prof.loft) {
     for (const c of [...body.children]) { body.remove(c); if (c.geometry && c.geometry !== bodyMesh.geometry) c.geometry.dispose(); }
     bodyMesh.geometry.dispose(); glassMesh.geometry.dispose();
@@ -512,9 +513,11 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
     const sk = skinId ? def.skins[skinId] : null;
     const acc = (sk ? sk.accents : def.accents).map((col) => new THREE.MeshStandardMaterial({ color: col, roughness: 0.45, metalness: 0.2, flatShading: true }));
     mats.push(...acc);
+    loftDef = def;
     const L = buildLoftBody(def, { paint, glass, dark, accents: acc, livery: sk ? sk.livery : def.livery, wheelZ: [spec.a, -spec.b], wheelY: WR, archR: ar, wellX: wheelX - hw - 0.035 });
     mats.push(...L.extraMats);
     bodyMesh = L.bodyMesh; glassMesh = L.glassMesh;
+    loftC = L.curves;
     body.add(bodyMesh, glassMesh);
     const [zr, zf] = def.zRange || [-def.length / 2, def.length / 2];
     ({ stratos: stratosDetails, mini: miniDetails, quattro: quattroDetails, focus: focusDetails, dakar: dakarDetails, groupb: groupbDetails })[prof.loft](L.curves, acc, zr, zf, skinId);
@@ -1179,15 +1182,26 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   // Cockpit (only shown in the cockpit camera): dash, steering wheel, rev lights.
   const cockpit = new THREE.Group();
   cockpit.visible = false;
-  const seatX = -W * 0.2, dashZ = g[3][0] - 0.05, dashY = topY(g[3][0]) + bev + 0.02;
+  // Everything is placed from the windscreen: its base (bz, by) where it
+  // meets the bonnet and its top (tz, ty) where it meets the roof. Lofted
+  // bodies take these from their own curves, so the dash sits right under
+  // the real screen and the driver's eye just below the real roof.
+  let seatX = -W * 0.2, dashZ = g[3][0] - 0.05, dashY = topY(g[3][0]) + bev + 0.02;
+  let gw = W - (rnd ? 0.24 + rnd * 0.02 : 0.18);
+  let [bz, by] = g[3], [tz, ty] = g[2];
+  if (loftC) {
+    [tz, bz] = loftDef.glass.screen;
+    by = loftC.top(bz); ty = loftC.top(tz);
+    gw = 2 * loftC.cabinWidth((bz + tz) / 2) - 0.08;
+    seatX = -gw * 0.22;
+    dashZ = bz; dashY = by + 0.02;
+  }
   const dashMat = new THREE.MeshStandardMaterial({ color: 0x1b1c20, roughness: 0.9 });
   mats.push(dashMat);
-  const dash = new THREE.Mesh(new THREE.BoxGeometry(W - 0.3, 0.2, 0.45), dashMat);
-  dash.position.set(0, dashY - 0.06, dashZ - 0.2);
+  const dash = new THREE.Mesh(new THREE.BoxGeometry(loftC ? gw : W - 0.3, 0.2, 0.45), dashMat);
+  dash.position.set(0, dashY - (loftC ? 0.13 : 0.06), dashZ - 0.2);   // lofted: dash top just under the screen base
   cockpit.add(dash);
   // Window frame seen from inside: A-pillars, header rail and headlining.
-  const gw = W - (rnd ? 0.24 + rnd * 0.02 : 0.18);
-  const [bz, by] = g[3], [tz, ty] = g[2];
   const pl = Math.hypot(tz - bz, ty - by);
   for (const side of [-1, 1]) {
     const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, pl), dashMat);
@@ -1199,12 +1213,13 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   header.position.set(0, ty - 0.03, tz - 0.03);
   cockpit.add(header);
   // Interior tub over the body top between the seat and the dash.
-  const eyeZ = bz - 0.85, sillY = Math.max(topY(eyeZ), topY(bz)) + bev + 0.01;
+  const eyeZ = loftC ? tz - 0.4 : bz - 0.85;
+  const sillY = loftC ? loftC.belt(eyeZ) - 0.02 : Math.max(topY(eyeZ), topY(bz)) + bev + 0.01;
   const tub = new THREE.Mesh(new THREE.BoxGeometry(gw + 0.04, 0.02, bz - eyeZ + 0.9), dashMat);
   tub.position.set(0, sillY, (bz + eyeZ - 0.9) / 2);
   cockpit.add(tub);
   const wheelGrp = new THREE.Group();
-  wheelGrp.position.set(seatX, dashY - 0.02, dashZ - 0.4);
+  wheelGrp.position.set(seatX, dashY - (loftC ? 0.1 : 0.02), dashZ - 0.4);
   wheelGrp.rotation.x = -0.45;
   const rim = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.02, 6, 18), dashMat);
   const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.03, 0.02), dashMat);
@@ -1224,7 +1239,15 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   }
   body.add(cockpit);
   // Driver's eye point and look direction, in body space.
-  const seat = new THREE.Vector3(seatX, Math.max(sillY + 0.2, ty - 0.08), eyeZ);
+  const seat = new THREE.Vector3(seatX, loftC ? Math.max(dashY + 0.2, loftC.top(eyeZ) - 0.12) : Math.max(sillY + 0.2, ty - 0.08), eyeZ);
+  // Headlining: the roof seen from inside, so roof scoops, racks and lamp
+  // pods on top don't show through it.
+  if (loftC) {
+    const hy = Math.max(ty - 0.03, seat.y + 0.06), back = eyeZ - 0.8;
+    const lining = new THREE.Mesh(new THREE.BoxGeometry(gw + 0.1, 0.02, tz - back), dashMat);
+    lining.position.set(0, hy, (tz + back) / 2);
+    cockpit.add(lining);
+  }
 
   if (ghost) {
     root.traverse((o) => {

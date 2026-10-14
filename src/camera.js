@@ -53,6 +53,11 @@ export class CameraRig {
     // Taller cars (the rally-raid SUV) get the camera higher and further back.
     const ex = Math.max(0, (this.roofH ?? 1.1) - 1.1);
 
+    // From the driver's seat the roof lining and pillars are only a hand's
+    // width away, so the cockpit view draws much closer than the others.
+    const near = this.mode === 'cockpit' && this.model ? 0.04 : 0.2;
+    if (cam.near !== near) { cam.near = near; cam.updateProjectionMatrix(); }
+
     if (this.mode === 'cockpit' && this.model) {
       // From the driver's seat, following the car's body (pitch, roll, bumps).
       const m = this.model;
