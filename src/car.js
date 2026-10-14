@@ -39,14 +39,17 @@ export const CARS = {
   },
   // Unlockable: gold on three Classic stages.
   brute: {
-    id: 'brute', name: 'Brutale S4', tag: '80s Group B monster · 4WD, savage power, a handful',
-    mass: 1100, a: 1.15, b: 1.25, h: 0.48, inertia: 0.95,
-    drive: 'AWD', frontDrive: 0.4,
+    id: 'brute', name: 'Brutale S4', tag: '80s Group B monster · 4WD, savage power, glued to the road',
+    // Handling tuned to be the best in the game (power unchanged): the most
+    // grip, a low centre of gravity, a rear-biased 4WD split so the nose
+    // isn't pushed wide, and quick, generous steering.
+    mass: 1100, a: 1.15, b: 1.25, h: 0.4, inertia: 0.84,
+    drive: 'AWD', frontDrive: 0.3,
     torque: 470, peakRpm: 6200, idleRpm: 1000, redline: 8200,
     gears: [2.9, 2.05, 1.55, 1.22, 0.98], finalDrive: 4.7,
-    muF: 1.12, muR: 1.02, peakF: 0.14, peakR: 0.14, slideF: 0.82, slideR: 0.7,
-    maxSteer: 0.6, steerSpeed: 5.0, counterSteer: 0.65,
-    driftAssist: 0.95, throttleOversteer: 0.7, driftBoost: 2.7, dragCoef: 0.5,
+    muF: 1.36, muR: 1.26, peakF: 0.12, peakR: 0.13, slideF: 0.92, slideR: 0.84,
+    maxSteer: 0.68, steerSpeed: 6.4, counterSteer: 0.75,
+    driftAssist: 1.2, throttleOversteer: 0.7, driftBoost: 2.7, dragCoef: 0.5,
     track: 1.56, length: 4.0, wheelR: 0.33, offroad: 0, bodyStyle: 'groupb', cyl: 4, turbo: true,
   },
   quadra: {
