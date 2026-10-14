@@ -1,6 +1,8 @@
 #!/bin/sh
 # Build one self-contained HTML file of the game (all JS and CSS inlined;
-# only Three.js and the fonts still load from their CDNs).
+# only Three.js and the fonts still load from their CDNs). The music tracks
+# are copied next to it into music/ (too big to inline); without them the
+# game still runs, just without the tracks.
 # Usage: sh tools/make-single.sh [OUT_FILE]   (default: dist/sideways.html)
 set -e
 cd "$(dirname "$0")/.."
@@ -20,3 +22,4 @@ pathlib.Path(sys.argv[2]).write_text(html)
 print(sys.argv[2], len(html) // 1024, 'KB')
 PY
 rm -f "$js"
+rm -rf "$(dirname "$out")/music" && cp -r music "$(dirname "$out")/music"

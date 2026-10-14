@@ -1,4 +1,8 @@
-// All sound is synthesised with the Web Audio API; there are no audio files.
+// Engine, tyres and effects are synthesised with the Web Audio API. Music
+// is three royalty-free tracks in music/ (Pixabay licence), streamed from
+// <audio> elements through the same mixer, so volume and mute apply.
+const TRACKS = { menu: 'music/menu-darkside-rally-house.mp3', race: ['music/race-clutch-boost.mp3', 'music/race-flying-finish.mp3'] };
+const TRACK_VOL = { menu: 0.55, race: 0.42 };
 
 export class AudioEngine {
   constructor() {
@@ -23,6 +27,8 @@ export class AudioEngine {
     this.engineBus.connect(this.master);
     this.sfxBus.connect(this.master);
     this.musicBus.connect(this.master);
+    this.trackBus = ctx.createGain();   // streamed music tracks
+    this.trackBus.connect(this.master);
     this.applyVolumes();
 
     // --- Engine: three oscillators -> soft clip -> lowpass -> gain
@@ -90,7 +96,7 @@ export class AudioEngine {
     this.master.gain.value = this.muted ? 0 : this.volumes.master;
     this.engineBus.gain.value = this.volumes.engine;
     this.sfxBus.gain.value = this.volumes.sfx;
-    this.musicBus.gain.value = this.musicOn ? 0.5 : 0;
+    this.musicBus.gain.value = this._chipOn ? 0.5 : 0;
   }
 
   setVolume(v) {
@@ -271,11 +277,79 @@ export class AudioEngine {
     });
   }
 
-  // Menu music: a small chiptune loop, scheduled a little ahead of time.
+  // ---------- Music tracks ----------
+  // One track plays at a time. Each has its own <audio> element and gain, so
+  // switching fades the old one out while the new one fades in.
+  _track(url) {
+    this._tracks ||= {};
+    let t = this._tracks[url];
+    if (!t) {
+      const el = new Audio(url);
+      el.loop = true; el.preload = 'auto';
+      const gain = this.ctx.createGain();
+      gain.gain.value = 0;
+      this.ctx.createMediaElementSource(el).connect(gain).connect(this.trackBus);
+      t = this._tracks[url] = { el, gain, url };
+      // A missing or blocked file just means no music, never a broken game.
+      el.addEventListener('error', () => { t.failed = true; if (url === TRACKS.menu && this._now === t && this.musicOn) this._chiptune(true); });
+    }
+    return t;
+  }
+  _play(url, vol, fade = 1.2) {
+    if (!this.ctx) return;
+    const t = this._track(url), now = this.ctx.currentTime;
+    if (this._now && this._now !== t) this._fadeOut(this._now);
+    this._now = t;
+    t.vol = vol;
+    clearTimeout(t.stopTimer);
+    t.gain.gain.cancelScheduledValues(now);
+    t.gain.gain.setTargetAtTime(vol, now, fade / 3);
+    if (t.el.paused) t.el.play().catch(() => { /* autoplay refused: stays silent */ });
+  }
+  _fadeOut(t, fade = 0.8) {
+    if (!t || !this.ctx) return;
+    t.gain.gain.cancelScheduledValues(this.ctx.currentTime);
+    t.gain.gain.setTargetAtTime(0, this.ctx.currentTime, fade / 3);
+    clearTimeout(t.stopTimer);
+    t.stopTimer = setTimeout(() => t.el.pause(), fade * 1000 + 200);
+  }
+  // Race music: the two race tracks take turns, run by run.
+  raceMusic(on, next = true) {
+    this.raceOn = on;
+    if (!this.ctx) return;
+    this._chiptune(false);
+    if (!on) { this._fadeOut(this._now); this._now = null; return; }
+    if (next || this._raceIdx == null) this._raceIdx = ((this._raceIdx ?? -1) + 1) % TRACKS.race.length;
+    const url = TRACKS.race[this._raceIdx];
+    const t = this._track(url);
+    if (this._now !== t) t.el.currentTime = 0;     // each new song starts from the top
+    this._play(url, TRACK_VOL.race, 2);
+  }
+  // Duck the music for a moment (a crash), or set it lower for a while (k < 1).
+  duck(k = 0.35, sec = 1.2) {
+    const t = this._now;
+    if (!t || !this.ctx) return;
+    const g = t.gain.gain, now = this.ctx.currentTime;
+    g.cancelScheduledValues(now);
+    g.setTargetAtTime(t.vol * k, now, 0.05);
+    if (sec > 0) g.setTargetAtTime(t.vol, now + sec, 0.4);
+  }
+
+  // Menu music: the menu track (the old chiptune loop if the file won't load).
   music(on) {
     this.musicOn = on;
     if (!this.ctx) return;
+    const menu = this._track(TRACKS.menu);
+    if (!on) { if (this._now === menu) { this._fadeOut(menu); this._now = null; } this._chiptune(false); return; }
+    if (menu.failed) { this._fadeOut(this._now); this._now = null; this._chiptune(true); return; }
+    this._play(TRACKS.menu, TRACK_VOL.menu);
+  }
+
+  // A small chiptune loop, scheduled a little ahead of time.
+  _chiptune(on) {
+    if (!this.ctx) return;
     const ctx = this.ctx;
+    this._chipOn = on;
     this.musicBus.gain.setTargetAtTime(on ? 0.5 : 0, ctx.currentTime, on ? 0.3 : 0.15);
     if (!on || this._seq) return;
     const BPM = 116, S16 = 60 / BPM / 4;
@@ -312,7 +386,7 @@ export class AudioEngine {
     };
     let step = 0, next = ctx.currentTime + 0.1;
     this._seq = setInterval(() => {
-      if (!this.musicOn && this.musicBus.gain.value < 0.01) { clearInterval(this._seq); this._seq = null; return; }
+      if (!this._chipOn && this.musicBus.gain.value < 0.01) { clearInterval(this._seq); this._seq = null; return; }
       while (next < ctx.currentTime + 0.25) {
         const bar = Math.floor(step / 16) % 4, s16 = step % 16, [root, arp] = BARS[bar];
         if (s16 % 4 === 0) voice('square', hz(root - 12 + (s16 === 8 ? 12 : 0)), next, S16 * 3.5, 0.09);
@@ -327,8 +401,9 @@ export class AudioEngine {
     }, 60);
   }
 
-  suspend() { this.ctx?.suspend(); }
-  resume() { this.ctx?.resume(); }
+  // Pause stops the song where it is (a suspended context would let it run on).
+  suspend() { this.ctx?.suspend(); if (this._now && !this._now.el.paused) { this._now.el.pause(); this._now.held = true; } }
+  resume() { this.ctx?.resume(); if (this._now?.held) { this._now.held = false; this._now.el.play().catch(() => {}); } }
 }
 
 function softClip(k) {

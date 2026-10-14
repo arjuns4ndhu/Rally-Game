@@ -22,7 +22,7 @@ for f in sorted((root / 'src').glob('*.js')) + [root / 'css' / 'style.css', root
 v = h.hexdigest()[:10]
 html = html.replace('href="css/style.css"', f'href="css/style.css?v={v}"').replace('src="src/main.js"', f'src="src/main.js?v={v}"')
 (out / 'index.html').write_text(html)
-for d in ['css', 'src']:
+for d in ['css', 'src', 'music']:
     shutil.rmtree(out / d, ignore_errors=True)
     shutil.copytree(root / d, out / d)
 for f in (out / 'src').glob('*.js'):
