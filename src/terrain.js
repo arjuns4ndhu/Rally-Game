@@ -2,7 +2,7 @@
 // it, blending out into the seeded landform and rolling hills further away.
 import * as THREE from 'three';
 import { makeBaseHeight, makeHillHeight } from './stagegen.js';
-import { facet, RETRO } from './retro.js';
+import { facet, RETRO, steady } from './retro.js';
 
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -114,9 +114,9 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
   // Flat-coloured triangles, each a slightly different shade, no texture.
   if (!RETRO.on) geo.computeVertexNormals();
   if (grassMap) grassMap.repeat.set((nx - 1) * cell / 18, (nz - 1) * cell / 18);
-  const mesh = new THREE.Mesh(facet(geo, 0.15), new THREE.MeshStandardMaterial({
+  const mesh = new THREE.Mesh(facet(geo, 0.15), steady(new THREE.MeshStandardMaterial({
     map: RETRO.on ? null : grassMap, vertexColors: true, flatShading: true, roughness: 1, color: 0xffffff,
-  }));
+  })));
   mesh.receiveShadow = true;
 
   return {

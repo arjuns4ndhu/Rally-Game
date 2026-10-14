@@ -146,7 +146,7 @@ export class Rain {
     this.group = new THREE.Group();
     this.uniforms = {
       uTime: { value: 0 }, uCenter: { value: new THREE.Vector3() }, uWind: { value: new THREE.Vector2(2.5, 0) },
-      uGround: { value: 0 }, uOpacity: { value: 0.45 },
+      uGround: { value: 0 }, uOpacity: { value: 0.5 }, uPix: { value: 2 / 720 }, uAspect: { value: 16 / 9 },
     };
     const logV = '#include <common>\n#include <logdepthbuf_pars_vertex>\n';
     const logF = '#include <common>\n#include <logdepthbuf_pars_fragment>\n';
@@ -159,36 +159,47 @@ export class Rain {
     g.setAttribute('position', quad.attributes.position);
     g.setAttribute('uv', quad.attributes.uv);
     const off = new Float32Array(N * 4);
-    for (let i = 0; i < N; i++) off.set([Math.random() * 40, Math.random() * 24, Math.random() * 40, 0.6 + Math.random() * 0.8], i * 4);
+    for (let i = 0; i < N; i++) off.set([Math.random() * 30, Math.random() * 16, Math.random() * 30, 0.6 + Math.random() * 0.8], i * 4);
     g.setAttribute('aOff', new THREE.InstancedBufferAttribute(off, 4));
     g.instanceCount = N;
     const streaks = new THREE.Mesh(g, new THREE.ShaderMaterial({
-      uniforms: this.uniforms, transparent: true, depthWrite: false,
+      uniforms: this.uniforms, transparent: true, depthWrite: false, side: THREE.DoubleSide,
       vertexShader: logV + `
-        uniform float uTime; uniform vec3 uCenter; uniform vec2 uWind;
-        attribute vec4 aOff; varying vec2 vUv;
+        uniform float uTime; uniform vec3 uCenter; uniform vec2 uWind; uniform float uPix; uniform float uAspect;
+        attribute vec4 aOff; varying vec2 vUv; varying float vFade;
         void main() {
           vUv = uv;
           float speed = 16.0 + aOff.w * 8.0;
-          vec3 box = vec3(40.0, 24.0, 40.0);
+          vec3 box = vec3(30.0, 16.0, 30.0);
           vec3 p;
           p.x = uCenter.x + mod(aOff.x + uWind.x * uTime * 0.3 - uCenter.x, box.x) - box.x * 0.5;
           p.z = uCenter.z + mod(aOff.z + uWind.y * uTime * 0.3 - uCenter.z, box.z) - box.z * 0.5;
-          p.y = uCenter.y - 8.0 + mod(aOff.y - uTime * speed, box.y);
+          p.y = uCenter.y - 6.0 + mod(aOff.y - uTime * speed, box.y);
           vec3 dir = normalize(vec3(uWind.x, -speed, uWind.y));
-          vec3 toCam = normalize(cameraPosition - p);
-          vec3 side = normalize(cross(dir, toCam));
-          float len = 0.35 + aOff.w * 0.45, wid = 0.012 + aOff.w * 0.01;
-          vec3 world = p + side * position.x * wid - dir * position.y * len;
-          gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+          float len = 1.0 + aOff.w * 0.9, wid = 0.018 + aOff.w * 0.012;
+          // Draw the streak in screen space so it is never thinner than about
+          // one pixel (at the low retro resolution thin streaks vanished).
+          vec4 ct = projectionMatrix * viewMatrix * vec4(p, 1.0);
+          vec4 cb = projectionMatrix * viewMatrix * vec4(p - dir * len, 1.0);
+          vec4 c = mix(ct, cb, position.y);
+          vec2 st = ct.xy / ct.w, sb = cb.xy / cb.w;
+          vec2 d = (sb - st) * vec2(uAspect, 1.0);
+          d = length(d) > 1e-5 ? normalize(d) : vec2(0.0, 1.0);
+          vec2 n = vec2(-d.y, d.x) / vec2(uAspect, 1.0);
+          float w = max(wid * projectionMatrix[1][1] / max(c.w, 0.1), uPix * 1.4);
+          c.xy += n * position.x * w * c.w;
+          // Fade out far drops so the air doesn't turn into a grey wall.
+          vFade = 1.0 - smoothstep(9.0, 16.0, length(p - cameraPosition));
+          gl_Position = c;
           #include <logdepthbuf_vertex>
         }`,
       fragmentShader: logF + `
-        uniform float uOpacity; varying vec2 vUv;
+        uniform float uOpacity; varying vec2 vUv; varying float vFade;
         void main() {
           #include <logdepthbuf_fragment>
-          float a = uOpacity * smoothstep(0.0, 0.35, vUv.y) * (1.0 - vUv.y * 0.6) * (1.0 - abs(vUv.x - 0.5) * 2.0);
-          gl_FragColor = vec4(0.82, 0.87, 0.93, a);
+          float t = vUv.y;                             // 0 at the falling head, 1 at the tail
+          float a = uOpacity * vFade * (1.0 - t * 0.75) * smoothstep(0.0, 0.08, t) * (1.0 - pow(abs(vUv.x - 0.5) * 2.0, 3.0));
+          gl_FragColor = vec4(0.86, 0.9, 0.96, a);
         }`,
     }));
     streaks.frustumCulled = false;
@@ -236,9 +247,14 @@ export class Rain {
     this.scene.add(this.group);
   }
 
+  // Render-target height in pixels, so streaks stay at least a pixel wide.
+  setViewport(h) { this.viewH = h; if (this.uniforms) this.uniforms.uPix.value = 2 / h; }
+
   update(dt, cam, carVel, groundY) {
     if (!this.group) return;
     const u = this.uniforms;
+    if (this.viewH) u.uPix.value = 2 / this.viewH;
+    u.uAspect.value = cam.aspect || 16 / 9;
     u.uTime.value += dt;
     u.uCenter.value.copy(cam.position);
     // Streaks lean into the wind and against your motion.

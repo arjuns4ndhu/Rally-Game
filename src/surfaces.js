@@ -2,7 +2,7 @@
 // puddles (ice on snow stages, soft sand on canyon stages). Seeded, so a
 // stage is the same every attempt; rain brings more mud and puddles.
 import * as THREE from 'three';
-import { RETRO } from './retro.js';
+import { RETRO, steady } from './retro.js';
 import { mulberry32 } from './rng.js';
 
 export const PATCH = {
@@ -106,7 +106,7 @@ function patchTexture(kind) {
 export function buildSurfaces(road, plan) {
   const grp = new THREE.Group();
   if (plan.tarmac.length) {
-    const mat = new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -1 });
+    const mat = steady(new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -1 }));
     for (const t of plan.tarmac) {
       const from = road.indexAt(t.from), to = road.indexAt(t.to) + 1;
       grp.add(road.buildOffsetStrip(() => 0, road.width + 0.2, 0.04, mat, 1 / 12, from, to));
@@ -115,12 +115,12 @@ export function buildSurfaces(road, plan) {
   const mats = {};
   for (const p of plan.patches) {
     if (!mats[p.kind]) {
-      mats[p.kind] = new THREE.MeshStandardMaterial({
+      mats[p.kind] = steady(new THREE.MeshStandardMaterial({
         map: patchTexture(p.kind), transparent: true, depthWrite: false,
         roughness: p.kind === 'puddle' || p.kind === 'ice' ? 0.2 : 0.95,
         // Puddles pick up a little sky light so they read as water, not holes.
         emissive: p.kind === 'puddle' ? 0x3a4654 : 0x000000, emissiveIntensity: 0.6,
-      });
+      }));
     }
     const len = p.r * 1.7 * 2;
     const from = road.indexAt(p.at - len / 2), to = road.indexAt(p.at + len / 2) + 1;

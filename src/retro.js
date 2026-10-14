@@ -55,11 +55,20 @@ export function enableWobble(grid = [200, 112]) {
   THREE.ShaderChunk.project_vertex = THREE.ShaderChunk.project_vertex.replace(
     'gl_Position = projectionMatrix * mvPosition;',
     `gl_Position = projectionMatrix * mvPosition;
+    #ifndef NO_WOBBLE
     if (gl_Position.w > 0.0) {
       vec2 snapGrid = vec2(${grid[0].toFixed(1)}, ${grid[1].toFixed(1)});
       gl_Position.xy = floor(gl_Position.xy / gl_Position.w * snapGrid + 0.5) / snapGrid * gl_Position.w;
-    }`,
+    }
+    #endif`,
   );
+}
+
+// The ground, road and anything lying on them must not wobble: their big and
+// small triangles snap differently, and the ground then pokes through the road.
+export function steady(mat) {
+  mat.defines = { ...(mat.defines || {}), NO_WOBBLE: '' };
+  return mat;
 }
 
 // ---------- Low-res render + dithered reduced colour ----------

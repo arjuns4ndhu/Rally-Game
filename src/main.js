@@ -18,7 +18,7 @@ import { GhostRecorder, saveGhost, loadGhost, samplePose } from './ghost.js';
 import { buildPaceNotes, CoDriver } from './pacenotes.js';
 import { notesHTML } from './paceicons.js';
 import { Drone } from './drone.js';
-import { facet, enableWobble, RetroPass, RETRO } from './retro.js';
+import { facet, enableWobble, RetroPass, RETRO, steady } from './retro.js';
 
 // Retro settings: low-res pixels, dithered colour, vertex wobble.
 const retroSet = { on: true, pixels: 'light', dither: true, wobble: true };
@@ -116,8 +116,8 @@ try { if (localStorage.getItem('sideways.codriver') === 'off') codriver.mode = '
 // ---------- Stage ----------
 // A stage is a road plus everything built around it. Loading a new one
 // disposes the old meshes.
-const gravelMat = new THREE.MeshStandardMaterial({ map: gravelTexture(THEMES.forest.road), roughness: 0.95, vertexColors: true, flatShading: true });
-const vergeMat = new THREE.MeshStandardMaterial({ color: 0x6e6340, roughness: 1, vertexColors: true, flatShading: true });
+const gravelMat = steady(new THREE.MeshStandardMaterial({ map: gravelTexture(THEMES.forest.road), roughness: 0.95, vertexColors: true, flatShading: true }));
+const vergeMat = steady(new THREE.MeshStandardMaterial({ color: 0x6e6340, roughness: 1, vertexColors: true, flatShading: true }));
 // Retro: per-triangle shading on a built mesh (or every mesh in a group).
 function faceted(obj, amount) { obj.traverse((m) => { if (m.isMesh) m.geometry = facet(m.geometry, amount); }); return obj; }
 let roadTheme = 'forest';
@@ -129,7 +129,7 @@ let hazards = null;  // rare fallen trees / landslides
 let trackside = null; // crowds, tape, hay bales, helicopter
 let builtObstacles = [];
 let shortcuts = [];   // Road objects for rough cut-through tracks
-const trackMat = new THREE.MeshStandardMaterial({ roughness: 1, vertexColors: true, flatShading: true });
+const trackMat = steady(new THREE.MeshStandardMaterial({ roughness: 1, vertexColors: true, flatShading: true }));
 const stage = { kind: 'practice', seed: 0, name: '', start: 0, finish: 0, cps: [] };
 
 function disposeGroup(g) {
@@ -1069,6 +1069,7 @@ function resize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   dust.setViewport(retro.active ? retro.size[1] : h * renderer.getPixelRatio(), camera.fov);
+  rain.setViewport(retro.active ? retro.size[1] : h * renderer.getPixelRatio());
   $('rotate').hidden = !(isTouch && h > w);
   minimap.rebuild();
 }

@@ -1,6 +1,7 @@
 // Tyre marks: dark worn tracks along the racing line, and the lighter scuffs
 // your own car leaves on the gravel.
 import * as THREE from 'three';
+import { steady } from './retro.js';
 
 // Soft-edged, broken-up track texture (white; tinted by material colour).
 function trackTexture() {
@@ -30,10 +31,10 @@ function trackTexture() {
 
 // Two dark wheel tracks following the racing line.
 export function buildRacingMarks(road, trackWidth = 1.6) {
-  const mat = new THREE.MeshBasicMaterial({
+  const mat = steady(new THREE.MeshBasicMaterial({
     map: trackTexture(), color: 0x33241a, transparent: true, opacity: 0.75,
     depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
-  });
+  }));
   const group = new THREE.Group();
   for (const side of [-1, 1]) {
     group.add(road.buildOffsetStrip((i) => road.racing[i] + side * trackWidth / 2, 0.42, 0.05, mat, 1 / 6));
@@ -61,10 +62,10 @@ export class TyreMarks {
     geo.setAttribute('position', this.posAttr);
     geo.setAttribute('color', this.colAttr);
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
-    this.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    this.mesh = new THREE.Mesh(geo, steady(new THREE.MeshBasicMaterial({
       vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-    }));
+    })));
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
     this.cursor = 0;
