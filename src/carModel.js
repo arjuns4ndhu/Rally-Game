@@ -1214,11 +1214,11 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
 
   // Driver's eye: just behind the top of the screen, a hand's width under
   // the roof, kept inside the cabin (the tiny wedge cars have little room).
-  const eyeZ = loftC ? Math.max(tz - 0.36, loftDef.glass.side[0] + 0.3) : bz - 0.85;
+  const eyeZ = loftC ? Math.max(tz - 0.42, loftDef.glass.side[0] + 0.3) : bz - 0.85;
   const backZ = eyeZ - 0.75;                         // the cabin runs back past the seats
   const sillY = beltAt(eyeZ) - 0.02;
   const dashTop = loftC ? by - 0.06 : dashY + 0.04;
-  const seat = new THREE.Vector3(seatX, loftC ? Math.max(dashTop + 0.24, ty - 0.16) : Math.max(sillY + 0.2, ty - 0.08), eyeZ);
+  const seat = new THREE.Vector3(seatX, loftC ? Math.max(dashTop + 0.24, ty - 0.13) : Math.max(sillY + 0.2, ty - 0.08), eyeZ);
 
   // Dash: a thin, shallow shelf under the screen, so you can see down past
   // it into the footwell (pedals, column, firewall).

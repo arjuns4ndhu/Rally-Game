@@ -63,7 +63,7 @@ export class CameraRig {
       const m = this.model;
       m.root.updateMatrixWorld(true);
       cam.position.copy(m.seat).applyMatrix4(m.body.matrixWorld);
-      this._v.set(m.seat.x, m.seat.y - 0.9, m.seat.z + 12).applyMatrix4(m.body.matrixWorld);
+      this._v.set(m.seat.x, m.seat.y - 0.3, m.seat.z + 12).applyMatrix4(m.body.matrixWorld);
       cam.up.set(0, 1, 0);
       cam.lookAt(this._v);
       cam.fov = THREE.MathUtils.lerp(cam.fov, 64 + Math.min(car.speed, 50) * 0.12, Math.min(1, dt * 3));

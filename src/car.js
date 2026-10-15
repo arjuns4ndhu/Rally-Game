@@ -12,11 +12,12 @@
 const G = 9.81;
 
 // Six cars, each modelled on a classic rally icon (shape and character only;
-// no real names or badges). Engine torque is set so each car's 0-100 km/h
-// on gravel matches its real-life counterpart: Brutale 2.3 s (grip caps it
-// at ~2.7 s here), Quadra 3.1 s, Vector ~4.0 s, Stiletto 5.5 s,
-// Dune Raider 6.5 s, Pocket 11 s. wheelR = tyre radius (m); offroad = 0..1 how much
-// of the grass/verge penalty the car shrugs off.
+// no real names or badges). Balanced so that, driven the same way, all six
+// finish the five Classic stages within about 1% of each other: each wins
+// somewhere (the Brutale on fast gravel and tarmac, the Pocket and Dune
+// Raider on snow) instead of one car being quickest everywhere.
+// wheelR = tyre radius (m); offroad = 0..1 how much of the grass/verge
+// penalty the car shrugs off.
 export const CARS = {
   stiletto: {
     id: 'stiletto', name: 'Stiletto V6', tag: '70s mid-engine wedge · sharp, tail-happy',
@@ -24,7 +25,7 @@ export const CARS = {
     drive: 'RWD', frontDrive: 0,
     torque: 189, peakRpm: 6000, idleRpm: 1000, redline: 8000,
     gears: [3.0, 2.1, 1.6, 1.25, 1.0], finalDrive: 4.6,
-    muF: 1.24, muR: 1.14, peakF: 0.13, peakR: 0.13, slideF: 0.82, slideR: 0.76,
+    muF: 1.28, muR: 1.18, peakF: 0.13, peakR: 0.13, slideF: 0.82, slideR: 0.76,
     maxSteer: 0.66, steerSpeed: 6.2, counterSteer: 0.78,
     driftAssist: 1.0, throttleOversteer: 0.66, driftBoost: 2.6, dragCoef: 0.42,
     track: 1.48, length: 3.71, wheelR: 0.31, offroad: 0, bodyStyle: 'stratos', cyl: 6,
@@ -33,9 +34,9 @@ export const CARS = {
     id: 'pocket', name: 'Pocket 1275', tag: '60s mini box · front-drive, light & nimble',
     mass: 700, a: 0.82, b: 1.22, h: 0.45, inertia: 0.95,
     drive: 'FWD', frontDrive: 1,
-    torque: 66, peakRpm: 5200, idleRpm: 950, redline: 7600,
+    torque: 96, peakRpm: 5200, idleRpm: 950, redline: 7600,
     gears: [3.3, 2.1, 1.5, 1.2, 0.98], finalDrive: 5.2,
-    muF: 1.32, muR: 1.18, peakF: 0.13, peakR: 0.14, slideF: 0.82, slideR: 0.72,
+    muF: 1.43, muR: 1.29, peakF: 0.13, peakR: 0.14, slideF: 0.82, slideR: 0.72,
     maxSteer: 0.64, steerSpeed: 5.8, counterSteer: 0.55,
     driftAssist: 1.15, throttleOversteer: 0.1, driftBoost: 2.4, dragCoef: 0.4,
     track: 1.25, length: 3.05, wheelR: 0.27, offroad: 0, bodyStyle: 'mini', cyl: 4,
@@ -49,9 +50,9 @@ export const CARS = {
     // to be driven. Less steady grip than the later WRC car; far more shove.
     mass: 1100, a: 1.3, b: 1.1, h: 0.42, inertia: 0.86,
     drive: 'AWD', frontDrive: 0.3,
-    torque: 680, peakRpm: 6200, idleRpm: 1000, redline: 8200,
+    torque: 450, peakRpm: 6200, idleRpm: 1000, redline: 8200,
     gears: [2.9, 2.05, 1.55, 1.22, 0.98], finalDrive: 4.7,
-    muF: 1.52, muR: 1.22, peakF: 0.13, peakR: 0.13, slideF: 0.84, slideR: 0.74,
+    muF: 1.3, muR: 1.07, peakF: 0.13, peakR: 0.13, slideF: 0.84, slideR: 0.74,
     maxSteer: 0.66, steerSpeed: 6.0, counterSteer: 0.6,
     driftAssist: 1.0, throttleOversteer: 1.0, driftBoost: 2.7, dragCoef: 0.5,
     track: 1.56, length: 4.0, wheelR: 0.33, offroad: 0, bodyStyle: 'groupb', cyl: 4, turbo: true,
@@ -60,7 +61,7 @@ export const CARS = {
     id: 'quadra', name: 'Quadra 5T', tag: '80s turbo coupé · 4WD, huge torque, nose-heavy',
     mass: 1290, a: 1.0, b: 1.52, h: 0.52, inertia: 1.05,
     drive: 'AWD', frontDrive: 0.5,
-    torque: 751, peakRpm: 4800, idleRpm: 900, redline: 7000,
+    torque: 700, peakRpm: 4800, idleRpm: 900, redline: 7000,
     gears: [3.0, 2.0, 1.45, 1.15, 0.92], finalDrive: 4.6,
     muF: 1.12, muR: 1.02, peakF: 0.14, peakR: 0.15, slideF: 0.82, slideR: 0.72,
     maxSteer: 0.6, steerSpeed: 4.8, counterSteer: 0.5,
@@ -82,11 +83,11 @@ export const CARS = {
     id: 'raider', name: 'Dune Raider', tag: 'Rally-raid SUV · heavy, tall, at home off-road',
     mass: 1950, a: 1.4, b: 1.45, h: 0.68, inertia: 1.1,
     drive: 'AWD', frontDrive: 0.45,
-    torque: 362, peakRpm: 4200, idleRpm: 800, redline: 6600,
+    torque: 500, peakRpm: 4200, idleRpm: 800, redline: 6600,
     gears: [3.6, 2.3, 1.6, 1.2, 0.95], finalDrive: 5.7,
-    muF: 1.1, muR: 0.96, peakF: 0.16, peakR: 0.17, slideF: 0.84, slideR: 0.72,
+    muF: 1.19, muR: 1.05, peakF: 0.16, peakR: 0.17, slideF: 0.84, slideR: 0.72,
     maxSteer: 0.55, steerSpeed: 3.8, counterSteer: 0.5,
-    driftAssist: 1.1, throttleOversteer: 0.65, driftBoost: 2.2, dragCoef: 1.0,
+    driftAssist: 1.1, throttleOversteer: 0.65, driftBoost: 2.2, dragCoef: 0.8,
     track: 1.7, length: 4.7, wheelR: 0.42, offroad: 0.7, bodyStyle: 'dakar', cyl: 8,
   },
 };
