@@ -729,3 +729,8 @@ body.touch .pn-tile b.num { font-size: 14px; }
 body.touch .pn-tile b.word { font-size: 9px; }
 body.touch .pn-tile small { display: none; }
 body.touch .pn-dist { font-size: 10px; padding: 1px 4px; }
+
+/* Random stage setup */
+.gen-rows { display: grid; gap: 12px; margin: 4px 0 14px; }
+.gen-rows .lbl { min-width: 72px; }
+.chip:disabled { opacity: 0.35; cursor: not-allowed; }

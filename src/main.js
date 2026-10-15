@@ -889,7 +889,56 @@ function restartKey() {
 }
 
 $('btn-daily').addEventListener('click', () => pickThenStart('daily'));
-$('btn-random').addEventListener('click', () => pickThenStart('random'));
+// Random stages: choose the scenery, weather and hills, then find a stage
+// code that gives them (the code alone still decides everything, so it can
+// be shared like any other).
+const GEN = {
+  theme: [['any', 'Any'], ['forest', 'Forest'], ['desert', 'Canyon'], ['snow', 'Snow'], ['alpine', 'Alpine'], ['autumn', 'Autumn']],
+  weather: [['any', 'Any'], ['clear', 'Clear'], ['overcast', 'Overcast'], ['dusk', 'Dusk'], ['fog', 'Fog'], ['rain', 'Rain / snowfall'], ['night', 'Night']],
+  hills: [['any', 'Any'], ['flat', 'Flat'], ['rolling', 'Rolling'], ['big', 'Big hills']],
+};
+const HILLS = { flat: [0, 0.9], rolling: [0.9, 1.25], big: [1.25, 9] };
+const gen = { theme: 'any', weather: 'any', hills: 'any' };
+try { Object.assign(gen, JSON.parse(localStorage.getItem('sideways.gen') || '{}')); } catch { /* ignore */ }
+// Canyon stages never get rain, so that pair can't be made.
+const genBlocked = (k, v) => (k === 'weather' && v === 'rain' && gen.theme === 'desert') || (k === 'theme' && v === 'desert' && gen.weather === 'rain');
+function renderGen() {
+  for (const k of Object.keys(GEN)) {
+    $('gen-' + k).innerHTML = GEN[k].map(([v, label]) => {
+      const off = genBlocked(k, v);
+      return `<button class="chip${gen[k] === v ? ' on' : ''}" role="radio" aria-checked="${gen[k] === v}" data-gen="${k}" data-v="${v}"${off ? ' disabled title="Canyon stages are always dry"' : ''}>${label}</button>`;
+    }).join('');
+  }
+}
+function genSeed() {
+  for (let n = 0; n < 20000; n++) {
+    const seed = 100000 + Math.floor(Math.random() * 900000);
+    const { theme, hilliness } = pickTheme(seed);
+    if (gen.theme !== 'any' && theme.id !== gen.theme) continue;
+    if (gen.hills !== 'any' && (hilliness < HILLS[gen.hills][0] || hilliness >= HILLS[gen.hills][1])) continue;
+    if (gen.weather !== 'any') {
+      const w = pickWeather(seed, theme).id;
+      if (!(w === gen.weather || (gen.weather === 'rain' && w === 'snowfall'))) continue;
+    }
+    return seed;
+  }
+  return null;
+}
+$('randomgen').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-gen]');
+  if (!c || c.disabled) return;
+  gen[c.dataset.gen] = c.dataset.v;
+  if (genBlocked('weather', gen.weather)) gen.weather = 'any';
+  try { localStorage.setItem('sideways.gen', JSON.stringify(gen)); } catch { /* ignore */ }
+  renderGen();
+});
+$('gen-go').addEventListener('click', () => {
+  const seed = genSeed();
+  if (seed == null) { toast('NO STAGE LIKE THAT: TRY ANOTHER MIX', 1600); return; }
+  $('randomgen').hidden = true;
+  pickThenStart('random', seed);
+});
+$('btn-random').addEventListener('click', () => { renderGen(); openPage('randomgen'); });
 $('btn-endurance').addEventListener('click', () => pickThenStart('endurance'));
 // Stage codes: every stage has a number; typing it in drives that same road.
 function kindOfCode(n) {
@@ -927,7 +976,7 @@ $('btn-next').addEventListener('click', (e) => { e.currentTarget.blur(); start('
 $('btn-share').addEventListener('click', (e) => { e.currentTarget.blur(); copyResult(); });
 $('btn-replay').addEventListener('click', (e) => { e.currentTarget.blur(); startReplay(); });
 $('btn-replay-exit').addEventListener('click', (e) => { e.currentTarget.blur(); stopReplay(); });
-$('btn-new').addEventListener('click', () => pickThenStart('random'));
+$('btn-new').addEventListener('click', () => pickThenStart('random', genSeed() ?? undefined));   // same choices as last time
 $('btn-fmenu').addEventListener('click', toMenu);
 // Change car mid-stage: pick in the garage, then the same stage restarts from the line.
 function changeCar() {
@@ -1837,7 +1886,7 @@ function openPage(id) {
 function hidePages() {
   clearPeek();
   if (!$('garage').hidden) markUnlocksSeen();     // NEW badges go once you've seen them
-  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics']) $(id).hidden = true;
+  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen']) $(id).hidden = true;
   preview.stop();
 }
 function closePages() {
