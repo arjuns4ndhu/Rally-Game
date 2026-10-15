@@ -414,7 +414,7 @@ export function buildLoftBody(def, { paint, glass, dark, accents, livery = def.l
   const rings = [...zs].sort((a, b) => a - b).map((z) => ({ z, pts: section(d, z, wells) }));
 
   // Triangles sorted by material.
-  const buckets = { paint: [], dark: [], glass: [], a1: [], a2: [], a3: [] };
+  const buckets = { paint: [], dark: [], glass: [], a1: [], a2: [], a3: [], trim: [] };
   const tri = (key, a, b, c, out) => {
     // Wind each triangle to face outwards (reference: away from the car's core).
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
@@ -448,10 +448,10 @@ export function buildLoftBody(def, { paint, glass, dark, accents, livery = def.l
         // Scuttle: where the cabin folds down into the bonnet just ahead of
         // the screen the surface is badly twisted, so it gets the black
         // plastic panel real cars have there.
-        if (key === 'paint' && s >= SEG.top0 && c > 0.02 && c <= 0.5 && zc > def.glass.screen[1] - 0.02 && zc < def.glass.screen[1] + 0.3) key = 'dark';
+        if (key === 'paint' && s >= SEG.top0 && c > 0.02 && c <= 0.5 && zc > def.glass.screen[1] - 0.02 && zc < def.glass.screen[1] + 0.3) key = 'trim';
         // A-pillars: the windscreen's side strip, in black window-surround trim
         // (in paint its twisted facets look torn).
-        if (key === 'paint' && s === SEG.top0 && c > 0.5 && inRange(zc, def.glass.screen)) key = 'dark';
+        if (key === 'paint' && s === SEG.top0 && c > 0.5 && inRange(zc, def.glass.screen)) key = 'trim';
         if (key === 'paint' && livery) {
           const acc = livery(part === 'rocker' ? 'side' : part, xc, yc, zc);
           if (acc) key = acc === 1 ? 'a1' : acc === 2 ? 'a2' : 'a3';
@@ -496,7 +496,9 @@ export function buildLoftBody(def, { paint, glass, dark, accents, livery = def.l
   // Skins can have fewer than three accent colours: fill the gaps so every
   // material slot holds a real material.
   const acc = [0, 1, 2].map((i) => accents[i] || accents[0] || paint);
-  const bodyMesh = make(['paint', 'dark', 'a1', 'a2', 'a3'], [paint, darkDS, ...acc]);
+  // Trim (A-pillars, scuttle) is one-sided black, so from the cockpit you
+  // see out through it instead of a black wall.
+  const bodyMesh = make(['paint', 'dark', 'a1', 'a2', 'a3', 'trim'], [paint, darkDS, ...acc, dark]);
   const glassMesh = make(['glass'], [glass]);
   bodyMesh.castShadow = glassMesh.castShadow = true;
   return { bodyMesh, glassMesh, curves: d, extraMats: [darkDS] };

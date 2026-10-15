@@ -1172,77 +1172,142 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
   if (!ghost) body.add(glow);
   let glowLevel = 0;
 
-  // Cockpit (only shown in the cockpit camera): dash, steering wheel, rev lights.
+  // Cockpit (only shown in the cockpit camera): a stripped rally interior
+  // built around the real windscreen opening: headlining, A-pillars, door
+  // cards with window sills, a roll cage, the dash with its gauge pod and
+  // shift lights, and a three-spoke wheel.
   const cockpit = new THREE.Group();
   cockpit.visible = false;
   // Everything is placed from the windscreen: its base (bz, by) where it
-  // meets the bonnet and its top (tz, ty) where it meets the roof. Lofted
-  // bodies take these from their own curves, so the dash sits right under
-  // the real screen and the driver's eye just below the real roof.
+  // meets the bonnet and its top (tz, ty) where it meets the roof.
   let seatX = -W * 0.2, dashZ = g[3][0] - 0.05, dashY = topY(g[3][0]) + bev + 0.02;
   let gw = W - (rnd ? 0.24 + rnd * 0.02 : 0.18);
   let [bz, by] = g[3], [tz, ty] = g[2];
+  // Body width, cabin width and waist height along the car.
+  let halfW = () => W / 2, cabW = () => gw / 2, beltAt = (z) => topY(z) + bev;
   if (loftC) {
     [tz, bz] = loftDef.glass.screen;
     by = loftC.top(bz); ty = loftC.top(tz);
-    gw = 2 * loftC.cabinWidth((bz + tz) / 2) - 0.08;
+    halfW = (z) => loftC.halfWidth(z);
+    cabW = (z) => Math.min(loftC.cabinWidth(z), loftC.halfWidth(z) - 0.06);
+    beltAt = (z) => loftC.belt(z);
+    gw = 2 * cabW((bz + tz) / 2) - 0.08;
     seatX = -gw * 0.22;
     dashZ = bz; dashY = by + 0.02;
   }
-  // A touch of self-light so the cabin reads as dark grey trim, not a black hole.
-  const dashMat = new THREE.MeshStandardMaterial({ color: 0x2a2c31, emissive: 0x16171b, roughness: 0.9 });
-  mats.push(dashMat);
-  // Lofted: the dash top sits a little under the screen base so the bonnet
-  // shows over it.
-  const dashTop = loftC ? dashY - 0.07 : dashY + 0.04;
-  const dash = new THREE.Mesh(new THREE.BoxGeometry(loftC ? gw : W - 0.3, 0.2, 0.45), dashMat);
-  dash.position.set(0, dashTop - 0.1, dashZ - 0.2);
-  cockpit.add(dash);
-  // Window frame seen from inside: A-pillars and a header rail. There's no
-  // headlining: like most racing games the view is opened up above the
-  // screen (the body's roof faces away from the eye, so it isn't drawn).
-  const pl = Math.hypot(tz - bz, ty - by);
-  for (const side of [-1, 1]) {
-    const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, pl), dashMat);
-    pillar.position.set(side * (gw / 2 - 0.05), (by + ty) / 2 - 0.02, (bz + tz) / 2);
-    pillar.rotation.x = Math.atan2(ty - by, bz - tz);
-    cockpit.add(pillar);
+  // Trim colours, with a little self-light so the cabin reads in shade.
+  const trimMat = (color, emissive, rough = 0.9) => { const m = new THREE.MeshStandardMaterial({ color, emissive, roughness: rough, flatShading: true }); mats.push(m); return m; };
+  const dashMat = trimMat(0x2e3036, 0x1b1c20);
+  const doorMat = trimMat(0x44474f, 0x2a2c31);
+  const liningMat = trimMat(0x6a6d74, 0x4a4c51);     // the headlining is lit from below
+  const cageMat = trimMat(0x9aa0a8, 0x3a3c40, 0.5);
+  const box = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); cockpit.add(m); return m; };
+  // A straight bar between two points (body space).
+  const bar = (a, b, r, mat) => {
+    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), len = A.distanceTo(B);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 8), mat);
+    m.position.copy(A).add(B).multiplyScalar(0.5);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());
+    cockpit.add(m);
+    return m;
+  };
+
+  // Driver's eye: just behind the top of the screen, a hand's width under
+  // the roof, kept inside the cabin (the tiny wedge cars have little room).
+  const eyeZ = loftC ? Math.max(tz - 0.36, loftDef.glass.side[0] + 0.3) : bz - 0.85;
+  const backZ = eyeZ - 0.75;                         // the cabin runs back past the seats
+  const sillY = beltAt(eyeZ) - 0.02;
+  const dashTop = loftC ? by - 0.06 : dashY + 0.04;
+  const seat = new THREE.Vector3(seatX, loftC ? Math.max(dashTop + 0.24, ty - 0.16) : Math.max(sillY + 0.2, ty - 0.08), eyeZ);
+
+  // Dash: a thin, shallow shelf under the screen, so you can see down past
+  // it into the footwell (pedals, column, firewall).
+  const floorY = loftC ? loftC.bottom(eyeZ) + 0.12 : sillY - 0.35;
+  const footMat = trimMat(0x3a3c42, 0x1e1f23);
+  const dashD = 0.36;
+  box(gw + 0.04, 0.07, dashD, dashMat, 0, dashTop - 0.035, bz - dashD / 2 + 0.02);
+  // Firewall at the front of the footwell, and the centre console under the dash.
+  box(gw, dashTop - floorY, 0.03, footMat, 0, (dashTop + floorY) / 2, bz - 0.02);
+  box(0.3, dashTop - floorY - 0.07, 0.3, dashMat, 0, (dashTop - 0.07 + floorY) / 2, bz - 0.17);
+  // Pedals hanging from under the dash: clutch, brake, throttle (driver's left to right).
+  const pedalMat = trimMat(0xb5b9c0, 0x3c3e42, 0.4);
+  const pedalY = floorY + 0.2, pedalZ = bz - 0.2;
+  for (const [k, dx] of [[0, 0.13], [1, 0.02], [2, -0.11]]) {
+    const pad = box(k === 2 ? 0.06 : 0.08, 0.11, 0.02, pedalMat, seatX + dx, pedalY, pedalZ);
+    pad.rotation.x = -0.35;
+    bar([seatX + dx, pedalY + 0.05, pedalZ + 0.02], [seatX + dx, dashTop - 0.08, bz - 0.12], 0.012, pedalMat);
   }
-  const header = new THREE.Mesh(new THREE.BoxGeometry(gw, 0.025, 0.05), dashMat);
-  header.position.set(0, ty - 0.005, tz + 0.01);
-  cockpit.add(header);
-  // Driver's eye: just behind the top of the screen, kept inside the cabin
-  // (the tiny wedge cars have very little room behind it).
-  const eyeZ = loftC ? Math.max(tz - 0.4, loftDef.glass.side[0] + 0.3) : bz - 0.85;
-  // Interior tub over the body top between the seat and the dash.
-  const sillY = loftC ? loftC.belt(eyeZ) - 0.02 : Math.max(topY(eyeZ), topY(bz)) + bev + 0.01;
-  const tub = new THREE.Mesh(new THREE.BoxGeometry(gw + 0.04, 0.02, bz - eyeZ + 0.9), dashMat);
-  tub.position.set(0, sillY, (bz + eyeZ - 0.9) / 2);
-  cockpit.add(tub);
-  const seat = new THREE.Vector3(seatX, loftC ? Math.max(dashTop + 0.2, ty - 0.11) : Math.max(sillY + 0.2, ty - 0.08), eyeZ);
-  // Steering wheel low in front of the driver: only the top of the rim shows.
-  const wheelGrp = new THREE.Group();
-  wheelGrp.position.set(seatX, loftC ? seat.y - 0.32 : dashY - 0.02, loftC ? Math.min(eyeZ + 0.5, dashZ - 0.45) : dashZ - 0.4);
-  wheelGrp.rotation.x = -0.45;
-  const wheelRimMat = new THREE.MeshStandardMaterial({ color: 0x1c1d21, emissive: 0x0e0f12, roughness: 0.7 });
-  mats.push(wheelRimMat);
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 8, 24), wheelRimMat);
-  const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.035, 0.02), wheelRimMat);
-  const mark = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 0.03), new THREE.MeshBasicMaterial({ color: 0xffb000 }));
-  mark.position.y = 0.17;
-  const wheelSpin = new THREE.Group();
-  wheelSpin.add(rim, spoke, mark);
-  wheelGrp.add(wheelSpin);
-  cockpit.add(wheelGrp);
-  // Shift lights along the back edge of the dash.
+  // Gauge pod on the back edge of the dash, in front of the driver.
+  const podZ = bz - dashD + 0.07, podY = dashTop + 0.05;
+  box(0.36, 0.1, 0.16, dashMat, seatX, podY, podZ + 0.04);
+  const dialRing = new THREE.MeshBasicMaterial({ color: 0xd8d4c8 }), dialFace = new THREE.MeshBasicMaterial({ color: 0x15161a });
+  for (const dx of [-0.085, 0.085]) {
+    const ring = new THREE.Mesh(new THREE.CircleGeometry(0.048, 18), dialRing);
+    ring.position.set(seatX + dx, podY, podZ - 0.041); ring.rotation.y = Math.PI; cockpit.add(ring);
+    const face = new THREE.Mesh(new THREE.CircleGeometry(0.04, 18), dialFace);
+    face.position.set(seatX + dx, podY, podZ - 0.042); face.rotation.y = Math.PI; cockpit.add(face);
+  }
   const revLights = [];
   for (let i = 0; i < 10; i++) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.018, 0.01), new THREE.MeshBasicMaterial({ color: 0x222222 }));
-    m.position.set(seatX - 0.16 + i * 0.036, dashTop + 0.01, dashZ - 0.43);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.014, 0.01), new THREE.MeshBasicMaterial({ color: 0x222222 }));
+    m.position.set(seatX - 0.15 + i * 0.033, podY + 0.062, podZ - 0.03);
     m.userData.on = i < 6 ? 0x3ddc84 : i < 8 ? 0xffb000 : 0xff3b30;
     revLights.push(m);
     cockpit.add(m);
   }
+  // Floor and centre tunnel.
+  box(gw + 0.1, 0.02, bz - backZ, footMat, 0, floorY, (bz + backZ) / 2);
+  box(0.22, 0.16, bz - backZ - 0.3, dashMat, 0, floorY + 0.08, (bz + backZ) / 2 - 0.1);
+
+  // Door cards up to the window sill on each side, with a sill rail on top.
+  for (const side of [-1, 1]) {
+    const zc = (bz + backZ) / 2, len = bz - backZ;
+    const x = side * (Math.min(halfW(zc) - 0.09, cabW(zc) + 0.04));
+    const top = beltAt(zc) - 0.01;
+    box(0.04, top - floorY, len, doorMat, x, (top + floorY) / 2, zc);
+    box(0.07, 0.03, len, dashMat, x - side * 0.015, top + 0.01, zc);
+  }
+  // A-pillars along the edges of the screen, the header rail across its top
+  // and the headlining over the cabin.
+  const aBase = [cabW(bz) - 0.04, by - 0.02, bz - 0.02], aTop = [cabW(tz) * 0.8, ty - 0.04, tz + 0.02];
+  for (const side of [-1, 1]) bar([side * aBase[0], aBase[1], aBase[2]], [side * aTop[0], aTop[1], aTop[2]], 0.035, dashMat);
+  box(2 * aTop[0] + 0.06, 0.05, 0.08, dashMat, 0, ty - 0.035, tz - 0.01);
+  const liningW = 2 * cabW((tz + backZ) / 2) * 0.82;
+  box(liningW, 0.02, tz - backZ, liningMat, 0, Math.max(ty - 0.02, seat.y + 0.1), (tz + backZ) / 2);
+
+  // Roll cage: bars inside the A-pillars, across under the header, along
+  // the roof edges and a diagonal door bar on each side.
+  const cr = 0.022, inset = 0.07;
+  const cA0 = [aBase[0] - inset, aBase[1] - 0.04, aBase[2] - 0.06], cA1 = [aTop[0] - inset, aTop[1] - 0.05, aTop[2] - 0.05];
+  for (const side of [-1, 1]) {
+    bar([side * cA0[0], cA0[1], cA0[2]], [side * cA1[0], cA1[1], cA1[2]], cr, cageMat);
+    bar([side * cA1[0], cA1[1], cA1[2]], [side * cA1[0], cA1[1], backZ + 0.1], cr, cageMat);
+    const dx = side * (Math.min(halfW(eyeZ) - 0.14, cabW(eyeZ) - 0.01));
+    bar([dx, floorY + 0.12, cA0[2] - 0.05], [dx, sillY + 0.06, eyeZ - 0.15], cr, cageMat);
+  }
+  bar([-cA1[0], cA1[1], cA1[2]], [cA1[0], cA1[1], cA1[2]], cr, cageMat);
+
+  // Three-spoke wheel low in front of the driver: the top half shows.
+  const wheelGrp = new THREE.Group();
+  wheelGrp.position.set(seatX, seat.y - 0.3, Math.min(eyeZ + 0.46, podZ - 0.1));
+  wheelGrp.rotation.x = -0.5;
+  const wheelRimMat = trimMat(0x1c1d21, 0x0c0d10, 0.7);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.022, 8, 28), wheelRimMat);
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.04, 12), wheelRimMat);
+  hub.rotation.x = Math.PI / 2;
+  const wheelSpin = new THREE.Group();
+  wheelSpin.add(rim, hub);
+  for (const a of [0, Math.PI, -Math.PI / 2]) {
+    const sp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.015), wheelRimMat);
+    sp.position.set(Math.cos(a) * 0.09, Math.sin(a) * 0.09, 0); sp.rotation.z = a;
+    wheelSpin.add(sp);
+  }
+  const mark = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.02, 0.048), new THREE.MeshBasicMaterial({ color: 0xffb000 }));
+  mark.position.y = 0.18;
+  wheelSpin.add(mark);
+  wheelGrp.add(wheelSpin);
+  cockpit.add(wheelGrp);
+  bar([seatX, wheelGrp.position.y - 0.02, wheelGrp.position.z + 0.03], [seatX, dashTop - 0.06, bz - dashD + 0.05], 0.03, wheelRimMat);
   body.add(cockpit);
   // Things bolted on above the screen (roof scoops, racks, lamp pods, a man
   // in an armchair) would hang in the sky from inside: hide them in the
