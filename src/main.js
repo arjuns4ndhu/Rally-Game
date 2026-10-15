@@ -628,6 +628,7 @@ function refreshStageHud() {
   const timed = stage.kind !== 'practice';
   $('hud-stage').textContent = stageLabel();
   $('pause-code').textContent = stage.kind === 'practice' ? '' : `Stage code ${stage.seed}`;
+  $('btn-pcopy').hidden = stage.kind === 'practice';
   $('hud-timing').hidden = !timed;
   $('hud-best').textContent = fmt(best?.time) + (ghostModel ? ' · GHOST' : '');
   [...$('hud-sectors').children].forEach((el, k) => {
@@ -803,20 +804,41 @@ function shareText(r) {
     `${squares} · ${r.car}`,
   ].join('\n');
 }
-async function copyResult() {
-  if (!lastResult) return;
-  const text = shareText(lastResult);
+// Copy text, falling back to the old textarea trick where the clipboard
+// API is blocked (some embedded frames). Flashes "Copied!" on the button.
+async function copyText(text, btn) {
   try { await navigator.clipboard.writeText(text); }
   catch {
     const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
+    ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
     try { document.execCommand('copy'); } catch { /* ignore */ }
     ta.remove();
   }
-  const b = $('btn-share');
-  b.textContent = 'Copied!';
-  setTimeout(() => { b.textContent = 'Copy result'; }, 1400);
+  if (btn) {
+    const was = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = was; }, 1400);
+  }
 }
+function copyResult() { if (lastResult) copyText(shareText(lastResult), $('btn-share')); }
+const copyCode = (btn) => { if (stage.kind !== 'practice') { copyText(String(stage.seed), btn); toast(`STAGE CODE ${stage.seed} COPIED`, 1400); } };
+$('btn-pcopy').addEventListener('click', (e) => { e.currentTarget.blur(); copyCode(e.currentTarget); });
+$('btn-fcopy').addEventListener('click', (e) => { e.currentTarget.blur(); copyCode(e.currentTarget); });
+// Pasting: keep only the digits (so "Stage code 274801" pastes fine).
+$('code-in').addEventListener('input', (e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 9); if (v !== e.target.value) e.target.value = v; });
+$('btn-paste').addEventListener('click', async () => {
+  try {
+    const t = await navigator.clipboard.readText();
+    const v = (t || '').replace(/\D/g, '').slice(0, 9);
+    if (!v) { toast('NO STAGE CODE ON THE CLIPBOARD', 1400); return; }
+    $('code-in').value = v;
+  } catch {
+    // Reading the clipboard can be blocked: let them paste by hand.
+    $('code-in').focus();
+    toast('PASTE THE CODE INTO THE BOX', 1600);
+  }
+});
 
 // ---------- Shared leaderboard (claude.ai only) ----------
 function localBests() {

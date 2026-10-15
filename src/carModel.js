@@ -1289,25 +1289,30 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
 
   // Three-spoke wheel low in front of the driver: the top half shows.
   const wheelGrp = new THREE.Group();
-  wheelGrp.position.set(seatX, seat.y - 0.3, Math.min(eyeZ + 0.46, podZ - 0.1));
-  wheelGrp.rotation.x = -0.5;
+  wheelGrp.position.set(seatX, seat.y - 0.33, Math.min(eyeZ + 0.48, podZ - 0.08));
+  // Raked like a real wheel: the face looks up at the driver, the column
+  // runs forward and down into the dash.
+  wheelGrp.rotation.x = 0.45;
   const wheelRimMat = trimMat(0x1c1d21, 0x0c0d10, 0.7);
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.022, 8, 28), wheelRimMat);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.021, 8, 28), wheelRimMat);
   const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.04, 12), wheelRimMat);
   hub.rotation.x = Math.PI / 2;
   const wheelSpin = new THREE.Group();
   wheelSpin.add(rim, hub);
   for (const a of [0, Math.PI, -Math.PI / 2]) {
-    const sp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.015), wheelRimMat);
-    sp.position.set(Math.cos(a) * 0.09, Math.sin(a) * 0.09, 0); sp.rotation.z = a;
+    const sp = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.026, 0.014), wheelRimMat);
+    sp.position.set(Math.cos(a) * 0.105, Math.sin(a) * 0.105, 0); sp.rotation.z = a;
     wheelSpin.add(sp);
   }
   const mark = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.02, 0.048), new THREE.MeshBasicMaterial({ color: 0xffb000 }));
-  mark.position.y = 0.18;
+  mark.position.y = 0.17;
   wheelSpin.add(mark);
   wheelGrp.add(wheelSpin);
   cockpit.add(wheelGrp);
-  bar([seatX, wheelGrp.position.y - 0.02, wheelGrp.position.z + 0.03], [seatX, dashTop - 0.06, bz - dashD + 0.05], 0.03, wheelRimMat);
+  // Column straight out behind the hub, along the wheel's own axis.
+  const column = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.32, 10), wheelRimMat);
+  column.rotation.x = Math.PI / 2; column.position.z = 0.17;
+  wheelGrp.add(column);
   body.add(cockpit);
   // Things bolted on above the screen (roof scoops, racks, lamp pods, a man
   // in an armchair) would hang in the sky from inside: hide them in the
@@ -1446,7 +1451,8 @@ export function buildCarModel(spec, { color = '#e8542a', wheelStyle = 'spoke', n
       brakeHeat = Math.max(0, Math.min(1, brakeHeat + ((car.brake || 0) * Math.min(1, car.speed / 25) * 0.9 - 0.18) * dt));
       discMat.emissiveIntensity = brakeHeat * brakeHeat * 3;
       if (cockpit.visible) {
-        wheelSpin.rotation.z = -(car.steer || 0) * 4;
+        // Follows the driver's hands: about a quarter turn each way at full lock.
+        wheelSpin.rotation.z = -(car.steerInput ?? car.steer ?? 0) * 1.6;
         const lit = Math.round(Math.max(0, Math.min(1, (car.rpm - car.spec.idleRpm) / (car.spec.redline - car.spec.idleRpm))) * 10);
         revLights.forEach((m, i) => m.material.color.setHex(i < lit ? m.userData.on : 0x222222));
       }

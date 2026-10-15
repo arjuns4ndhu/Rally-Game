@@ -114,7 +114,8 @@
         <button id="btn-stats" class="btn btn-sm">Stats</button>
       </div>
       <form id="code-form" class="code-form" autocomplete="off">
-        <input id="code-in" inputmode="numeric" maxlength="10" placeholder="Stage code" aria-label="Stage code">
+        <input id="code-in" inputmode="numeric" placeholder="Stage code" aria-label="Stage code">
+        <button class="btn btn-sm" type="button" id="btn-paste" title="Paste a stage code">Paste</button>
         <button class="btn btn-sm" type="submit">Drive</button>
       </form>
     </div>
@@ -216,7 +217,7 @@
   <div class="pause-card">
     <div class="pause-actions">
       <h2 class="logo">PAUSED</h2>
-      <div class="eyebrow" id="pause-code"></div>
+      <div class="code-line"><div class="eyebrow" id="pause-code"></div><button class="btn btn-sm" id="btn-pcopy">Copy code</button></div>
       <button id="btn-resume" class="btn btn-primary">Resume <small class="key">Esc</small></button>
       <button id="btn-reset" class="btn">Back to checkpoint <small class="key">T</small></button>
       <button id="btn-restart" class="btn">Restart stage <small class="key">R</small></button>
@@ -311,6 +312,7 @@
       <div class="fin-secondary">
         <button id="btn-replay" class="btn btn-sm">Watch replay</button>
         <button id="btn-share" class="btn btn-sm">Copy result</button>
+        <button id="btn-fcopy" class="btn btn-sm">Copy code</button>
       </div>
       <div class="fin-tertiary">
         <button id="btn-new" class="btn btn-sm">Random stage</button>
