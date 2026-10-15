@@ -78,6 +78,8 @@
     <button class="tc-btn tc-steer" data-ctl="left" aria-label="Steer left"><svg class="tc-arrow" viewBox="0 0 48 48" aria-hidden="true"><path d="M30 9 L14 24 L30 39"/></svg></button>
     <button class="tc-btn tc-steer" data-ctl="right" aria-label="Steer right"><svg class="tc-arrow" viewBox="0 0 48 48" aria-hidden="true"><path d="M18 9 L34 24 L18 39"/></svg></button>
   </div>
+  <div class="tc-drag" id="tc-drag" hidden><i class="tc-knob" id="tc-knob"></i><span>Slide to steer</span></div>
+  <div class="tc-tilt" id="tc-tilt" hidden>Tilt to steer</div>
   <div class="tc-right">
     <button class="tc-btn tc-small" data-ctl="handbrake" aria-label="Handbrake">HB</button>
     <button class="tc-btn tc-brake" data-ctl="brake" aria-label="Brake">BRAKE</button>
@@ -167,6 +169,18 @@
   </div>
 </div>
 
+<!-- First visit -->
+<div id="welcome" class="overlay page" hidden>
+  <div class="title-card small welcome-card">
+    <div class="eyebrow">Welcome to</div>
+    <h1 class="logo">SIDE<span>WAYS</span></h1>
+    <p class="lede">A new gravel stage every day. First time? Two minutes in the driving school teaches you to drift.</p>
+    <button class="btn btn-primary" id="wel-school">Learn to drift<small>Driving school, nine quick steps</small></button>
+    <button class="btn" id="wel-daily">Just drive<small>Straight into today's stage</small></button>
+    <button class="btn btn-sm" id="wel-skip" data-back>Show me the menu</button>
+  </div>
+</div>
+
 <!-- Random stage setup -->
 <div id="randomgen" class="overlay page" hidden>
   <div class="panel narrow">
@@ -242,6 +256,13 @@
       </select>
     </label>
         <label class="check"><input type="checkbox" id="opt-ghost" checked> Ghost car (your best run)</label>
+        <div class="check select touch-only">Steering
+          <div class="chips" id="opt-steer" role="radiogroup" aria-label="Phone steering">
+            <button class="chip" role="radio" data-steer="buttons">Buttons</button>
+            <button class="chip" role="radio" data-steer="tilt">Tilt</button>
+            <button class="chip" role="radio" data-steer="drag">Drag</button>
+          </div>
+        </div>
       </details>
       <details class="set-group">
         <summary>Display</summary>
@@ -283,6 +304,7 @@
         <summary>Controls</summary>
         <div class="keybinds">
       <p class="hint">Click an action, then press its new key.</p>
+      <p class="hint pad-help">Controller: left stick steer · RT throttle · LT brake · A/X handbrake · Y camera · RB back to checkpoint · LB line assist · Back restart · Start pause.</p>
       <div id="keybinds"></div>
       <button class="btn btn-sm" id="keys-reset">Default keys</button>
     </div>

@@ -255,6 +255,13 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
     // Lying roughly flat: any heading, only a slight tilt.
     q.setFromEuler(new THREE.Euler((rand() - 0.5) * 0.5, rand() * Math.PI * 2, (rand() - 0.5) * 0.5, 'YXZ'));
     s.set(sc * (1 + rand()), sc * 0.7, sc * (1 + rand()));
+    // The spot was only checked for a small rock: shrink big ones that would
+    // reach into the road (a boulder used to sit across a hairpin).
+    const nr = terrain.nearestRoad(x, z);
+    if (nr) {
+      const room = nr.d - road.width / 2 - 0.8, reach = Math.max(s.x, s.z);
+      if (reach > room) s.multiplyScalar(Math.max(0.2, room / reach));
+    }
     p.set(x, baseY(x, z, 0.8 * sc) + sc * 0.15, z);
     const color = new THREE.Color().setHSL(rh, rs + rand() * 0.1, rl - 0.08 + rand() * 0.2);
     const m = new THREE.Matrix4().compose(p, q, s);

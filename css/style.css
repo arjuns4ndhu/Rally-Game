@@ -738,3 +738,34 @@ body.touch .pn-dist { font-size: 10px; padding: 1px 4px; }
 /* Stage code with its copy button (pause menu) */
 .code-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .code-line .btn-sm { min-height: 30px; padding: 4px 10px; }
+
+/* Phone steering: drag pad and tilt hint */
+body:not(.touch) .touch-only { display: none; }
+.check.select.touch-only { flex-wrap: wrap; gap: 8px; }
+.tc-drag {
+  position: absolute; left: calc(12px + var(--safe-l)); bottom: calc(12px + var(--safe-b));
+  width: min(42vw, 360px); height: 120px; pointer-events: auto; touch-action: none;
+  border: 2px dashed rgba(241,233,218,0.25); border-radius: 18px; background: rgba(11,13,18,0.18);
+  display: grid; place-items: center;
+}
+.tc-drag span { font-family: var(--font-ui); font-weight: 700; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(241,233,218,0.45); pointer-events: none; }
+.tc-knob {
+  position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; border-radius: 50%;
+  transform: translate(-50%, -50%); background: rgba(255,176,0,0.25); border: 2px solid rgba(255,176,0,0.6); opacity: 0; pointer-events: none;
+}
+.tc-knob.on { opacity: 1; }
+.tc-tilt {
+  position: absolute; left: calc(18px + var(--safe-l)); bottom: calc(22px + var(--safe-b));
+  font-family: var(--font-ui); font-weight: 700; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid var(--accent); border-radius: 14px; padding: 6px 12px; background: rgba(11,13,18,0.4);
+}
+body[data-steer="tilt"] .tc-left, body[data-steer="drag"] .tc-left { display: none; }
+/* Controller: make the focused button obvious */
+body.pad .btn:focus, body.pad .chip:focus, body.pad .car-pick:focus, body.pad summary:focus, body.pad .swatch:focus { outline: 3px solid var(--accent); outline-offset: 2px; }
+body:not(.pad) .pad-help { display: none; }
+
+/* First-visit welcome */
+.welcome-card { width: min(420px, 100%); gap: 12px; }
+.welcome-card .logo { font-size: clamp(40px, 9vh, 64px); }
+.welcome-card .btn-sm { align-self: center; }
+@media (max-height: 500px) { .welcome-card .lede { display: none; } }

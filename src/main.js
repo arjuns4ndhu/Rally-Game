@@ -95,14 +95,39 @@ const QUALITY = {
   high: { ratio: 1.75, shadows: 2048, detail: 1 },
   medium: { ratio: 1.25, shadows: 1024, detail: 0.7 },
   low: { ratio: 1, shadows: 0, detail: 0.45 },
+  lowest: { ratio: 0.75, shadows: 0, detail: 0.3 },     // only reached by Auto on very slow devices
 };
+const AUTO_STEPS = ['high', 'medium', 'low', 'lowest'];
 let quality = 'auto';
 try { quality = localStorage.getItem('sideways.quality') || 'auto'; } catch { /* ignore */ }
+// What Auto has learned this device can manage (kept for next time).
+let autoLevel = null;
+try { autoLevel = AUTO_STEPS.includes(localStorage.getItem('sideways.autoq')) ? localStorage.getItem('sideways.autoq') : null; } catch { /* ignore */ }
 function qualityLevel() {
   if (quality !== 'auto') return quality;
+  if (autoLevel) return autoLevel;
   const touch = matchMedia('(pointer: coarse)').matches;
   if (!touch) return 'high';
   return (navigator.hardwareConcurrency || 4) <= 4 ? 'low' : 'medium';
+}
+// Auto mode watches the frame rate while racing and steps the graphics
+// down when it stays low (scenery detail follows on the next stage).
+const perf = { time: 0, frames: 0, grace: 3 };
+function watchFrameRate(rawDt) {
+  if (quality !== 'auto' || rawDt > 1) return;         // the tab was hidden (frames stop, then one huge gap)
+  if (perf.grace > 0) { perf.grace -= rawDt; return; }  // stage just loaded
+  perf.time += rawDt; perf.frames++;
+  if (perf.time < 4) return;
+  const fps = perf.frames / perf.time;
+  perf.time = 0; perf.frames = 0;
+  if (fps >= 40) return;
+  const i = AUTO_STEPS.indexOf(qualityLevel());
+  if (i < 0 || i >= AUTO_STEPS.length - 1) return;
+  autoLevel = AUTO_STEPS[i + 1];
+  try { localStorage.setItem('sideways.autoq', autoLevel); } catch { /* ignore */ }
+  applyQuality(); resize();
+  perf.grace = 2;                                       // let it settle before judging again
+  toast(`RUNNING SLOW: GRAPHICS ${autoLevel.toUpperCase()}`, 1600);
 }
 function applyQuality() {
   const q = QUALITY[qualityLevel()];
@@ -113,6 +138,8 @@ function applyQuality() {
     world.sun.shadow.map?.dispose(); world.sun.shadow.map = null;
   }
   precip.density = q.detail;
+  const autoOpt = document.querySelector('#opt-quality option[value="auto"]');
+  if (autoOpt) autoOpt.textContent = `Auto (${qualityLevel()[0].toUpperCase()}${qualityLevel().slice(1)})`;
 }
 rig.drone = drone;
 rig.groundAt = (x, z) => worldGround(x, z);
@@ -174,6 +201,7 @@ function loadStage(kind, seed = 0) {
   if (wt) weather = WEATHER[wt.id === 'rain' && theme.id === 'snow' ? 'snowfall' : wt.id === 'rain' && theme.id === 'desert' ? 'night' : wt.id];
   if (window.__sideways?.forceWeather) weather = WEATHER[window.__sideways.forceWeather];
   stage.weather = weather;
+  audio.setStage(theme.id, weather.wet);
   world.applyTheme(weatherTheme(theme, weather));
   precip.set(weather.id === 'snowfall' ? 'snow' : null);
   rain.set(weather.id === 'rain', precip.density ?? 1);
@@ -730,6 +758,7 @@ $('dbg-reset').addEventListener('click', (e) => { resetTuning(); e.currentTarget
 let running = false, paused = false;
 
 function start(kind = 'daily', seed) {
+  perf.grace = 3; perf.time = 0; perf.frames = 0;
   // Sound must never stop the stage from starting.
   try { audio.init(); audio.music(musicOn); } catch (err) { console.warn('audio', err); }
   if (schoolNext && kind === 'practice') school.start(); else school.stop();
@@ -1138,6 +1167,8 @@ $('opt-map').addEventListener('change', (e) => setMap(e.target.checked));
 $('opt-quality').value = quality;
 $('opt-quality').addEventListener('change', (e) => {
   quality = e.target.value;
+  // Picking Auto again starts it fresh from this device's best guess.
+  if (quality === 'auto') { autoLevel = null; try { localStorage.removeItem('sideways.autoq'); } catch { /* ignore */ } }
   try { localStorage.setItem('sideways.quality', quality); } catch { /* ignore */ }
   applyQuality();
   resize();
@@ -1198,7 +1229,7 @@ input.on('action', (act) => {
 // or replay. It is worked out from which screens are showing, so it can't
 // drift from them, and the CSS uses it to decide what else shows (touch
 // pedals only while driving, the HUD hidden under the finish card, ...).
-const PAGES = ['garage', 'past', 'champ', 'statsview', 'classics'];
+const PAGES = ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome'];
 function syncUI() {
   const open = (id) => !$(id).hidden;
   document.body.dataset.ui = open('loading') ? 'loading' : open('hud-replay') ? 'replay' : open('pause') ? 'pause'
@@ -1231,6 +1262,87 @@ if (isTouch) {
   $('touch').hidden = false;
   input.bindTouch($('touch'));
 }
+
+// Phone steering: on-screen buttons, tilting the phone, or a thumb pad.
+input.bindDrag($('tc-drag'), $('tc-knob'));
+async function setSteerMode(mode, fromTap = false) {
+  const ok = await input.setSteerMode(mode);
+  if (!ok) { if (fromTap) toast('TILT NEEDS MOTION ACCESS', 1600); mode = 'buttons'; await input.setSteerMode(mode); }
+  document.body.dataset.steer = mode;
+  $('tc-drag').hidden = mode !== 'drag';
+  $('tc-tilt').hidden = mode !== 'tilt';
+  document.querySelectorAll('#opt-steer [data-steer]').forEach((b) => { const on = b.dataset.steer === mode; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+  try { localStorage.setItem('sideways.steer', mode); } catch { /* ignore */ }
+  return ok;
+}
+$('opt-steer').addEventListener('click', (e) => { const b = e.target.closest('[data-steer]'); if (b) setSteerMode(b.dataset.steer, true); });
+{
+  let saved = 'buttons';
+  try { saved = localStorage.getItem('sideways.steer') || 'buttons'; } catch { /* ignore */ }
+  setSteerMode(saved).then((ok) => {
+    // Tilt on iPhone needs a tap to ask for motion access: try again on the first one.
+    if (!ok && saved === 'tilt') window.addEventListener('pointerup', () => setSteerMode('tilt'), { once: true });
+  });
+}
+
+// Game controller: drive with it, and move around the menus with the
+// D-pad/stick (A picks, B goes back).
+input.on('padconnect', () => { document.body.classList.add('pad'); toast('CONTROLLER CONNECTED', 1400); });
+input.on('paddisconnect', () => toast('CONTROLLER DISCONNECTED', 1400));
+const MENU_LAYERS = ['loading', 'pause', 'finish', 'garage', 'welcome', 'randomgen', 'classics', 'past', 'champ', 'statsview', 'start'];
+function menuLayer() { return MENU_LAYERS.map($).find((el) => el && !el.hidden) || null; }
+function focusables(root) {
+  return [...root.querySelectorAll('button, input, select, summary, [tabindex="0"]')]
+    .filter((el) => !el.disabled && el.offsetParent !== null && el.getClientRects().length);
+}
+// Move focus to the nearest control in that direction.
+function padMove(dir) {
+  const root = menuLayer();
+  if (!root) return;
+  const list = focusables(root);
+  if (!list.length) return;
+  const cur = list.includes(document.activeElement) ? document.activeElement : null;
+  if (!cur) { list[0].focus(); return; }
+  const a = cur.getBoundingClientRect(), ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+  let best = null, bestScore = Infinity;
+  for (const el of list) {
+    if (el === cur) continue;
+    const b = el.getBoundingClientRect(), dx = b.left + b.width / 2 - ax, dy = b.top + b.height / 2 - ay;
+    const along = dir === 'up' ? -dy : dir === 'down' ? dy : dir === 'left' ? -dx : dx;
+    const across = dir === 'up' || dir === 'down' ? Math.abs(dx) : Math.abs(dy);
+    if (along <= 4) continue;
+    const score = along + across * 2.2;
+    if (score < bestScore) { bestScore = score; best = el; }
+  }
+  if (best) { best.focus(); best.scrollIntoView?.({ block: 'nearest' }); }
+}
+input.on('pad', (name) => {
+  document.body.classList.add('pad');
+  const racing = running && !paused && !replay.on && $('finish').hidden;
+  if (replay.on) { if (name === 'b' || name === 'start') stopReplay(); return; }
+  if (racing) {
+    if (name === 'start') setPaused(true);
+    else if (name === 'y') { toast(rig.cycle().toUpperCase() + ' CAM', 800); school.note('camera'); }
+    else if (name === 'back') restartKey();
+    else if (name === 'rb') resetCar();
+    else if (name === 'lb') { setAssist(!assist.on); toast(assist.on ? `LINE ASSIST ${assist.level.toUpperCase()}` : 'LINE ASSIST OFF', 1000); }
+    return;
+  }
+  // Menus, pause, finish, garage and pages.
+  if (['up', 'down', 'left', 'right'].includes(name)) { padMove(name); return; }
+  if (name === 'a') {
+    const el = document.activeElement;
+    if (el && el !== document.body && menuLayer()?.contains(el)) el.click();
+    else focusables(menuLayer() || document.body)[0]?.focus();
+    return;
+  }
+  if (name === 'start' && paused) { setPaused(false); return; }
+  if (name === 'b') {
+    if (paused) { setPaused(false); return; }
+    const back = menuLayer()?.querySelector('[data-back]');
+    if (back && !back.hidden) back.click();
+  }
+});
 
 // ---------- Resize ----------
 const retro = new RetroPass();
@@ -1847,6 +1959,8 @@ function frame(now) {
   if (dt > 0.1) dt = 0.1;
 
   const active = running && !paused && !replay.on;
+  if (active) watchFrameRate((now - (frame.prev ?? now)) / 1000);
+  frame.prev = now;
   if (running && !paused && replay.on) updateReplay(dt);
   if (active) {
     acc += dt;
@@ -1858,7 +1972,11 @@ function frame(now) {
     }
     const ev = school.update(dt, car, lastInp);
     if (ev === 'step') audio.beep(988, 0.12);
-    if (ev === 'done') audio.fanfare(true);
+    if (ev === 'done') {
+      audio.fanfare(true);
+      // Straight on to a real stage while it's fresh.
+      setTimeout(() => { if (running && stage.kind === 'practice') banner('DRIVING SCHOOL DONE!', "Today's stage ▶", () => pickThenStart('daily')); }, 2200);
+    }
     emitDust(dt);
     layMarks();
     marks.flush();
@@ -1908,7 +2026,7 @@ function openPage(id) {
 function hidePages() {
   clearPeek();
   if (!$('garage').hidden) markUnlocksSeen();     // NEW badges go once you've seen them
-  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen']) $(id).hidden = true;
+  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome']) $(id).hidden = true;
   preview.stop();
 }
 function closePages() {
@@ -2188,3 +2306,13 @@ window.__sideways = {
 };
 // After everything above is set up: mark the Garage button if there's something new.
 refreshGarageDot();
+// First visit: a simple welcome instead of the full menu.
+{
+  let welcomed = false;
+  try { welcomed = localStorage.getItem('sideways.welcomed') === '1'; } catch { /* ignore */ }
+  const markWelcomed = () => { try { localStorage.setItem('sideways.welcomed', '1'); } catch { /* ignore */ } };
+  if (!welcomed && !(stats.d.runs > 0)) openPage('welcome');
+  $('wel-school').addEventListener('click', () => { markWelcomed(); $('welcome').hidden = true; $('btn-school').click(); });
+  $('wel-daily').addEventListener('click', () => { markWelcomed(); $('welcome').hidden = true; $('btn-daily').click(); });
+  $('wel-skip').addEventListener('click', markWelcomed);
+}

@@ -1,4 +1,6 @@
-// Keyboard + touch input, merged into one analog-ish control state.
+// Keyboard, touch, game controller and phone tilt, merged into one control
+// state. Steering, throttle and brake are analogue (0..1, steer -1..1) when
+// the device gives analogue values; keys and buttons give full values.
 
 // Each driving action has one key the player can rebind, plus the arrow keys
 // as fixed spares.
@@ -51,6 +53,104 @@ export class Input {
     });
     window.addEventListener('keyup', (e) => this.down.delete(e.code));
     window.addEventListener('blur', () => this.down.clear());
+
+    // ---- Game controller (standard mapping) ----
+    this.pad = null;                    // { steer, throttle, brake, handbrake } while one is in use
+    this._padPrev = [];
+    this._padAxisPrev = { x: 0, y: 0 };
+    window.addEventListener('gamepadconnected', (e) => this.emit('padconnect', e.gamepad.id));
+    window.addEventListener('gamepaddisconnected', () => { this.pad = null; this.emit('paddisconnect'); });
+    const poll = () => { this.pollPad(); requestAnimationFrame(poll); };
+    requestAnimationFrame(poll);
+
+    // ---- Phone steering: 'buttons', 'tilt' or 'drag' ----
+    this.steerMode = 'buttons';
+    this.tiltSteer = 0;                  // -1..1 from the phone's tilt
+    this.dragSteer = 0;                  // -1..1 from a thumb on the drag pad
+    this._onMotion = (e) => {
+      const g = e.accelerationIncludingGravity;
+      if (!g || g.x == null) return;
+      // Held sideways, turning the phone like a wheel moves gravity along
+      // its long (y) axis. Which way round depends on the landscape side.
+      const ang = (screen.orientation?.angle ?? window.orientation ?? 90) % 360;
+      const along = ang === 90 ? g.y : ang === 270 || ang === -90 ? -g.y : g.x;
+      const deg = Math.asin(Math.max(-1, Math.min(1, along / 9.81))) * 180 / Math.PI;
+      const dead = 2, full = 24;
+      const k = Math.max(0, Math.abs(deg) - dead) / (full - dead);
+      // iOS reports gravity the other way round from Android.
+      const sign = /iPhone|iPad|iPod/.test(navigator.userAgent) ? -1 : 1;
+      this.tiltSteer = Math.max(-1, Math.min(1, Math.sign(deg) * k)) * -sign;
+    };
+  }
+
+  // Tilt needs permission on iPhone, asked from the tap that picks it.
+  async setSteerMode(mode) {
+    if (mode === 'tilt') {
+      try {
+        const DM = window.DeviceMotionEvent;
+        if (DM?.requestPermission && (await DM.requestPermission()) !== 'granted') return false;
+      } catch { return false; }
+      window.addEventListener('devicemotion', this._onMotion);
+    } else window.removeEventListener('devicemotion', this._onMotion);
+    this.steerMode = mode;
+    this.tiltSteer = 0; this.dragSteer = 0;
+    return true;
+  }
+
+  // Thumb pad for drag steering: put a thumb down anywhere on it and slide.
+  bindDrag(el, knob) {
+    let id = null, x0 = 0;
+    const range = () => Math.max(50, el.clientWidth * 0.32);
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); id = e.pointerId; x0 = e.clientX;
+      try { el.setPointerCapture(id); } catch { /* ignore */ }
+      if (knob) { knob.style.left = `${e.clientX - el.getBoundingClientRect().left}px`; knob.classList.add('on'); }
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== id) return;
+      const d = (e.clientX - x0) / range();
+      this.dragSteer = -Math.max(-1, Math.min(1, d));
+      if (knob) knob.style.transform = `translate(calc(-50% + ${Math.max(-1, Math.min(1, d)) * 40}px), -50%)`;
+    });
+    const end = (e) => {
+      if (e.pointerId !== id) return;
+      id = null; this.dragSteer = 0;
+      if (knob) { knob.classList.remove('on'); knob.style.transform = ''; }
+    };
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
+  }
+
+  // Read the first controller: analogue driving values, plus one-shot
+  // 'pad' events for buttons (pressed this frame).
+  pollPad() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const gp = [...pads].find((p) => p && p.connected);
+    if (!gp) { this.pad = null; return; }
+    const b = (i) => gp.buttons[i] ? gp.buttons[i].value : 0;
+    const pressed = (i) => !!gp.buttons[i]?.pressed;
+    const dz = (v, d = 0.12) => (Math.abs(v) < d ? 0 : Math.sign(v) * Math.pow((Math.abs(v) - d) / (1 - d), 1.35));
+    const x = dz(gp.axes[0] || 0), y = dz(gp.axes[1] || 0, 0.4);
+    const used = Math.abs(x) > 0 || b(6) > 0.05 || b(7) > 0.05 || gp.buttons.some((bt) => bt.pressed);
+    if (used || this.pad) {
+      this.pad = {
+        steer: -x,
+        throttle: b(7),
+        brake: b(6),
+        handbrake: pressed(0) || pressed(2),
+      };
+    }
+    // Button edges -> events. Names follow the standard layout.
+    const NAMES = { 0: 'a', 1: 'b', 2: 'x', 3: 'y', 4: 'lb', 5: 'rb', 8: 'back', 9: 'start', 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
+    for (const [i, name] of Object.entries(NAMES)) {
+      const now = pressed(+i);
+      if (now && !this._padPrev[i]) this.emit('pad', name);
+      this._padPrev[i] = now;
+    }
+    // The stick also flicks through menus.
+    const ax = Math.abs(x) > 0.6 ? Math.sign(x) : 0, ay = Math.abs(y) > 0.6 ? Math.sign(y) : 0;
+    if (ay && ay !== this._padAxisPrev.y) this.emit('pad', ay < 0 ? 'up' : 'down', true);
+    if (ax && ax !== this._padAxisPrev.x) this.emit('pad', ax < 0 ? 'left' : 'right', true);
+    this._padAxisPrev = { x: ax, y: ay };
   }
 
   on(name, fn) { (this.listeners[name] ||= []).push(fn); }
@@ -74,19 +174,28 @@ export class Input {
   any(list) { return list.some((k) => this.down.has(k)); }
 
   update(dt) {
-    const t = this.touch;
-    const thr = this.enabled && (this.any(KEYS.throttle) || t.throttle);
-    const brk = this.enabled && (this.any(KEYS.brake) || t.brake);
-    const l = this.enabled && (this.any(KEYS.left) || t.left);
-    const r = this.enabled && (this.any(KEYS.right) || t.right);
+    if (navigator.getGamepads) this.pollPad();     // fresh stick/trigger values every physics step
+    const t = this.touch, on = this.enabled, p = on ? this.pad : null;
+    const thr = on && (this.any(KEYS.throttle) || t.throttle);
+    const brk = on && (this.any(KEYS.brake) || t.brake);
+    const l = on && (this.any(KEYS.left) || t.left);
+    const r = on && (this.any(KEYS.right) || t.right);
     // Pedals ramp quickly but not instantly: a short tap gives a short pulse.
     this._throttle += ((thr ? 1 : 0) - this._throttle) * Math.min(1, dt * 14);
     this._brake += ((brk ? 1 : 0) - this._brake) * Math.min(1, dt * 18);
     const s = this.state;
-    s.throttle = this._throttle < 0.02 ? 0 : this._throttle;
-    s.brake = this._brake < 0.02 ? 0 : this._brake;
-    s.steer = (l ? 1 : 0) - (r ? 1 : 0);   // physics smooths steering itself
-    s.handbrake = this.enabled && (this.any(KEYS.handbrake) || t.handbrake);
+    // Analogue triggers take over from keys when pressed further.
+    s.throttle = Math.max(this._throttle < 0.02 ? 0 : this._throttle, p ? p.throttle : 0);
+    s.brake = Math.max(this._brake < 0.02 ? 0 : this._brake, p ? p.brake : 0);
+    // Steering: keys and buttons, else the stick, tilt or thumb pad.
+    let steer = (l ? 1 : 0) - (r ? 1 : 0);   // physics smooths steering itself
+    if (!steer && on) {
+      if (p && p.steer) steer = p.steer;
+      else if (this.steerMode === 'tilt') steer = this.tiltSteer;
+      else if (this.steerMode === 'drag') steer = this.dragSteer;
+    }
+    s.steer = steer;
+    s.handbrake = on && (this.any(KEYS.handbrake) || t.handbrake || !!(p && p.handbrake));
     return s;
   }
 }

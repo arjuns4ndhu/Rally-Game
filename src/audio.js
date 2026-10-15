@@ -80,6 +80,23 @@ export class AudioEngine {
     this.sprayGain = ctx.createGain(); this.sprayGain.gain.value = 0;
     src2.connect(this.sprayFilter).connect(this.sprayGain).connect(this.sfxBus);
 
+    // --- Surface layers: a tonal squeal for sliding on tarmac, a soft
+    // crunch for snow and ice, and a wet hiss of spray in the rain.
+    const src3 = ctx.createBufferSource();
+    src3.buffer = noise; src3.loop = true; src3.start(0, 1.3);
+    this.squealFilter = ctx.createBiquadFilter();
+    this.squealFilter.type = 'bandpass'; this.squealFilter.frequency.value = 1150; this.squealFilter.Q.value = 9;
+    this.squealGain = ctx.createGain(); this.squealGain.gain.value = 0;
+    src3.connect(this.squealFilter).connect(this.squealGain).connect(this.sfxBus);
+    this.crunchFilter = ctx.createBiquadFilter();
+    this.crunchFilter.type = 'bandpass'; this.crunchFilter.frequency.value = 520; this.crunchFilter.Q.value = 0.7;
+    this.crunchGain = ctx.createGain(); this.crunchGain.gain.value = 0;
+    src3.connect(this.crunchFilter).connect(this.crunchGain).connect(this.sfxBus);
+    this.wetFilter = ctx.createBiquadFilter();
+    this.wetFilter.type = 'highpass'; this.wetFilter.frequency.value = 1800;
+    this.wetGain = ctx.createGain(); this.wetGain.gain.value = 0;
+    src.connect(this.wetFilter).connect(this.wetGain).connect(this.sfxBus);
+
     // --- Turbo whistle (turbo cars only)
     this.turbo = ctx.createOscillator(); this.turbo.type = 'sine'; this.turbo.frequency.value = 1800;
     this.turboGain = ctx.createGain(); this.turboGain.gain.value = 0;
@@ -121,8 +138,13 @@ export class AudioEngine {
     if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : this.volumes.master, this.ctx.currentTime, 0.02);
   }
 
+  // The stage's ground and weather, for the tyre sounds.
+  setStage(themeId, wet) { this.snowy = themeId === 'snow'; this.wet = !!wet; }
+
   setCar(spec) {
     this.cyl = spec.cyl || 4; this.redline = spec.redline; this.hasTurbo = !!spec.turbo;
+    // 80s turbo cars chatter (compressor surge) when you lift; later ones just hiss.
+    this.flutters = spec.bodyStyle === 'quattro' || spec.bodyStyle === 'groupb';
     // [saw, square sub, upper, upper harmonic ratio, filter Q]
     this.tone = {
       stratos: [0.5, 0.3, 0.22, 2.02, 3.5],     // V6 howl
@@ -164,7 +186,13 @@ export class AudioEngine {
     this.boost += (want - this.boost) * Math.min(1, dt * (want > this.boost ? 2.5 : 8));
     this.turbo.frequency.setTargetAtTime(1500 + this.boost * 3200, t, 0.05);
     this.turboGain.gain.setTargetAtTime(this.boost * 0.035, t, 0.05);
-    if (this.hasTurbo && active && prevBoost > 0.5 && load < 0.2) { this.blowOff(prevBoost); this.boost = 0; }
+    if (this.hasTurbo && active && prevBoost > 0.5 && load < 0.2) {
+      if (this.flutters) this.flutter(prevBoost); else this.blowOff(prevBoost);
+      this.boost = 0;
+    }
+    // Gear changes: a pop on a hard upshift, a blip and crackle changing down under braking.
+    if (active && car.shifted === 1 && load > 0.7 && rf > 0.55) this.gearPop(this.hasTurbo ? 0.9 : 0.6);
+    if (active && car.shifted === -1 && car.brake > 0.3) this.crackle(this.hasTurbo ? 0.55 : 0.35);
 
     // Lift-off crackle (louder pops on the turbo cars)
     if (active && this.lastThrottle > 0.6 && load < 0.2 && car.rpm > 4200) this.crackle(this.hasTurbo ? 0.8 : 0.5);
@@ -182,7 +210,54 @@ export class AudioEngine {
     // Gravel spray: loose surfaces only, flickering like stones hitting metal.
     const loose = { gravel: 1, verge: 0.8, mud: 0.6, sand: 1.1, track: 1, grass: 0.35, tarmac: 0.05, ice: 0.1, puddle: 0.3, rubble: 1.2 }[surface.name] ?? 0;
     const spray = active && !inAir ? loose * Math.min(1, car.speed / 25) * (0.5 + car.rearSlide) * (0.55 + Math.random() * 0.45) : 0;
-    this.sprayGain.gain.setTargetAtTime(spray * 0.1, t, 0.03);
+    this.sprayGain.gain.setTargetAtTime(spray * (this.snowy ? 0.03 : 0.1), t, 0.03);
+
+    // Surface character on top of the rolling noise.
+    const name = surface.name, ground = active && !inAir;
+    const onRoad = name === 'gravel' || name === 'track' || name === 'verge';
+    const tarmacSlide = ground && name === 'tarmac' ? slide : 0;
+    this.squealGain.gain.setTargetAtTime(tarmacSlide * 0.22, t, 0.04);
+    this.squealFilter.frequency.setTargetAtTime(1000 + sp * 400 + car.rearSlide * 300, t, 0.08);
+    const snow = ground && ((this.snowy && onRoad) || name === 'ice') ? sp * (0.55 + Math.random() * 0.45) : 0;
+    this.crunchGain.gain.setTargetAtTime(snow * 0.32, t, 0.03);
+    this.wetGain.gain.setTargetAtTime(ground && this.wet ? sp * 0.12 : 0, t, 0.1);
+  }
+
+  // A sharp pop from the exhaust on a full-throttle upshift.
+  gearPop(vol = 0.6) {
+    const ctx = this.ctx, at = ctx.currentTime + 0.01;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = 900;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(vol, at + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.09);
+    src.connect(f).connect(g).connect(this.sfxBus);
+    src.start(at, Math.random() * 1.5, 0.1);
+  }
+
+  // Compressor surge: the stuttering "chu-chu-chu" of an 80s turbo on a lift.
+  flutter(k = 1) {
+    const ctx = this.ctx, at = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.Q.value = 1.6;
+    f.frequency.setValueAtTime(2600, at);
+    f.frequency.exponentialRampToValueAtTime(1100, at + 0.45);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    const pulses = 7;
+    for (let i = 0; i < pulses; i++) {
+      const p = at + i * 0.055, v = 0.16 * k * (1 - i / (pulses + 1));
+      g.gain.setValueAtTime(0.0001, p);
+      g.gain.exponentialRampToValueAtTime(v, p + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, p + 0.045);
+    }
+    src.connect(f).connect(g).connect(this.sfxBus);
+    src.start(at, Math.random(), pulses * 0.055 + 0.1);
   }
 
   // Turbo blow-off valve: a quick falling hiss.
@@ -266,7 +341,7 @@ export class AudioEngine {
   idle() {
     if (!this.ctx) return;
     const at = this.ctx.currentTime;
-    for (const g of [this.engGain, this.slideGain, this.rollGain]) g?.gain.setTargetAtTime(0, at, 0.05);
+    for (const g of [this.engGain, this.slideGain, this.rollGain, this.squealGain, this.crunchGain, this.wetGain, this.sprayGain]) g?.gain.setTargetAtTime(0, at, 0.05);
   }
 
   // Finish jingle: a rising arpeggio, longer and brighter for a new best.

@@ -11,22 +11,33 @@ python3 -m http.server 8000
 
 ES modules need a web server, so opening `index.html` straight from the file system won't work.
 
+## Tests
+
+```sh
+npm i -D playwright   # once (or use a global install)
+node tests/run.js
+```
+
+Starts a local server, opens the game in headless Chromium and checks: it boots with no errors, every car builds in every style, every stage type builds, no scenery sits in the road, a stage starts and the clock runs, a test driver finishes a Classic and the cars' times stay close, the pause menu and stage-code copy/paste, the random stage setup, controller and phone steering input, and that Auto graphics steps down on a slow machine.
+
 ## Controls
 
-| Action | Keyboard | Touch |
-| --- | --- | --- |
-| Throttle / brake | W / S or ↑ / ↓ | GO / BRAKE |
-| Steer | A / D or ← / → | ◀ ▶ |
-| Handbrake | Space | HB |
-| Camera (chase / cockpit / bonnet / far / drone) | C | CAM |
-| Mini map on/off | N | pause menu |
-| Racing line assist on/off | G | pause menu |
-| Restart stage (practice: reset car) | R | RESET |
-| Back to last checkpoint (+5 s) | T | pause menu |
-| Pause | Esc | II |
-| Mute | M | speaker button |
-| Pace-note signs on / off | pause menu | pause menu |
-| Tuning panel (dev) | ? | |
+| Action | Keyboard | Controller | Touch |
+| --- | --- | --- | --- |
+| Throttle / brake | W / S or ↑ / ↓ | RT / LT (analogue) | GO / BRAKE |
+| Steer | A / D or ← / → | Left stick (analogue) | arrows, tilt or drag (pause menu → Driving → Steering) |
+| Handbrake | Space | A or X | HB |
+| Camera (chase / cockpit / bonnet / far / drone) | C | Y | CAM |
+| Mini map on/off | N | pause menu | pause menu |
+| Racing line assist on/off | G | LB | pause menu |
+| Restart stage (practice: reset car) | R | Back | RESET |
+| Back to last checkpoint (+5 s) | T | RB | pause menu |
+| Pause | Esc | Start | II |
+| Mute | M | | speaker button |
+| Pace-note signs on / off | pause menu | pause menu | pause menu |
+| Tuning panel (dev) | ? | | |
+
+In the menus a controller moves with the D-pad or stick; A picks, B goes back.
 
 The driving keys can be rebound in the pause menu (arrow keys always work too). The pause menu also has a **Big touch buttons** option.
 
