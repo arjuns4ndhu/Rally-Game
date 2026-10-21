@@ -17,6 +17,8 @@ css = pathlib.Path('css/style.css').read_text()
 html = pathlib.Path('index.html').read_text()
 html = html.replace('<link rel="stylesheet" href="css/style.css">', '<style>\n' + css + '\n</style>')
 html = html.replace('<script type="module" src="src/main.js"></script>', '<script type="module">\n' + js + '\n</script>')
+# One file can't be installed as an app: drop the manifest and its icons.
+html = re.sub(r'<link rel="manifest"[^>]*>\n|<link rel="apple-touch-icon"[^>]*>\n', '', html)
 assert 'src/main.js' not in html and 'css/style.css' not in html
 pathlib.Path(sys.argv[2]).write_text(html)
 print(sys.argv[2], len(html) // 1024, 'KB')

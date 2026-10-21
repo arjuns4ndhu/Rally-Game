@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Sideways</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23ffb000'/%3E%3Cpath d='M4 11l4-6 4 6' stroke='%230b0d12' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Chakra+Petch:wght@400;600;700&display=swap">
@@ -55,6 +61,7 @@
   <div class="split" id="hud-split"></div>
   </div>
   <canvas class="minimap" id="minimap" role="img" aria-label="Stage map"></canvas>
+  <div class="hud-fps" id="hud-fps" hidden></div>
   <div class="countdown" id="hud-count" hidden aria-live="assertive"></div>
   <div class="hud-banner" id="hud-banner" role="alert" hidden><b id="hud-banner-text"></b><button class="btn btn-sm btn-primary" id="hud-banner-btn">Restart</button></div>
   <div class="replay-tag" id="hud-replay" hidden>
@@ -136,6 +143,7 @@
         <button id="btn-champ" class="btn btn-sm">Championship</button>
         <button id="btn-past" class="btn btn-sm">Past stages</button>
         <button id="btn-stats" class="btn btn-sm">Stats</button>
+        <button id="btn-install" class="btn btn-sm" hidden>Install</button>
       </div>
       <form id="code-form" class="code-form" autocomplete="off">
         <input id="code-in" inputmode="numeric" placeholder="Stage code" aria-label="Stage code">
@@ -334,6 +342,7 @@
     </label>
         <label class="check"><input type="checkbox" id="opt-scan" checked> Scanlines</label>
         <label class="check"><input type="checkbox" id="opt-bigtouch"> Big touch buttons</label>
+        <label class="check"><input type="checkbox" id="opt-fps"> Show frame rate</label>
       </details>
       <details class="set-group">
         <summary>Sound</summary>

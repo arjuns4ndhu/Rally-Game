@@ -4,6 +4,7 @@
 // Exits non-zero if anything fails.
 const { spawn, execSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 function loadPlaywright() {
   try { return require('playwright'); } catch { /* fall through */ }
@@ -475,6 +476,69 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     assert(r.uploaded, 'my ghost was not uploaded');
     assert(r.ghost && /VS SPEEDY/.test(r.hud), 'rival ghost not raced: ' + JSON.stringify(r));
     assert(errs2.length === 0, errs2.join(' | '));
+  });
+
+  await check('phone and tablet layouts: nothing important overlaps (emulated devices)', async () => {
+    const DEVICES = [['iphone-se', 667, 375], ['iphone-pro-max', 932, 430], ['pixel-7', 915, 412], ['ipad-mini', 1133, 744]];
+    const problems = [];
+    await page.goto('about:blank');
+    for (const [name, w, h] of DEVICES) {
+      const c = await browser.newContext({ viewport: { width: w, height: h }, isMobile: true, hasTouch: true, deviceScaleFactor: 1,
+        userAgent: name.startsWith('pixel') ? 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36'
+          : 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1' });
+      await c.addInitScript(() => { localStorage.setItem('sideways.welcomed', '1'); localStorage.setItem('sideways.fps', '1'); });
+      const p = await c.newPage();
+      const errs = []; p.on('pageerror', (e) => errs.push(String(e)));
+      await p.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+      await p.waitForFunction(() => !!window.__sideways, null, { timeout: 60000 });
+      // Title menu: every button reachable (the card may scroll, but not the page sideways).
+      const title = await p.evaluate(() => ({ sx: document.documentElement.scrollWidth > innerWidth + 1 }));
+      if (title.sx) problems.push(`${name}: title scrolls sideways`);
+      await p.evaluate(() => window.__sideways.start('classic', 900122));
+      await p.waitForTimeout(2500);
+      await p.evaluate(() => { const n = document.getElementById('hud-note'); n.innerHTML = '<div class="pn-tile">3</div><div class="pn-tile">4</div><div class="pn-tile">5</div>'; n.classList.add('show'); n.style.opacity = '1'; });
+      const r = await p.evaluate(() => {
+        const box = (sel) => { const e = document.querySelector(sel); if (!e || e.hidden || !e.offsetParent && getComputedStyle(e).position !== 'fixed') return null; const b = e.getBoundingClientRect(); return b.width && b.height ? { l: b.left, t: b.top, r: b.right, b: b.bottom } : null; };
+        const els = { timing: '#hud-timing', speedo: '.hud-br', map: '#minimap', left: '.tc-left', right: '.tc-right', top: '.tc-top', note: '#hud-note', fps: '#hud-fps' };
+        const out = {}; for (const k in els) out[k] = box(els[k]);
+        out.touch = !document.getElementById('touch').hidden;
+        out.vw = innerWidth; out.vh = innerHeight;
+        return out;
+      });
+      await p.screenshot({ path: path.join(__dirname, `out-${name}.png`) }).catch(() => {});
+      await c.close();
+      if (!r.touch) problems.push(`${name}: touch controls not shown`);
+      const hit = (a, b) => a && b && a.l < b.r - 1 && b.l < a.r - 1 && a.t < b.b - 1 && b.t < a.b - 1;
+      for (const [a, b] of [['timing', 'map'], ['timing', 'top'], ['speedo', 'right'], ['left', 'right'], ['map', 'top'], ['note', 'left'], ['note', 'right'], ['note', 'timing'], ['fps', 'left'], ['fps', 'timing']]) {
+        if (hit(r[a], r[b])) problems.push(`${name}: ${a} overlaps ${b}`);
+      }
+      for (const k of ['timing', 'speedo', 'left', 'right']) {
+        const b = r[k];
+        if (b && (b.l < -1 || b.t < -1 || b.r > r.vw + 1 || b.b > r.vh + 1)) problems.push(`${name}: ${k} off screen`);
+      }
+      if (errs.length) problems.push(`${name}: ${errs.join(' | ')}`);
+    }
+    assert(!problems.length, problems.join('; '));
+  });
+
+  await check('offline: installs a service worker, then boots with no connection', async () => {
+    // Every module must be in the offline file list.
+    const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    const missing = fs.readdirSync(path.join(ROOT, 'src')).filter((f) => f.endsWith('.js') && !sw.includes(`'./src/${f}'`));
+    assert(!missing.length, 'not cached for offline: ' + missing.join(', '));
+    const c3 = await browser.newContext();
+    await c3.addInitScript(() => { Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => false }); localStorage.setItem('sideways.welcomed', '1'); });
+    const p3 = await c3.newPage();
+    await page.goto('about:blank');
+    await p3.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    await p3.waitForFunction(() => navigator.serviceWorker?.controller || navigator.serviceWorker?.ready.then(() => true), null, { timeout: 60000 });
+    await p3.evaluate(() => navigator.serviceWorker.ready);
+    await p3.waitForFunction(async () => (await (await caches.open('sideways-v1')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
+    await c3.setOffline(true);
+    await p3.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
+    const ok = await p3.waitForFunction(() => !!window.__sideways, null, { timeout: 60000 }).then(() => true).catch(() => false);
+    await c3.close();
+    assert(ok, 'the game did not start offline');
   });
 
   await check('no errors logged during the run', async () => {

@@ -12,7 +12,9 @@ out = pathlib.Path(sys.argv[1]).resolve()
 out.mkdir(parents=True, exist_ok=True)
 html = (root / 'index.html').read_text()
 for pat in [r'<!doctype html>\s*', r'<html[^>]*>\s*', r'</html>\s*', r'<head>\s*', r'</head>\s*', r'<body[^>]*>\s*', r'</body>\s*',
-            r'<meta charset[^>]*>\s*', r'<meta name="viewport"[^>]*>\s*']:
+            r'<meta charset[^>]*>\s*', r'<meta name="viewport"[^>]*>\s*',
+            # An artifact can't be installed as an app (it lives inside claude.ai).
+            r'<link rel="manifest"[^>]*>\s*', r'<link rel="apple-touch-icon"[^>]*>\s*', r'<meta name="(theme-color|apple-mobile-web-app-[\w-]+|mobile-web-app-capable)"[^>]*>\s*']:
     html = re.sub(pat, '', html, flags=re.I)
 # Cache-busting: tag every local import with a hash of the sources, so a
 # browser never mixes old cached modules with a new page.

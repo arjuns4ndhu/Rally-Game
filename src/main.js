@@ -2249,6 +2249,7 @@ function frame(now) {
 
   const active = running && !paused && !replay.on;
   if (active) watchFrameRate((now - (frame.prev ?? now)) / 1000);
+  countFrame((now - (frame.prev ?? now)) / 1000);
   frame.prev = now;
   // Replay speed: everything (the car, dust, crowds) runs slower or faster.
   if (replay.on) dt *= replay.playing ? replay.speed : 0;
@@ -2310,6 +2311,41 @@ function frame(now) {
 // Boot: build today's stage behind the menu, then start the loop.
 loadStage('daily', dateSeed());
 requestAnimationFrame(frame);
+
+// ---------- Frame-rate readout ----------
+const fpsMeter = { on: false, n: 0, t: 0 };
+try { fpsMeter.on = localStorage.getItem('sideways.fps') === '1'; } catch { /* ignore */ }
+$('opt-fps').checked = fpsMeter.on;
+$('hud-fps').hidden = !fpsMeter.on;
+$('opt-fps').addEventListener('change', (e) => {
+  fpsMeter.on = e.target.checked; $('hud-fps').hidden = !fpsMeter.on;
+  try { localStorage.setItem('sideways.fps', fpsMeter.on ? '1' : '0'); } catch { /* ignore */ }
+});
+function countFrame(realDt) {
+  if (!fpsMeter.on) return;
+  fpsMeter.n++; fpsMeter.t += realDt;
+  if (fpsMeter.t < 0.5) return;
+  const q = qualityLevel();
+  $('hud-fps').textContent = `${Math.round(fpsMeter.n / fpsMeter.t)} FPS · ${q.toUpperCase()}`;
+  fpsMeter.n = 0; fpsMeter.t = 0;
+}
+
+// ---------- Offline install ----------
+// As an installed app (from a real web address, not inside another page),
+// a service worker keeps the game playable with no connection.
+if ('serviceWorker' in navigator && document.querySelector('link[rel="manifest"]') && window.top === window.self
+  && (location.protocol === 'https:' || location.hostname === 'localhost') && !navigator.webdriver) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; $('btn-install').hidden = false; });
+window.addEventListener('appinstalled', () => { installPrompt = null; $('btn-install').hidden = true; toast('INSTALLED · PLAYS OFFLINE TOO', 1600); });
+$('btn-install').addEventListener('click', async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  try { await installPrompt.userChoice; } catch { /* ignore */ }
+  installPrompt = null; $('btn-install').hidden = true;
+});
 
 // ---------- Career ----------
 const podium = new Podium($('podium-canvas'));
