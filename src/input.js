@@ -34,6 +34,19 @@ export function keyLabel(code) {
   return code.replace(/(Left|Right)$/, ' $1');
 }
 
+// Steering feel: sensitivity (analogue steer is multiplied by it), the stick
+// dead zone, controller rumble, and the beginner handbrake assist.
+export const FEEL = { sens: 1, dead: 0.12, rumble: true, hbAssist: false };
+try {
+  const f = JSON.parse(localStorage.getItem('sideways.feel') || '{}');
+  if (f.sens >= 0.5 && f.sens <= 2) FEEL.sens = +f.sens;
+  if (f.dead >= 0 && f.dead <= 0.4) FEEL.dead = +f.dead;
+  if (typeof f.rumble === 'boolean') FEEL.rumble = f.rumble;
+  if (typeof f.hbAssist === 'boolean') FEEL.hbAssist = f.hbAssist;
+} catch { /* ignore */ }
+export function saveFeel() { try { localStorage.setItem('sideways.feel', JSON.stringify(FEEL)); } catch { /* ignore */ } }
+const clamp1 = (v) => Math.max(-1, Math.min(1, v));
+
 export class Input {
   constructor() {
     this.down = new Set();
@@ -75,7 +88,7 @@ export class Input {
       const ang = (screen.orientation?.angle ?? window.orientation ?? 90) % 360;
       const along = ang === 90 ? g.y : ang === 270 || ang === -90 ? -g.y : g.x;
       const deg = Math.asin(Math.max(-1, Math.min(1, along / 9.81))) * 180 / Math.PI;
-      const dead = 2, full = 24;
+      const dead = 1 + FEEL.dead * 10, full = 24 / FEEL.sens;
       const k = Math.max(0, Math.abs(deg) - dead) / (full - dead);
       // iOS reports gravity the other way round from Android.
       const sign = /iPhone|iPad|iPod/.test(navigator.userAgent) ? -1 : 1;
@@ -100,7 +113,7 @@ export class Input {
   // Thumb pad for drag steering: put a thumb down anywhere on it and slide.
   bindDrag(el, knob) {
     let id = null, x0 = 0;
-    const range = () => Math.max(50, el.clientWidth * 0.32);
+    const range = () => Math.max(40, el.clientWidth * 0.32 / FEEL.sens);
     el.addEventListener('pointerdown', (e) => {
       e.preventDefault(); id = e.pointerId; x0 = e.clientX;
       try { el.setPointerCapture(id); } catch { /* ignore */ }
@@ -129,11 +142,12 @@ export class Input {
     const b = (i) => gp.buttons[i] ? gp.buttons[i].value : 0;
     const pressed = (i) => !!gp.buttons[i]?.pressed;
     const dz = (v, d = 0.12) => (Math.abs(v) < d ? 0 : Math.sign(v) * Math.pow((Math.abs(v) - d) / (1 - d), 1.35));
-    const x = dz(gp.axes[0] || 0), y = dz(gp.axes[1] || 0, 0.4);
+    this._gp = gp;
+    const x = dz(gp.axes[0] || 0, FEEL.dead), y = dz(gp.axes[1] || 0, 0.4);
     const used = Math.abs(x) > 0 || b(6) > 0.05 || b(7) > 0.05 || gp.buttons.some((bt) => bt.pressed);
     if (used || this.pad) {
       this.pad = {
-        steer: -x,
+        steer: clamp1(-x * FEEL.sens),
         throttle: b(7),
         brake: b(6),
         handbrake: pressed(0) || pressed(2),
@@ -151,6 +165,21 @@ export class Input {
     if (ay && ay !== this._padAxisPrev.y) this.emit('pad', ay < 0 ? 'up' : 'down', true);
     if (ax && ax !== this._padAxisPrev.x) this.emit('pad', ax < 0 ? 'left' : 'right', true);
     this._padAxisPrev = { x: ax, y: ay };
+  }
+
+  // Shake the controller (or buzz an Android phone for big hits). Short
+  // effects can't stack up: a new one only starts once the last has ended.
+  rumble(strong, weak = strong, ms = 120) {
+    if (!FEEL.rumble) return;
+    const now = performance.now();
+    if (now < (this._rumbleEnd || 0) && strong <= (this._rumbleK || 0)) return;
+    this._rumbleEnd = now + ms; this._rumbleK = strong;
+    const act = this.pad && this._gp?.vibrationActuator;
+    if (act?.playEffect) {
+      act.playEffect('dual-rumble', { duration: ms, strongMagnitude: Math.min(1, strong), weakMagnitude: Math.min(1, weak) }).catch(() => {});
+    } else if (!this.pad && strong >= 0.6 && navigator.vibrate && matchMedia('(pointer: coarse)').matches) {
+      try { navigator.vibrate(Math.round(ms * 0.6)); } catch { /* ignore */ }
+    }
   }
 
   on(name, fn) { (this.listeners[name] ||= []).push(fn); }

@@ -373,10 +373,11 @@ export class CarPhysics {
       // rotates it more; braking straightens it.
       let target = TUNE.driftBase + TUNE.driftSteer * Math.max(0, into) + 0.18 * (1 - throttle) * (1 - brake) - 0.3 * brake + (input.handbrake ? 0.25 : 0);
       if (into < 0) target *= clamp(1 + into * 1.6, 0, 1);
-      target = clamp(target, 0, 0.85);
+      target = clamp(target, 0, this.spinCatch ? 0.7 : 0.85);
       const desired = this.velHeadRate + d * (target - absBeta) * TUNE.driftGain;
       // Fade out near a full spin so a big mistake can still spin you.
-      const strength = TUNE.driftAssist * s.driftAssist * clamp((1.4 - absBeta) / 0.5, 0, 1) * grip;
+      // With the beginner assist on, it never lets go, so spins get caught.
+      const strength = TUNE.driftAssist * s.driftAssist * (this.spinCatch ? 1.4 : clamp((1.4 - absBeta) / 0.5, 0, 1)) * grip;
       torqueZ += (desired - this.yawRate) * this.I * strength;
     }
 

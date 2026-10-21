@@ -32,7 +32,8 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 }, permissions: ['clipboard-read', 'clipboard-write'] });
   // A fake game controller the tests can move.
   await ctx.addInitScript(() => {
-    window.__fakePad = { axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+    window.__rumbles = [];
+    window.__fakePad = { axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })), vibrationActuator: { playEffect: async (type, o) => { window.__rumbles.push(o); } } };
     window.__padOn = false;
     const real = navigator.getGamepads?.bind(navigator);
     navigator.getGamepads = () => (window.__padOn ? [{ id: 'test pad', connected: true, mapping: 'standard', ...window.__fakePad }] : (real ? real() : []));
@@ -205,6 +206,39 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     const focused = await S(() => document.activeElement?.id || document.activeElement?.tagName);
     assert(focused && focused !== 'BODY', 'D-pad did not focus anything');
     await S(() => { window.__padOn = false; });
+  });
+
+  await check('steering sensitivity, dead zone, rumble and handbrake assist', async () => {
+    if (!(await S(() => !!window.__sideways))) await ready();
+    const r = await S(() => {
+      const s = window.__sideways, i = s.input, F = s.FEEL, was = i.enabled, saved = { ...F };
+      i.enabled = true; window.__padOn = true;
+      const steerAt = (x) => { window.__fakePad.axes[0] = x; return i.update(1 / 60).steer; };
+      F.sens = 1; F.dead = 0.12; const base = steerAt(-0.5);
+      F.sens = 1.6; const quick = steerAt(-0.5);
+      F.dead = 0.3; const inDead = steerAt(-0.25);
+      window.__fakePad.axes[0] = 0;
+      F.rumble = true; window.__rumbles.length = 0; s.crash(12); const rumbled = window.__rumbles.length;
+      window.__padOn = false; i.pollPad(); i.enabled = was;
+      // Handbrake assist: heading into a hairpin, steering into it.
+      s.loadStage('classic', 900016);
+      const c = s.sharpCorners[0];
+      const k = s.road.indexAt(c.entry - 2);
+      s.placeOnRoad(k); s.run.state = 'racing';
+      s.car.vx = Math.sin(s.car.yaw) * 14; s.car.vz = Math.cos(s.car.yaw) * 14; s.car.speed = 14;
+      s.car.steerInput = c.dir; s.car.drifting = false;
+      F.hbAssist = true;
+      const pulled = s.handbrakeAssist({ throttle: 1, brake: 0, steer: c.dir, handbrake: false }, 1 / 120).handbrake;
+      F.hbAssist = false; s.handbrakeAssist({ throttle: 0, brake: 0, steer: 0, handbrake: false }, 1);
+      const off = s.handbrakeAssist({ throttle: 1, brake: 0, steer: c.dir, handbrake: false }, 1 / 120).handbrake;
+      Object.assign(F, saved);
+      return { base, quick, inDead, rumbled, pulled, off };
+    });
+    assert(r.quick > r.base * 1.4, `sensitivity had no effect: ${JSON.stringify(r)}`);
+    assert(r.inDead === 0, `dead zone not applied: ${JSON.stringify(r)}`);
+    assert(r.rumbled > 0, 'a crash did not rumble the controller');
+    assert(r.pulled && !r.off, `handbrake assist wrong: ${JSON.stringify(r)}`);
+    await ready();
   });
 
   await check('phone drag steering gives analogue steer', async () => {

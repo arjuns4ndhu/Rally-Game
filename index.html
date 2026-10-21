@@ -256,6 +256,10 @@
       </select>
     </label>
         <label class="check"><input type="checkbox" id="opt-ghost" checked> Ghost car (your best run)</label>
+        <label class="check"><input type="checkbox" id="opt-hbassist"> Handbrake assist <small>(swings the tail at hairpins for you)</small></label>
+        <label class="check select">Steering sensitivity <span class="vol"><input type="range" id="opt-sens" min="50" max="200" step="10" value="100" aria-label="Steering sensitivity"><output id="opt-sens-val">100%</output></span></label>
+        <label class="check select">Stick dead zone <span class="vol"><input type="range" id="opt-dead" min="0" max="35" step="1" value="12" aria-label="Stick dead zone"><output id="opt-dead-val">12%</output></span></label>
+        <label class="check"><input type="checkbox" id="opt-rumble" checked> Rumble <small>(controller, or buzz on Android)</small></label>
         <div class="check select touch-only">Steering
           <div class="chips" id="opt-steer" role="radiogroup" aria-label="Phone steering">
             <button class="chip" role="radio" data-steer="buttons">Buttons</button>

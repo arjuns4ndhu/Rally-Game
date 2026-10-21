@@ -12,7 +12,7 @@ import { CameraRig, TVCamera } from './camera.js';
 import { Dust } from './particles.js';
 import { AudioEngine } from './audio.js';
 import { DrivingSchool } from './school.js';
-import { Input, ACTIONS, BINDS, bindKey, resetKeys, isDriveKey, keyLabel } from './input.js';
+import { Input, ACTIONS, BINDS, bindKey, resetKeys, isDriveKey, keyLabel, FEEL, saveFeel } from './input.js';
 import { TyreMarks, buildRacingMarks } from './tyremarks.js';
 import { GhostRecorder, saveGhost, loadGhost, samplePose, packGhost, unpackGhost } from './ghost.js';
 import { buildPaceNotes, CoDriver } from './pacenotes.js';
@@ -289,7 +289,8 @@ function loadStage(kind, seed = 0) {
   lineMesh = buildRacingMarks(road);
   stageGroup.add(lineMesh);
   // Really sharp corners get brake boards, chevrons and braking marks.
-  stageGroup.add(buildCornerWarnings(road, road.findSharpCorners()));
+  sharpCorners = road.findSharpCorners();
+  stageGroup.add(buildCornerWarnings(road, sharpCorners));
   (road.bumps || []).forEach((b, k) => {
     if (b.at > 75) stageGroup.add(buildSign(road, b.at - 70, b.kind === 'jump' ? 'JUMP' : 'CREST', k % 2 ? -1 : 1));
   });
@@ -324,6 +325,22 @@ function loadStage(kind, seed = 0) {
   codriver.load(buildPaceNotes(road, { start: stage.start, finish: stage.kind === 'practice' ? road.length : stage.finish }));
   marks.clear();
   restartRun();
+}
+
+// ---------- Handbrake assist (beginners) ----------
+// At a hairpin, steering hard into it at the right sort of speed pulls the
+// handbrake for a moment so the tail swings round. Once per corner per pass.
+let hbAuto = 0, hbCorner = null, sharpCorners = [];
+function handbrakeAssist(inp, dt) {
+  if (!FEEL.hbAssist || car.gear < 1 || run.state !== 'racing') { hbAuto = 0; return inp; }
+  if (hbAuto > 0) { hbAuto -= dt; return { ...inp, handbrake: true }; }
+  const c = sharpCorners.find((k) => roadAlong > k.entry - 8 && roadAlong < k.apex);
+  if (!c) { hbCorner = null; return inp; }
+  if (c !== hbCorner && !car.drifting && car.speed > 7 && car.speed < 26 && car.steerInput * c.dir > 0.55 && inp.brake < 0.5) {
+    hbCorner = c; hbAuto = 0.3;
+    return { ...inp, handbrake: true };
+  }
+  return inp;
 }
 
 // ---------- Racing line assist ----------
@@ -1107,6 +1124,17 @@ function setVolume(pct) {
 let volume = 80;
 try { const v = parseInt(localStorage.getItem('sideways.volume'), 10); if (v >= 0 && v <= 100) volume = v; } catch { /* ignore */ }
 setVolume(volume);
+// Steering feel and beginner help.
+function showFeel() {
+  $('opt-sens').value = Math.round(FEEL.sens * 100); $('opt-sens-val').textContent = `${Math.round(FEEL.sens * 100)}%`;
+  $('opt-dead').value = Math.round(FEEL.dead * 100); $('opt-dead-val').textContent = `${Math.round(FEEL.dead * 100)}%`;
+  $('opt-rumble').checked = FEEL.rumble; $('opt-hbassist').checked = FEEL.hbAssist;
+}
+showFeel();
+$('opt-sens').addEventListener('input', (e) => { FEEL.sens = +e.target.value / 100; saveFeel(); showFeel(); });
+$('opt-dead').addEventListener('input', (e) => { FEEL.dead = +e.target.value / 100; saveFeel(); showFeel(); });
+$('opt-rumble').addEventListener('change', (e) => { FEEL.rumble = e.target.checked; saveFeel(); if (FEEL.rumble) input.rumble(0.6, 0.6, 200); });
+$('opt-hbassist').addEventListener('change', (e) => { FEEL.hbAssist = e.target.checked; saveFeel(); });
 $('opt-volume').addEventListener('input', (e) => { audio.init(); setVolume(+e.target.value); });
 // Music volume, separate from the game: 40% is the music as mixed, 100% is
 // two and a half times louder (a limiter keeps it clean).
@@ -1508,6 +1536,7 @@ function collide() {
         if (hard) { crash(impact); continue; }
         car.yawRate += (fx * nz - fz * nx) * impact * 0.12 * Math.sign(k || 1);
         audio.thud(Math.min(0.8, 0.15 + impact / 12));
+        input.rumble(Math.min(0.8, impact / 10), 0.5, 160);
         shakeKick = Math.max(shakeKick, Math.min(0.3, impact * 0.03));
         if (impact > 3) sparks(cx - nx * CAR_R, (car.y ?? 0) + 0.35, cz - nz * CAR_R, 6 + impact * 2, car.vx, car.vz);
       }
@@ -1658,6 +1687,7 @@ function crash(impact) {
   sparks(car.x, (car.y ?? 0) + 0.4, car.z, 30, car.vx, car.vz);
   car.yawRate += (Math.random() - 0.5) * Math.min(3, impact * 0.15);
   audio.thud(1);
+  input.rumble(1, 1, 450);
   audio.duck(0.3, 1.4);
   shakeKick = 0.45;
   dust.clear();
@@ -1755,7 +1785,14 @@ function stepPhysics(dt, inp) {
   if (run.state === 'countdown') { inp = { throttle: 0, brake: 0, steer: inp.steer, handbrake: true }; }
   // Tiny hops over kinks in the ground keep their grip; real flights don't.
   const flying = car.air && car.airTime > 0.06;
+  inp = handbrakeAssist(inp, dt);
+  car.spinCatch = FEEL.hbAssist;
   car.step(dt, inp, flying ? AIR : surface);
+  // A low buzz off the road and over rough patches.
+  if (!flying && car.speed > 4 && run.state === 'racing') {
+    const rough = surface.name === 'grass' ? 0.22 : surface === RUBBLE ? 0.3 : surface.dustK > 1.3 ? 0.12 : 0;
+    if (rough) input.rumble(rough * Math.min(1, car.speed / 20), rough, 90);
+  }
   collide();
   knockRocks();
   // Stuck off the road (crawling for 4 s while trying to drive): put back.
@@ -1897,6 +1934,7 @@ function onLanding(impact) {
   shakeKick = Math.max(shakeKick, 0.06 + k * 0.3);
   car.squash = 0.04 + k * 0.1;
   audio.thud(0.25 + k * 0.6);
+  input.rumble(0.2 + k * 0.7, 0.4, 140 + k * 120);
   if (impact > 9) { car.vx *= 0.88; car.vz *= 0.88; }   // a heavy landing costs speed
   if (impact > 6) sparks(car.x, (car.y ?? 0) + 0.15, car.z, Math.min(40, impact * 3), car.vx, car.vz);   // sump on the ground
   const col = surface.dust;
@@ -2331,7 +2369,7 @@ window.__sideways = {
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver, crash, get riderFall() { return riderFall; },
-  get ghostModel() { return ghostModel; }, board, raceGhostOf, recorder, loadGhost, onLanding, renderer, scene, camera, marks, assist, setAssist, car, input, TUNE, CARS, start, stepSim, placeOnRoad, loadStage, run, stage,
+  get ghostModel() { return ghostModel; }, board, raceGhostOf, FEEL, handbrakeAssist, get sharpCorners() { return sharpCorners; }, recorder, loadGhost, onLanding, renderer, scene, camera, marks, assist, setAssist, car, input, TUNE, CARS, start, stepSim, placeOnRoad, loadStage, run, stage,
   get road() { return road; }, get terrain() { return terrain; }, get lineMesh() { return lineMesh; }, get surface() { return surface; }, get best() { return best; },
 };
 // After everything above is set up: mark the Garage button if there's something new.
