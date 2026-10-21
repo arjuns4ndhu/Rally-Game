@@ -5,7 +5,7 @@ import { buildCarModel, carSkins } from './carModel.js';
 import { Road, createTestRoad, gravelTexture, SURFACES, findShortcuts } from './track.js';
 import { generateStage, stageName, isEndurance } from './stagegen.js';
 import { buildGate, buildSign, buildCornerWarnings, buildShortcutMarkers } from './gates.js';
-import { dateSeed } from './rng.js';
+import { dateSeed, mulberry32 } from './rng.js';
 import { THEMES, pickTheme } from './themes.js';
 import { setupWorld, buildScenery } from './scenery.js';
 import { CameraRig, TVCamera } from './camera.js';
@@ -30,7 +30,7 @@ import { MiniMap } from './minimap.js';
 import { Stats } from './stats.js';
 import { Leaderboard } from './leaderboard.js';
 import { buildTrackside } from './trackside.js';
-import { WEATHER, pickWeather, weatherTheme, Precip, Rain } from './weather.js';
+import { WEATHER, pickWeather, weatherTheme, blendTheme, Precip, Rain } from './weather.js';
 import { planSurfaces, patchAt, buildSurfaces } from './surfaces.js';
 import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, weekTheme, LAUNCH, PAINTS, WHEELS, CLASSICS, MEDAL_ICON, classicOf, medalTimes, medalFor, classicsHTML, SPECIAL_PAINTS, LOCKS, unlockState, carLocked, wheelLocked, skinLocked } from './menus.js';
 import { buildHazards, HAZARD_DEBUG } from './hazards.js';
@@ -199,7 +199,9 @@ function loadStage(kind, seed = 0) {
   // Themed championship weeks put every stage of the week in the same weather.
   const wt = kind === 'champ' ? weekTheme(champWeekOf(seed).weekNo) : null;
   if (wt) weather = WEATHER[wt.id === 'rain' && theme.id === 'snow' ? 'snowfall' : wt.id === 'rain' && theme.id === 'desert' ? 'night' : wt.id];
-  if (window.__sideways?.forceWeather) weather = WEATHER[window.__sideways.forceWeather];
+  skyPlan = kind === 'endurance' ? planSky(seed, theme) : null;
+  if (skyPlan) weather = skyPlan.keys[0].w;
+  if (window.__sideways?.forceWeather) { weather = WEATHER[window.__sideways.forceWeather]; skyPlan = null; }
   stage.weather = weather;
   audio.setStage(theme.id, weather.wet);
   world.applyTheme(weatherTheme(theme, weather));
@@ -325,6 +327,54 @@ function loadStage(kind, seed = 0) {
   codriver.load(buildPaceNotes(road, { start: stage.start, finish: stage.kind === 'practice' ? road.length : stage.finish }));
   marks.clear();
   restartRun();
+}
+
+// ---------- Endurance: the day moves on ----------
+// Long stages change as you drive: the light fades towards evening and the
+// weather can turn. Each change blends in over a few hundred metres, and the
+// co-driver warns you as it starts.
+const SKY_STORIES = [['clear', 'dusk', 'night'], ['clear', 'overcast', 'rain'], ['overcast', 'fog', 'clear'], ['dusk', 'night', 'night'], ['clear', 'rain', 'dusk'], ['fog', 'overcast', 'dusk'], ['overcast', 'rain', 'night']];
+const SKY_CALLS = { overcast: 'CLOUDING OVER', dusk: 'SUN GOING DOWN', night: 'NIGHT FALLING · LIGHTS ON', fog: 'FOG AHEAD', rain: 'RAIN COMING', snowfall: 'SNOW COMING', clear: 'CLEARING UP' };
+let skyPlan = null;
+function planSky(seed, theme) {
+  const r = mulberry32(((seed ^ 0x51ed27) >>> 0) + 7);
+  const fix = (id) => (id === 'rain' && theme.id === 'snow' ? 'snowfall' : id === 'rain' && theme.id === 'desert' ? 'fog' : id);
+  const story = SKY_STORIES[Math.floor(r() * SKY_STORIES.length)].map(fix);
+  const keys = story.map((id, k) => ({ f: [0, 0.38 + r() * 0.1, 0.72 + r() * 0.1][k], w: WEATHER[id], th: weatherTheme(theme, WEATHER[id]) }))
+    .filter((k, i, a) => i === 0 || k.w !== a[i - 1].w);
+  return { theme, keys, last: '', called: 0 };
+}
+const lampsFor = (w) => (w.dark ? 140 : w.id === 'dusk' || w.id === 'fog' ? 35 : 0);
+function updateSky(along) {
+  const P = skyPlan, L = road.length, BL = Math.min(260, L * 0.06);
+  let i = 0;
+  while (i + 1 < P.keys.length && along > P.keys[i + 1].f * L - BL) i++;
+  const a = P.keys[Math.max(0, i - 1)], b = P.keys[i];
+  const t = i === 0 ? 0 : smoothstep(b.f * L - BL, b.f * L + BL, along);
+  if (i > P.called && run.state === 'racing') { P.called = i; toast(SKY_CALLS[b.w.id] || b.w.label.toUpperCase(), 1800); }
+  if (i < P.called) P.called = i;
+  const key = `${i}:${Math.round(t * 40)}`;
+  if (key === P.last) return;
+  P.last = key;
+  world.applyTheme(blendTheme(a.th, b.th, t));
+  const lamps = lampsFor(a.w) + (lampsFor(b.w) - lampsFor(a.w)) * t;
+  headlights.forEach((l) => { l.intensity = lamps; });
+  lampGlow = Math.max(a.w.dark ? 1 : lampsFor(a.w) ? 0.45 : 0, 0) * (1 - t) + (b.w.dark ? 1 : lampsFor(b.w) ? 0.45 : 0) * t;
+  model.setGlow(lampGlow);
+  const wetK = (a.w.wet ? 1 - t : 0) + (b.w.wet ? t : 0);
+  gravelMat.color.setScalar(1 - 0.3 * wetK);
+  gravelMat.roughness = 0.95 - 0.35 * wetK;
+  const wg = a.w.grip + (b.w.grip - a.w.grip) * t, th = P.theme, S = road.surfaces;
+  S.gravel.grip = th.road.grip * wg; S.verge.grip = SURFACES.verge.grip * th.road.grip * wg; S.grass.grip = SURFACES.grass.grip * wg;
+  for (const k of ['gravel', 'verge', 'grass']) S[k].dustK = 1 - 0.65 * wetK;
+  // Rain, snow and the sounds switch over halfway through the blend.
+  const now = t > 0.5 ? b.w : a.w;
+  if (now !== weather) {
+    weather = now; stage.weather = now; lastPatch = null;
+    precip.set(now.id === 'snowfall' ? 'snow' : null);
+    rain.set(now.id === 'rain', precip.density ?? 1);
+    audio.setStage(th.id, now.wet);
+  }
 }
 
 // ---------- Handbrake assist (beginners) ----------
@@ -2065,6 +2115,7 @@ function frame(now) {
   world.sky.position.copy(camera.position);
   if (!paused) { dust.update(dt); updateFlyingRocks(dt); updateRider(dt); }
   if (!paused && trackside) trackside.update(dt, car.x, car.z);
+  if (skyPlan && road) updateSky(replay.on ? replay.along : roadAlong);
   if (!paused) { precip.update(dt, camera, { x: car.vx, z: car.vz }); rain.update(dt, camera, { x: car.vx, z: car.vz }, car.y); }
   wasSplash = !!surface.splash;
   if (headlights[0].intensity > 0) {
@@ -2365,7 +2416,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
+  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver, crash, get riderFall() { return riderFall; },

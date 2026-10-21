@@ -64,6 +64,20 @@ export function weatherTheme(theme, w) {
   return t;
 }
 
+// In between two weather themes (t = 0..1): colours, numbers and lists blend.
+export function blendTheme(a, b, t) {
+  const out = structuredClone(a), c1 = new THREE.Color(), c2 = new THREE.Color();
+  for (const part of ['sky', 'light']) {
+    for (const k in a[part]) {
+      const x = a[part][k], y = b[part][k];
+      if (typeof x === 'number') out[part][k] = x + (y - x) * t;
+      else if (Array.isArray(x)) out[part][k] = x.map((v, i) => v + (y[i] - v) * t);
+      else if (typeof x === 'string') out[part][k] = `#${c1.set(x).lerp(c2.set(y), t).getHexString()}`;
+    }
+  }
+  return out;
+}
+
 // Falling rain (streaks) or snow (flakes) in a box that follows the camera.
 export class Precip {
   constructor(scene) {

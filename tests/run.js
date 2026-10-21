@@ -241,6 +241,29 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await ready();
   });
 
+  await check('endurance stages change weather and light along the way', async () => {
+    if (!(await S(() => !!window.__sideways))) await ready();
+    const r = await S(() => {
+      const s = window.__sideways, out = [];
+      for (let seed = 3000001; seed < 3000041 && out.length < 3; seed++) {
+        s.loadStage('endurance', seed);
+        const P = s.skyPlan, L = s.road.length;
+        if (!P || P.keys.length < 2) continue;
+        const ids = [], fogs = [];
+        for (const f of [0.02, 0.5, 0.97]) { s.updateSky(f * L); ids.push(s.weather.id); fogs.push(s.scene.fog.color.getHexString()); }
+        s.updateSky(0);
+        out.push({ seed, keys: P.keys.map((k) => k.w.id), ids, fogs, back: s.weather.id });
+      }
+      return out;
+    });
+    assert(r.length >= 3, 'too few endurance stages with a weather story: ' + JSON.stringify(r));
+    for (const x of r) {
+      assert(x.ids[0] === x.keys[0] && x.ids[2] === x.keys[x.keys.length - 1], 'weather did not follow the plan: ' + JSON.stringify(x));
+      assert(x.fogs[0] !== x.fogs[2], 'sky did not change: ' + JSON.stringify(x));
+      assert(x.back === x.keys[0], 'restart did not reset the weather: ' + JSON.stringify(x));
+    }
+  });
+
   await check('phone drag steering gives analogue steer', async () => {
     const st = await S(async () => {
       const s = window.__sideways;
