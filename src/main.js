@@ -2118,6 +2118,8 @@ function updateReplayCam(dt) {
   camera.updateProjectionMatrix();
 }
 // Record a clip of the replay (video, plus the game sound where it can).
+let downloadsCap = null;
+if (window.claude?.use) window.claude.use('downloads').then((d) => { downloadsCap = d; }).catch(() => {});
 const clip = { rec: null, chunks: [], url: null, timer: 0 };
 function toggleClip() {
   if (clip.rec) { clip.rec.stop(); return; }
@@ -2142,6 +2144,14 @@ function toggleClip() {
     const name = `sideways-${(stage.name || 'stage').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.${ext}`;
     $('clip-video').src = clip.url;
     $('clip-save').href = clip.url; $('clip-save').download = name;
+    // Inside claude.ai a plain download link does nothing: hand the file over
+    // through the page's downloads permission instead (the viewer confirms).
+    $('clip-save').onclick = async (e) => {
+      if (!downloadsCap) return;                  // a normal page: the link downloads it
+      e.preventDefault();
+      try { await downloadsCap.save({ filename: name, data: blob }); toast('CLIP SAVED', 1200); }
+      catch (err) { if (err?.code !== 'declined') toast('COULD NOT SAVE THE CLIP HERE', 1600); }
+    };
     const file = new File([blob], name, { type: blob.type });
     $('clip-share').hidden = !(navigator.canShare && navigator.canShare({ files: [file] }));
     $('clip-share').onclick = () => navigator.share({ files: [file], title: 'Sideways clip' }).catch(() => {});
