@@ -2,7 +2,9 @@
 // finish, little groups of fans all along the stage, marshals in orange at
 // the checkpoints, hay bales on the outside of sharp corners, and a TV
 // helicopter over the finish. Spectators cheer (arms up, flags waving) and
-// step back as the car comes past.
+// step back as the car comes past, duck when it flies over a jump, and run
+// if it slides towards them. Photographers at the corners and jumps fire
+// their flashes as you pass (you really notice them at night).
 import * as THREE from 'three';
 import { mulberry32 } from './rng.js';
 import { facet } from './retro.js';
@@ -78,6 +80,11 @@ export function buildTrackside(road, { seed, corners, start, finish, cps = [], g
       addPerson(lateralPoint(road, a, l), side);
     }
   };
+  // Photographers: in front of the tape (where they shouldn't be), dark
+  // clothes, a camera held up to the face.
+  function photographers(at, side, n) {
+    for (let k = 0; k < n; k++) addPerson(lateralPoint(road, at + k * 5 + rnd() * 3, side * (w + 6 + rnd() * 1.5)), side, { shirt: 0x2a2d33, flag: null, photo: true, keen: 0.2, flashAt: 0 });
+  }
   for (const c of corners) {
     const outside = -c.dir;
     // Hay bales on the outside of the apex.
@@ -93,11 +100,13 @@ export function buildTrackside(road, { seed, corners, start, finish, cps = [], g
     }
     // Crowd on the inside of the hairpin (the safe side) for most corners.
     if (rnd() < 0.85) crowd(c.entry - 8, c.exit + 8, c.dir, w + 7, 16 + Math.floor(rnd() * 16));
+    photographers(c.apex - 6, c.dir, 1 + Math.floor(rnd() * 2));
   }
   for (const b of road.bumps || []) {
     if (b.kind !== 'jump') continue;
     const side = rnd() < 0.5 ? 1 : -1;
     crowd(b.at - 8, b.at + 22, side, w + 8, 18 + Math.floor(rnd() * 14));
+    photographers(b.at + 10, -side, 2);
   }
   crowd(start - 34, start - 4, 1, w + 6, 26);
   crowd(start - 34, start - 4, -1, w + 6, 20);
@@ -145,6 +154,39 @@ export function buildTrackside(road, { seed, corners, start, finish, cps = [], g
   flags.frustumCulled = false;
   group.add(flags);
 
+  // Cameras for the photographers, and a few pooled flashes (a bright
+  // sprite and one light that jumps to the latest flash at night).
+  const photoPeople = people.filter((p) => p.photo);
+  const camGeo = new THREE.BoxGeometry(0.2, 0.14, 0.14).translate(0, 0.78, 0.2);
+  const cams = new THREE.InstancedMesh(camGeo, new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.5 }), Math.max(1, photoPeople.length));
+  cams.count = photoPeople.length;
+  cams.frustumCulled = false;
+  photoPeople.forEach((p, i) => { p.camIdx = i; });
+  group.add(cams);
+  const flashTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(230,240,255,0.8)'); gr.addColorStop(1, 'rgba(200,220,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(c);
+  })();
+  const flashes = [];
+  for (let k = 0; k < 6; k++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+    sp.visible = false; sp.life = 0;
+    group.add(sp); flashes.push(sp);
+  }
+  const flashLight = new THREE.PointLight(0xe8f0ff, 0, 22, 1.6);
+  group.add(flashLight);
+  let nextFlash = 0;
+  const fire = (p, dark) => {
+    const sp = flashes[nextFlash++ % flashes.length];
+    sp.position.set(p.x + p.nx * (p.run || 0) - Math.sin(p.yaw) * 0.25, p.y + 0.78 * p.h + 0.7 * p.h, p.z + p.nz * (p.run || 0) - Math.cos(p.yaw) * 0.25);
+    sp.life = 0.09; sp.visible = true;
+    sp.scale.setScalar(dark ? 2.6 : 1.1);
+    if (dark) { flashLight.position.copy(sp.position); flashLight.intensity = 60; }
+  };
+
   // TV helicopter circling over the finish.
   const heli = new THREE.Group();
   const hb = new THREE.MeshStandardMaterial({ color: 0x1c2a44, flatShading: true });
@@ -157,29 +199,47 @@ export function buildTrackside(road, { seed, corners, start, finish, cps = [], g
   group.add(heli);
 
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-  const am = new THREE.Matrix4(), rz = new THREE.Matrix4(), sh = new THREE.Matrix4(), fm = new THREE.Matrix4();
+  const am = new THREE.Matrix4(), rz = new THREE.Matrix4(), rx = new THREE.Matrix4(), sh = new THREE.Matrix4(), fm = new THREE.Matrix4();
   let t = 0;
-  const pose = (carX, carZ) => {
+  const qx = new THREE.Quaternion(), right = new THREE.Vector3(1, 0, 0);
+  const pose = (carX, carZ, info = {}, dt = 0) => {
     for (let i = 0; i < people.length; i++) {
       const p = people[i];
       const d = carX == null ? 99 : Math.hypot(carX - p.x, carZ - p.z);
       const near = Math.max(0, 1 - d / 26);
+      // Duck when the car flies over close by; run when it slides at you.
+      p.duck = (p.duck || 0) + (((info.air && d < 24) ? 1 : 0) - (p.duck || 0)) * Math.min(1, dt * (info.air ? 14 : 3));
+      if (carX != null && d < 8 && info.speed > 6 && !p.marshal) p.scare = 1.2;
+      if (p.scare > 0) { p.scare -= dt; p.run = Math.min(5, (p.run || 0) + dt * 6); } else if (p.run > 0) p.run = Math.max(0, p.run - dt * 0.4);
+      const running = p.scare > 0;
+      // Photographers shoot as the car comes past.
+      if (p.photo && d < 34 && d > 6 && t > (p.flashAt || 0)) { p.flashAt = t + 0.35 + rnd() * 0.9; fire(p, info.dark); }
       // Cheer (hop) and step back as the car passes.
-      const hop = near > 0 ? Math.abs(Math.sin(t * 9 + p.phase)) * 0.25 * near : Math.abs(Math.sin(t * 2 + p.phase)) * 0.03;
-      const back = near * 1.6;
-      v.set(p.x + p.nx * back, p.y + 0.7 * p.h + hop, p.z + p.nz * back);
-      q.setFromAxisAngle(up, p.yaw + Math.sin(t * 1.3 + p.phase) * 0.2);
+      const hop = running ? Math.abs(Math.sin(t * 14 + p.phase)) * 0.18 : near > 0 ? Math.abs(Math.sin(t * 9 + p.phase)) * 0.25 * near * (1 - p.duck) : Math.abs(Math.sin(t * 2 + p.phase)) * 0.03;
+      const back = near * 1.6 + (p.run || 0);
+      v.set(p.x + p.nx * back, p.y + 0.7 * p.h + hop - p.duck * 0.42 * p.h, p.z + p.nz * back);
+      // Running: turn and face away from the road.
+      q.setFromAxisAngle(up, p.yaw + (running ? Math.PI : Math.sin(t * 1.3 + p.phase) * 0.2));
+      if (p.duck > 0.02) q.multiply(qx.setFromAxisAngle(right, p.duck * 0.55));
       s.setScalar(p.h);
       m4.compose(v, q, s);
       bodies.setMatrixAt(i, m4); legs.setMatrixAt(i, m4); heads.setMatrixAt(i, m4);
-      // Arms: down and swaying idle, up and waving as the car comes.
-      const cheer = Math.min(1, near * 1.8 * p.keen);
+      if (p.camIdx != null) cams.setMatrixAt(p.camIdx, m4);
+      // Arms: down and swaying idle, up and waving as the car comes; over
+      // the head when ducking, pumping when running.
+      const cheer = Math.min(1, near * 1.8 * p.keen) * (1 - p.duck);
       for (const side of [-1, 1]) {
         const wave = Math.sin(t * 10 + p.phase + side) * 0.35 * cheer;
-        const ang = side * (0.12 + cheer * 2.5 + wave + Math.sin(t * 1.7 + p.phase) * 0.04);
+        let ang = side * (0.12 + cheer * 2.5 + wave + Math.sin(t * 1.7 + p.phase) * 0.04);
+        // Photographers hold the camera up to the eye: arms forward and in.
+        const aim = p.photo && !running ? 1 - p.duck : 0;
+        if (aim) ang = side * -0.35;
+        ang = ang * (1 - p.duck) + side * 2.7 * p.duck;
+        if (running) ang = side * 0.3 + Math.sin(t * 14 + side * 1.6) * 0.7;
         sh.makeTranslation(side * 0.27, 0.58, 0);
         rz.makeRotationZ(ang);
         am.multiplyMatrices(m4, sh).multiply(rz);
+        if (aim) am.multiply(rx.makeRotationX(-2.2 * aim));
         arms.setMatrixAt(i * 2 + (side > 0 ? 1 : 0), am);
         // The flag is held in the right hand.
         if (side > 0 && p.flagIdx != null) {
@@ -190,15 +250,18 @@ export function buildTrackside(road, { seed, corners, start, finish, cps = [], g
       }
     }
     bodies.instanceMatrix.needsUpdate = legs.instanceMatrix.needsUpdate = heads.instanceMatrix.needsUpdate = true;
-    arms.instanceMatrix.needsUpdate = flags.instanceMatrix.needsUpdate = true;
+    arms.instanceMatrix.needsUpdate = flags.instanceMatrix.needsUpdate = cams.instanceMatrix.needsUpdate = true;
+    for (const sp of flashes) if (sp.visible && (sp.life -= dt) <= 0) sp.visible = false;
+    flashLight.intensity = Math.max(0, flashLight.intensity - dt * 900);
   };
   pose();
 
   return {
     group, obstacles: solid, count: people.length,
-    update(dt, carX, carZ) {
+    // info: { air (the car is flying), speed (m/s), dark (night lighting) }
+    update(dt, carX, carZ, info) {
       t += dt;
-      pose(carX, carZ);
+      pose(carX, carZ, info, dt);
       rotor.rotation.y += dt * 30;
       heli.position.set(heliBase.x + Math.cos(t * 0.15) * 30, heliBase.y + Math.sin(t * 0.7) * 1.5, heliBase.z + Math.sin(t * 0.15) * 30);
       heli.rotation.y = -t * 0.15;

@@ -2114,7 +2114,7 @@ function frame(now) {
   else rig.update(car, dt);
   world.sky.position.copy(camera.position);
   if (!paused) { dust.update(dt); updateFlyingRocks(dt); updateRider(dt); }
-  if (!paused && trackside) trackside.update(dt, car.x, car.z);
+  if (!paused && trackside) trackside.update(dt, car.x, car.z, { air: car.air && car.airTime > 0.1, speed: car.speed, dark: lampGlow > 0.6 });
   if (skyPlan && road) updateSky(replay.on ? replay.along : roadAlong);
   if (!paused) { precip.update(dt, camera, { x: car.vx, z: car.vz }); rain.update(dt, camera, { x: car.vx, z: car.vz }, car.y); }
   wasSplash = !!surface.splash;
@@ -2416,7 +2416,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
+  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver, crash, get riderFall() { return riderFall; },
