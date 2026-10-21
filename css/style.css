@@ -400,9 +400,11 @@ body.touch .replay-tag { left: calc(18px + var(--safe-l)); transform: none; bott
 #btn-daily { padding: 14px 20px; font-size: 22px; }
 #btn-daily small { font-size: 13px; }
 /* Six columns: three picks on the first row, two wider ones on the second. */
-.picks { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
-.picks .btn { grid-column: span 2; min-width: 0; }
-.picks .btn:nth-child(n+4) { grid-column: span 3; }
+.picks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+/* Four big tiles (career, classics, random, endurance), then two wide ones. */
+.picks .btn { grid-column: span 1; min-width: 0; }
+.picks .btn:nth-child(-n+4) { min-height: 92px; display: flex; flex-direction: column; justify-content: flex-start; }
+.picks .btn:nth-child(n+5) { grid-column: span 2; }
 .title-foot { display: flex; gap: 10px; align-items: stretch; }
 .menu-row { flex: 1; display: grid; grid-template-columns: repeat(4, auto); gap: 8px; }
 .menu-row .btn { white-space: nowrap; padding-left: 8px; padding-right: 8px; }
@@ -429,7 +431,7 @@ body.touch .replay-tag { left: calc(18px + var(--safe-l)); transform: none; bott
 }
 @media (max-width: 700px) {
   .picks { grid-template-columns: 1fr 1fr; }
-  .picks .btn, .picks .btn:nth-child(n+4) { grid-column: auto; }
+  .picks .btn, .picks .btn:nth-child(n+5) { grid-column: auto; }
   .title-foot { flex-direction: column; }
   .menu-row { grid-template-columns: repeat(2, 1fr); }
   .code-form { justify-content: center; }
@@ -643,8 +645,9 @@ button.cal-day:hover, button.cal-day:focus-visible { border-color: var(--accent)
   #btn-daily { font-size: 18px; padding: 10px 14px; }
   #btn-daily small { font-size: 12px; }
   .picks { grid-area: picks; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .picks .btn, .picks .btn:nth-child(n+4) { grid-column: auto; }
-  .picks .btn:last-child { grid-column: 1 / -1; }
+  .picks .btn, .picks .btn:nth-child(n+5) { grid-column: auto; }
+  .picks .btn:nth-child(-n+4) { min-height: 0; }
+  .picks .btn:nth-child(odd):last-child { grid-column: 1 / -1; }
   .picks .btn small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .title-foot { display: contents; }
   .menu-row { grid-area: menu; grid-template-columns: repeat(4, 1fr); gap: 6px; }

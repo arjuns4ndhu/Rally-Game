@@ -1,5 +1,7 @@
 // HUD mini map: the whole stage from above (north up), the part you've
-// driven highlighted, checkpoints, shortcuts, your car and the ghost.
+// driven highlighted, checkpoints, shortcuts, your car and the ghost. Long
+// stages can be zoomed in instead (`zoom`: metres across the box), and the
+// map then scrolls to keep your car in view.
 
 const PAD = 10;
 
@@ -14,14 +16,14 @@ export class MiniMap {
   }
 
   // Size the canvas for the display and pre-draw the static layer.
-  build(road, { start = 0, finish = road.length, cps = [], shortcuts = [], closed = false } = {}) {
-    this.args = [road, { start, finish, cps, shortcuts, closed }];
+  build(road, { start = 0, finish = road.length, cps = [], shortcuts = [], closed = false, zoom = 0 } = {}) {
+    this.args = [road, { start, finish, cps, shortcuts, closed, zoom }];
     this.road = road;
     this.opts = { start, finish, cps, closed };
     const css = this.canvas.clientWidth || 170;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const size = Math.round(css * dpr);
-    this.canvas.width = this.canvas.height = this.bg.width = this.bg.height = size;
+    this.canvas.width = this.canvas.height = size;
     this.dpr = dpr;
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (let i = 0; i < road.n; i++) {
@@ -30,12 +32,19 @@ export class MiniMap {
     }
     const span = Math.max(maxX - minX, maxZ - minZ, 1);
     const inner = size - PAD * 2 * dpr;
-    this.s = inner / span;
-    this.ox = PAD * dpr + (inner - (maxX - minX) * this.s) / 2 - minX * this.s;
-    this.oz = PAD * dpr + (inner - (maxZ - minZ) * this.s) / 2 - minZ * this.s;
+    // Zoomed: the static layer covers the whole stage at the closer scale,
+    // and draw() shows the part around the car.
+    this.zoomed = zoom > 0 && zoom < span;
+    this.s = inner / (this.zoomed ? zoom : span);
+    const bw = this.zoomed ? Math.ceil((maxX - minX) * this.s + PAD * 2 * dpr) : size;
+    const bh = this.zoomed ? Math.ceil((maxZ - minZ) * this.s + PAD * 2 * dpr) : size;
+    this.bg.width = Math.max(bw, size); this.bg.height = Math.max(bh, size);
+    this.ox = PAD * dpr + (this.bg.width - PAD * 2 * dpr - (maxX - minX) * this.s) / 2 - minX * this.s;
+    this.oz = PAD * dpr + (this.bg.height - PAD * 2 * dpr - (maxZ - minZ) * this.s) / 2 - minZ * this.s;
+    this.cx = this.cz = null;
 
     const g = this.bg.getContext('2d');
-    g.clearRect(0, 0, size, size);
+    g.clearRect(0, 0, this.bg.width, this.bg.height);
     g.lineCap = g.lineJoin = 'round';
     // Shortcuts: dashed green.
     g.setLineDash([3 * dpr, 3 * dpr]);
@@ -96,7 +105,17 @@ export class MiniMap {
     if (this.acc < 1 / 30) return;              // 30 Hz is plenty
     this.acc = 0;
     const g = this.ctx, d = this.dpr, W = this.canvas.width;
+    g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, W, W);
+    if (this.zoomed) {
+      // Follow the car (eased), keeping the view inside the map.
+      const [cu, cv] = this._xy(car.x, car.z);
+      const tx = Math.max(0, Math.min(this.bg.width - W, cu - W / 2)), tz = Math.max(0, Math.min(this.bg.height - W, cv - W / 2));
+      const k = this.cx == null ? 1 : 0.35;
+      this.cx = this.cx == null ? tx : this.cx + (tx - this.cx) * k;
+      this.cz = this.cz == null ? tz : this.cz + (tz - this.cz) * k;
+      g.translate(-this.cx, -this.cz);
+    }
     g.drawImage(this.bg, 0, 0);
     // Driven so far, from the start line to the car.
     const { start, finish } = this.opts;

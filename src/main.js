@@ -333,7 +333,7 @@ function loadStage(kind, seed = 0) {
   scene.add(stageGroup);
   minimap.build(road, kind === 'practice'
     ? { closed: true }
-    : { start: stage.start, finish: stage.finish, cps: stage.cps, shortcuts });
+    : { start: stage.start, finish: stage.finish, cps: stage.cps, shortcuts, zoom: kind === 'endurance' ? 900 : 0 });   // long stages: a closer map that follows you
   codriver.load(buildPaceNotes(road, { start: stage.start, finish: stage.kind === 'practice' ? road.length : stage.finish }));
   marks.clear();
   restartRun();
@@ -2542,6 +2542,7 @@ function stageTitle(kind, seed) {
 function pickThenStart(kind, seed) {
   if (starting) return;
   if (running) toMenu();
+  hidePages();                 // e.g. the career page, which would sit on top of the garage
   pendingStart = { kind, seed };
   openGarage('pick', stageTitle(kind, seed));
 }

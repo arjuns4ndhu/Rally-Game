@@ -367,6 +367,9 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     assert(/Next/.test(cal), 'career calendar: ' + cal);
     await S(() => document.getElementById('career-go').click());
     await page.waitForTimeout(500);
+    // The car pick must be on show, not hidden behind the career page.
+    const shown = await S(() => ({ garage: !document.getElementById('garage').hidden, career: !document.getElementById('career').hidden }));
+    assert(shown.garage && !shown.career, 'Start rally did not show the car pick: ' + JSON.stringify(shown));
     await S(() => document.getElementById('garage-go').click());
     const labels = [];
     for (let k = 0; k < 3; k++) {
