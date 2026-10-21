@@ -264,6 +264,33 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     }
   });
 
+  await check('crowd noise near spectators, echo between canyon walls', async () => {
+    if (!(await S(() => !!window.__sideways))) await ready();
+    const r = await S(() => {
+      const s = window.__sideways;
+      s.loadStage('classic', 900031);
+      const R = s.road, st = R.indexAt(10), far = R.indexAt(R.length * 0.5);
+      s.placeOnRoad(st);
+      const atStart = s.trackside.update(0.016, s.car.x, s.car.z, { speed: 20 });
+      // Find the most enclosed spot on a few canyon stages.
+      let maxEcho = 0, openEcho = 1;
+      for (let seed = 900001; seed < 900400; seed++) {
+        s.loadStage('classic', seed);
+        if (s.stage.theme.id !== 'desert') continue;
+        for (let a = 50; a < s.road.length - 50; a += 40) {
+          s.placeOnRoad(s.road.indexAt(a));
+          s.stepSim?.(0.02, { throttle: 0, brake: 0, steer: 0, handbrake: false });
+          s.measureEcho(); maxEcho = Math.max(maxEcho, s.echo.k);
+        }
+        if (maxEcho > 0.3) break;
+      }
+      s.loadStage('practice'); s.placeOnRoad(5); s.measureEcho(); openEcho = s.echo.k;
+      return { atStart, maxEcho, openEcho };
+    });
+    assert(r.atStart > 0.2, 'no crowd noise at the start: ' + JSON.stringify(r));
+    assert(r.maxEcho > 0.3 && r.openEcho < 0.1, 'echo wrong: ' + JSON.stringify(r));
+  });
+
   await check('phone drag steering gives analogue steer', async () => {
     const st = await S(async () => {
       const s = window.__sideways;

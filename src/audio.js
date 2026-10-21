@@ -103,7 +103,61 @@ export class AudioEngine {
     this.turbo.connect(this.turboGain).connect(this.engineBus);
     this.turbo.start();
     this.boost = 0;
+
+    // --- Crowd: three bands of noise, each wobbling at its own rate, sound
+    // like a lot of people shouting at once. Louder as you pass spectators.
+    this.crowdGain = ctx.createGain(); this.crowdGain.gain.value = 0;
+    this.crowdGain.connect(this.sfxBus);
+    [[480, 3.1], [1050, 4.7], [2200, 6.3]].forEach(([f, rate], k) => {
+      const n = ctx.createBufferSource();
+      n.buffer = noise; n.loop = true; n.start(0, 0.3 + k * 0.4);
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = 1.4;
+      const g = ctx.createGain(); g.gain.value = 0.5;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = rate;
+      const depth = ctx.createGain(); depth.gain.value = 0.35;
+      lfo.connect(depth).connect(g.gain); lfo.start();
+      n.connect(bp).connect(g).connect(this.crowdGain);
+    });
+    this.crowd = 0;
+
+    // --- Echo off canyon walls: a filtered feedback delay fed by the engine
+    // and effects. Off (no send) everywhere else.
+    this.echoSend = ctx.createGain(); this.echoSend.gain.value = 0;
+    this.echoDelay = ctx.createDelay(1.0); this.echoDelay.delayTime.value = 0.28;
+    const echoLp = ctx.createBiquadFilter(); echoLp.type = 'lowpass'; echoLp.frequency.value = 1700;
+    const echoFb = ctx.createGain(); echoFb.gain.value = 0.34;
+    this.engineBus.connect(this.echoSend); this.sfxBus.connect(this.echoSend);
+    this.echoSend.connect(this.echoDelay).connect(echoLp).connect(this.master);
+    echoLp.connect(echoFb).connect(this.echoDelay);
     this.applyTone();
+  }
+
+  // Surroundings, every frame: crowd (0..1, how many spectators are close
+  // and cheering) and echo (0..1, how enclosed the road is; delay in s).
+  setEnv({ crowd = 0, echo = 0, delay = 0.28 } = {}) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.crowd = crowd;
+    this.crowdGain.gain.setTargetAtTime(crowd * 0.32, t, crowd > this.crowdGain.gain.value ? 0.15 : 0.6);
+    this.echoSend.gain.setTargetAtTime(echo * 0.5, t, 0.3);
+    this.echoDelay.delayTime.setTargetAtTime(delay, t, 0.5);
+    // Now and then someone in the crowd whistles.
+    if (crowd > 0.3 && Math.random() < crowd * 0.025) this.whistle();
+  }
+
+  whistle() {
+    const ctx = this.ctx, at = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    const f = 2300 + Math.random() * 700, two = Math.random() < 0.5;
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f, at);
+    o.frequency.linearRampToValueAtTime(f * 1.25, at + 0.12);
+    o.frequency.linearRampToValueAtTime(two ? f * 0.85 : f * 1.1, at + 0.32);
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(0.05, at + 0.03);
+    g.gain.setValueAtTime(0.05, at + 0.26);
+    g.gain.linearRampToValueAtTime(0, at + 0.34);
+    o.connect(g).connect(this.sfxBus);
+    o.start(at); o.stop(at + 0.36);
   }
 
   // Engine character per car: mix of the three oscillators and filter Q.
@@ -341,7 +395,7 @@ export class AudioEngine {
   idle() {
     if (!this.ctx) return;
     const at = this.ctx.currentTime;
-    for (const g of [this.engGain, this.slideGain, this.rollGain, this.squealGain, this.crunchGain, this.wetGain, this.sprayGain]) g?.gain.setTargetAtTime(0, at, 0.05);
+    for (const g of [this.engGain, this.slideGain, this.rollGain, this.squealGain, this.crunchGain, this.wetGain, this.sprayGain, this.crowdGain, this.echoSend]) g?.gain.setTargetAtTime(0, at, 0.05);
   }
 
   // Finish jingle: a rising arpeggio, longer and brighter for a new best.

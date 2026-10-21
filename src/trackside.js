@@ -203,6 +203,7 @@ export function buildTrackside(road, { seed, corners, start, finish, cps = [], g
   let t = 0;
   const qx = new THREE.Quaternion(), right = new THREE.Vector3(1, 0, 0);
   const pose = (carX, carZ, info = {}, dt = 0) => {
+    let noise = 0;
     for (let i = 0; i < people.length; i++) {
       const p = people[i];
       const d = carX == null ? 99 : Math.hypot(carX - p.x, carZ - p.z);
@@ -228,6 +229,7 @@ export function buildTrackside(road, { seed, corners, start, finish, cps = [], g
       // Arms: down and swaying idle, up and waving as the car comes; over
       // the head when ducking, pumping when running.
       const cheer = Math.min(1, near * 1.8 * p.keen) * (1 - p.duck);
+      noise += near * near * (p.marshal ? 0.2 : 1) + (p.scare > 0 ? 0.5 : 0) + p.duck * 0.6 * near;
       for (const side of [-1, 1]) {
         const wave = Math.sin(t * 10 + p.phase + side) * 0.35 * cheer;
         let ang = side * (0.12 + cheer * 2.5 + wave + Math.sin(t * 1.7 + p.phase) * 0.04);
@@ -253,6 +255,7 @@ export function buildTrackside(road, { seed, corners, start, finish, cps = [], g
     arms.instanceMatrix.needsUpdate = flags.instanceMatrix.needsUpdate = cams.instanceMatrix.needsUpdate = true;
     for (const sp of flashes) if (sp.visible && (sp.life -= dt) <= 0) sp.visible = false;
     flashLight.intensity = Math.max(0, flashLight.intensity - dt * 900);
+    return Math.min(1, noise / 7);
   };
   pose();
 
@@ -261,11 +264,12 @@ export function buildTrackside(road, { seed, corners, start, finish, cps = [], g
     // info: { air (the car is flying), speed (m/s), dark (night lighting) }
     update(dt, carX, carZ, info) {
       t += dt;
-      pose(carX, carZ, info, dt);
+      const crowd = pose(carX, carZ, info, dt);
       rotor.rotation.y += dt * 30;
       heli.position.set(heliBase.x + Math.cos(t * 0.15) * 30, heliBase.y + Math.sin(t * 0.7) * 1.5, heliBase.z + Math.sin(t * 0.15) * 30);
       heli.rotation.y = -t * 0.15;
       heli.rotation.z = 0.12;
+      return crowd;          // 0..1: how loud the nearby crowd is
     },
   };
 }

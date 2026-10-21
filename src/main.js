@@ -377,6 +377,28 @@ function updateSky(along) {
   }
 }
 
+// ---------- Echo ----------
+// Ground rising steeply on both sides of the road (a canyon or a cutting)
+// throws the engine back at you. Bare rock echoes more than forest does.
+let crowdNoise = 0, echoT = 0;
+const echo = { k: 0, delay: 0.28 };
+function measureEcho() {
+  if (!terrain || !road) return;
+  const y = car.y ?? 0, wall = [0, 0];
+  let near = 40;
+  for (const side of [-1, 1]) {
+    for (const d of [10, 16, 24, 34]) {
+      const rise = terrain.heightAt(car.x + roadLx * side * d, car.z + roadLz * side * d) - y;
+      const k = Math.max(0, Math.min(1, (rise - 2.5) / (d * 0.55)));
+      if (k > wall[side > 0 ? 1 : 0]) wall[side > 0 ? 1 : 0] = k;
+      if (k > 0.5) near = Math.min(near, d);
+    }
+  }
+  const rock = { desert: 1.15, alpine: 1, snow: 0.8, autumn: 0.65, forest: 0.55 }[stage.theme?.id] ?? 0.7;
+  echo.k = Math.min(1, (Math.min(wall[0], wall[1]) * 0.95 + Math.max(wall[0], wall[1]) * 0.25) * rock);
+  echo.delay = 0.16 + near * 2 / 343 + 0.05;
+}
+
 // ---------- Handbrake assist (beginners) ----------
 // At a hairpin, steering hard into it at the right sort of speed pulls the
 // handbrake for a moment so the tail swings round. Once per corner per pass.
@@ -2114,7 +2136,8 @@ function frame(now) {
   else rig.update(car, dt);
   world.sky.position.copy(camera.position);
   if (!paused) { dust.update(dt); updateFlyingRocks(dt); updateRider(dt); }
-  if (!paused && trackside) trackside.update(dt, car.x, car.z, { air: car.air && car.airTime > 0.1, speed: car.speed, dark: lampGlow > 0.6 });
+  if (!paused && trackside) crowdNoise = trackside.update(dt, car.x, car.z, { air: car.air && car.airTime > 0.1, speed: car.speed, dark: lampGlow > 0.6 }) || 0;
+  if (!paused && (echoT -= dt) <= 0) { echoT = 0.25; measureEcho(); }
   if (skyPlan && road) updateSky(replay.on ? replay.along : roadAlong);
   if (!paused) { precip.update(dt, camera, { x: car.vx, z: car.vz }); rain.update(dt, camera, { x: car.vx, z: car.vz }, car.y); }
   wasSplash = !!surface.splash;
@@ -2127,6 +2150,7 @@ function frame(now) {
     });
   }
   audio.update(car, car.air && car.airTime > 0.06 ? AIR : surface, dt, active);
+  if (active) audio.setEnv({ crowd: crowdNoise, echo: echo.k, delay: echo.delay });
   if (running) updateHud(dt);
   if (running && mapOn) minimap.draw(car, replay.on ? replay.along : roadAlong, ghostModel ? ghostPose : null, dt);
   retro.render(renderer, scene, camera);
@@ -2416,7 +2440,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
+  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, echo, measureEcho, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver, crash, get riderFall() { return riderFall; },
