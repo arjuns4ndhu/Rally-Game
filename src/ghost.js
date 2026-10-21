@@ -42,6 +42,16 @@ function decode(arr) {
   return samples;
 }
 
+// For sharing: half the sample rate (10 Hz) keeps long stages small, and
+// the result is plain numbers so it can be checked when read back.
+export function packGhost(samples) { return encode(samples.filter((_, i) => i % 2 === 0)); }
+export function unpackGhost(d) {
+  if (!Array.isArray(d) || d.length > 200000 || d.length % SCALE.length) return null;
+  if (!d.every((v) => Number.isFinite(v) && Math.abs(v) < 1e7)) return null;
+  const samples = decode(d);
+  return samples.length > 10 ? samples : null;
+}
+
 export function saveGhost(seed, { car, color, time, samples }) {
   try {
     localStorage.setItem(KEY(seed), JSON.stringify({ v: 1, car, color, time, d: encode(samples) }));

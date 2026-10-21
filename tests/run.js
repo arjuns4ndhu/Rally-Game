@@ -18,6 +18,7 @@ const CHROME = process.env.CHROME_PATH || (require('fs').existsSync('/opt/pw-bro
 
 const results = [];
 async function check(name, fn) {
+  if (process.env.ONLY && !name.includes(process.env.ONLY)) return;
   const t0 = Date.now();
   try { await fn(); results.push([true, name, Date.now() - t0]); console.log(`  ok   ${name}`); }
   catch (e) { results.push([false, name, Date.now() - t0, e]); console.log(`  FAIL ${name}\n       ${String(e.message || e).split('\n')[0]}`); }
@@ -229,6 +230,54 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await page.waitForFunction(() => !!localStorage.getItem('sideways.autoq'), null, { timeout: 30000 });
     const label = await S(() => document.querySelector('#opt-quality option[value="auto"]').textContent);
     assert(/Auto \((Medium|Low|Lowest)\)/.test(label), 'menu label: ' + label);
+  });
+
+  await check('shared ghosts: a best run uploads, and another player\'s ghost can be raced', async () => {
+    // A stand-in for the claude.ai shared database (only there for real).
+    const c2 = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await c2.addInitScript(() => {
+      const docs = new Map();
+      window.__docs = docs;
+      const db = {
+        collection: (path) => ({
+          limit() { return this; },
+          onSnapshot(cb) {
+            const send = () => cb({ docs: [...docs].filter(([p]) => p.split('/').length === 2 && p.startsWith(path + '/')).map(([p, d]) => ({ id: p.split('/')[1], data: () => d })) });
+            send(); window.__resend = send; return () => {};
+          },
+        }),
+        doc: (path) => ({
+          get: async () => ({ exists: docs.has(path), data: () => docs.get(path) }),
+          set: async (d) => { docs.set(path, JSON.parse(JSON.stringify(d))); window.__resend?.(); },
+          update: async (d) => { const cur = docs.get(path) || {}; docs.set(path, { ...cur, ...d, best: { ...(cur.best || {}), ...(d.best || {}) } }); window.__resend?.(); },
+        }),
+      };
+      window.claude = { use: async (n) => (n === 'db' ? db : n === 'user' ? { id: async () => 'me-123' } : null) };
+      localStorage.setItem('sideways.welcomed', '1');
+      localStorage.setItem('sideways.nick', 'Tester');
+    });
+    const p2 = await c2.newPage();
+    const errs2 = []; p2.on('pageerror', (e) => errs2.push(String(e)));
+    await page.goto('about:blank'); // one WebGL page at a time
+    await p2.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    await p2.waitForFunction(() => window.__sideways?.board?.available, null, { timeout: 60000 });
+    const r = await p2.evaluate(async () => {
+      const s = window.__sideways, { packGhost } = await import('/src/ghost.js');
+      s.loadStage('classic', 900122);
+      // Upload my ghost, then plant a rival's.
+      const samples = [];
+      for (let i = 0; i < 400; i++) { const k = s.road.indexAt(30 + i * 5); samples.push([i * 0.05, s.road.px[k], s.road.py[k], s.road.pz[k], 0, 0, 0]); }
+      await s.board.submitGhost(900122, { car: 'vector', color: '#ff0000', t: 92.5, d: packGhost(samples) });
+      const mine = window.__docs.get('scores/me-123/ghosts/s900122');
+      window.__docs.set('scores/rival-9/ghosts/s900122', { car: 'brute', color: '#00ff00', t: 90.1, d: packGhost(samples) });
+      const btn = document.createElement('button');
+      await s.raceGhostOf('rival-9', 'Speedy', btn);
+      return { uploaded: !!mine && Array.isArray(mine.d) && mine.d.length > 50, ghost: !!s.ghostModel, hud: document.getElementById('hud-best').textContent };
+    });
+    await c2.close();
+    assert(r.uploaded, 'my ghost was not uploaded');
+    assert(r.ghost && /VS SPEEDY/.test(r.hud), 'rival ghost not raced: ' + JSON.stringify(r));
+    assert(errs2.length === 0, errs2.join(' | '));
   });
 
   await check('no errors logged during the run', async () => {

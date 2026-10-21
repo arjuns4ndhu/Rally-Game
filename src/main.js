@@ -14,7 +14,7 @@ import { AudioEngine } from './audio.js';
 import { DrivingSchool } from './school.js';
 import { Input, ACTIONS, BINDS, bindKey, resetKeys, isDriveKey, keyLabel } from './input.js';
 import { TyreMarks, buildRacingMarks } from './tyremarks.js';
-import { GhostRecorder, saveGhost, loadGhost, samplePose } from './ghost.js';
+import { GhostRecorder, saveGhost, loadGhost, samplePose, packGhost, unpackGhost } from './ghost.js';
 import { buildPaceNotes, CoDriver } from './pacenotes.js';
 import { notesHTML } from './paceicons.js';
 import { Drone } from './drone.js';
@@ -421,16 +421,22 @@ function fmtDelta(d) { return `${d < 0 ? '−' : '+'}${Math.abs(d).toFixed(2)}`;
 // ---------- Ghost ----------
 const recorder = new GhostRecorder();
 let ghost = null, ghostModel = null;
+// Someone else's run picked from the leaderboard: raced instead of your own.
+let rival = null;
 const ghostPose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, done: false };
 let ghostOn = true;
 try { ghostOn = localStorage.getItem('sideways.ghostOn') !== '0'; } catch { /* ignore */ }
 function refreshGhost() {
   ghostHint = -1;
   if (ghostModel) { scene.remove(ghostModel.root); ghostModel.dispose(); ghostModel = null; }
-  ghost = stage.kind !== 'practice' ? loadGhost(stage.seed) : null;
-  // Only ever your own best run on this stage: it must match your saved best time.
-  const mine = loadBest();
-  if (ghost && !(mine && Math.abs(ghost.time - mine.time) < 0.05)) ghost = null;
+  if (rival && rival.seed !== stage.seed) rival = null;
+  if (rival) ghost = { car: rival.car, color: rival.color, time: rival.time, samples: rival.samples.map((sm) => sm.slice()) };
+  else {
+    ghost = stage.kind !== 'practice' ? loadGhost(stage.seed) : null;
+    // Your own best run on this stage: it must match your saved best time.
+    const mine = loadBest();
+    if (ghost && !(mine && Math.abs(ghost.time - mine.time) < 0.05)) ghost = null;
+  }
   if (ghost) { ghostToLift(ghost.samples); ghost.alongs = ghostAlongs(ghost.samples); }
   if (ghost && ghostOn) {
     // A ghost that can't be built is skipped; it must never stop the game.
@@ -561,8 +567,12 @@ function finishRun() {
   $('fin-unlock').hidden = !newly.length;
   $('fin-unlock').textContent = newly.length ? `Unlocked: ${newly.map(unlockName).join(', ')}. Have a look in the Garage!` : '';
   refreshGarageDot();
-  if (stage.kind !== 'practice' && isBest) board.submit(stage.seed, run.t, CARS[carId].name);
-  lastResult = { time: run.t, splits: run.splits.slice(), prev, isBest, label: stageLabel(), respawns: run.respawns, car: CARS[carId].name };
+  if (stage.kind !== 'practice' && isBest) {
+    board.submit(stage.seed, run.t, CARS[carId].name);
+    // Share the run too, so others can race it.
+    board.submitGhost(stage.seed, { car: carId, color: model.paint.color.getStyle(), t: run.t, d: packGhost(recorder.samples) });
+  }
+  lastResult = { time: run.t, splits: run.splits.slice(), prev, isBest, label: stageLabel(), respawns: run.respawns, car: CARS[carId].name, seed: stage.kind !== 'practice' ? stage.seed : null };
   audio.fanfare(isBest && !!prev);
   audio.duck(0.45, 0);                 // music steps back on the finish screen
   $('fin-stage').textContent = stageLabel();
@@ -658,7 +668,7 @@ function refreshStageHud() {
   $('pause-code').textContent = stage.kind === 'practice' ? '' : `Stage code ${stage.seed}`;
   $('btn-pcopy').hidden = stage.kind === 'practice';
   $('hud-timing').hidden = !timed;
-  $('hud-best').textContent = fmt(best?.time) + (ghostModel ? ' · GHOST' : '');
+  $('hud-best').textContent = fmt(best?.time) + (ghostModel ? (rival ? ` · VS ${rival.nick.toUpperCase()}` : ' · GHOST') : '');
   [...$('hud-sectors').children].forEach((el, k) => {
     el.classList.toggle('done', k < run.next);
     el.classList.toggle('now', run.state === 'running' && k === run.next);
@@ -831,6 +841,7 @@ function shareText(r) {
     `SIDEWAYS · ${r.label}`,
     `⏱ ${fmt(r.time)}${r.medal ? ' ' + MEDAL_ICON[r.medal] : ''}${r.isBest && r.prev ? ' · NEW BEST' : ''}${r.respawns ? ` · ${r.respawns} reset${r.respawns > 1 ? 's' : ''}` : ''}`,
     `${squares} · ${r.car}`,
+    ...(r.seed ? [`Beat it: stage code ${r.seed}`] : []),
   ].join('\n');
 }
 // Copy text, falling back to the old textarea trick where the clipboard
@@ -897,6 +908,15 @@ function renderBoard() {
     const car = document.createElement('small'); car.textContent = r.car; name.append(car);
     const t = document.createElement('span'); t.textContent = fmt(r.t);
     li.append(name, t);
+    // Race anyone else's run as a ghost.
+    if (!r.me) {
+      const race = document.createElement('button');
+      race.className = 'btn btn-sm board-race';
+      race.textContent = 'Race';
+      race.title = `Race ${r.nick}'s ghost`;
+      race.addEventListener('click', () => raceGhostOf(r.id, r.nick, race));
+      li.append(race);
+    }
     list.append(li);
   }
   const rk = board.rank(stage.seed);
@@ -906,6 +926,16 @@ function renderBoard() {
     board.denied ? 'View-only access: the owner can invite you with edit access to post times.' : '';
 }
 board.on(() => { renderBoard(); if (!$('classics').hidden) renderClassics(); });
+async function raceGhostOf(id, nick, btn) {
+  btn.disabled = true; btn.textContent = '…';
+  const g = await board.fetchGhost(id, stage.seed);
+  const samples = g && unpackGhost(g.d);
+  btn.disabled = false; btn.textContent = 'Race';
+  if (!samples) { toast('NO GHOST SAVED FOR THAT RUN', 1500); return; }
+  rival = { seed: stage.seed, nick, car: CARS[g.car] ? g.car : carId, color: g.color, time: g.t, samples };
+  restartRun();
+  toast(`RACING ${nick.toUpperCase()}'S GHOST`, 1600);
+}
 $('board-name').addEventListener('submit', (e) => {
   e.preventDefault();
   const v = $('board-nick').value;
@@ -2301,7 +2331,7 @@ window.__sideways = {
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver, crash, get riderFall() { return riderFall; },
-  get ghostModel() { return ghostModel; }, recorder, loadGhost, onLanding, renderer, scene, camera, marks, assist, setAssist, car, input, TUNE, CARS, start, stepSim, placeOnRoad, loadStage, run, stage,
+  get ghostModel() { return ghostModel; }, board, raceGhostOf, recorder, loadGhost, onLanding, renderer, scene, camera, marks, assist, setAssist, car, input, TUNE, CARS, start, stepSim, placeOnRoad, loadStage, run, stage,
   get road() { return road; }, get terrain() { return terrain; }, get lineMesh() { return lineMesh; }, get surface() { return surface; }, get best() { return best; },
 };
 // After everything above is set up: mark the Garage button if there's something new.

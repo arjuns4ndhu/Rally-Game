@@ -3,6 +3,9 @@
 // One document per player, scores/<their id>:
 //   { nick: "Racing name", best: { "s<seed>": { t, car, at } } }
 // Everyone can read every document; each player writes only their own.
+// Each player's best runs are kept below their document as ghosts,
+// scores/<id>/ghosts/s<seed>: { car, color, t, d: [packed samples] }, so
+// anyone can race them.
 // Everything read back is other people's input: validated and shown as text.
 
 const NICK_KEY = 'sideways.nick';
@@ -82,6 +85,26 @@ export class Leaderboard {
     return this._write(() => (this.mine
       ? this.db.doc(`scores/${this.uid}`).update({ nick: this.nick, best: { [k]: entry } })
       : this.db.doc(`scores/${this.uid}`).set({ nick: this.nick, best: { [k]: entry } })));
+  }
+
+  // Share the ghost of a new best (after the time itself is posted).
+  submitGhost(seed, { car, color, t, d }) {
+    if (!this.canPost || !this.nick || !Array.isArray(d)) return;
+    const body = { car: clean(car), color: /^#[0-9a-f]{3,8}$/i.test(color) ? color : '#9fe3ff', t: Math.round(t * 1000) / 1000, d };
+    return this._write(() => this.db.doc(`scores/${this.uid}/ghosts/s${seed}`).set(body));
+  }
+
+  // Someone's ghost for a stage, or null. The caller unpacks and checks d.
+  async fetchGhost(id, seed) {
+    if (!this.available || !/^[\w-]{1,128}$/.test(id)) return null;
+    try {
+      const snap = await this.db.doc(`scores/${id}/ghosts/s${seed}`).get();
+      if (!snap.exists) return null;
+      const v = snap.data() || {};
+      const t = Number(v.t);
+      if (!(t > 5 && t < 3600)) return null;
+      return { car: clean(v.car), color: /^#[0-9a-f]{3,8}$/i.test(v.color) ? v.color : '#9fe3ff', t, d: v.d };
+    } catch { return null; }
   }
 
   // Choose a racing name; also posts every best already saved on this device.

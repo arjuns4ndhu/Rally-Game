@@ -769,3 +769,7 @@ body:not(.pad) .pad-help { display: none; }
 .welcome-card .logo { font-size: clamp(40px, 9vh, 64px); }
 .welcome-card .btn-sm { align-self: center; }
 @media (max-height: 500px) { .welcome-card .lede { display: none; } }
+
+/* Leaderboard: race someone's ghost */
+.board-list li { align-items: center; gap: 8px; }
+.board-race { min-height: 26px; padding: 2px 8px; font-size: 11px; margin-left: 6px; }
