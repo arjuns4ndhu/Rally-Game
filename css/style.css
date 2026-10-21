@@ -791,3 +791,25 @@ body:not(.pad) .pad-help { display: none; }
 .board-race { min-height: 26px; padding: 2px 8px; font-size: 11px; margin-left: 6px; }
 /* Replay bar sits along the bottom: lift the speedo clear of it. */
 body.replaying:not(.touch) .hud-br { bottom: calc(84px + var(--safe-b)); }
+
+/* ---------- Career ---------- */
+.career-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 760px) { .career-cols { grid-template-columns: 1fr; } }
+.career-h { font-family: var(--font-display); font-size: 13px; letter-spacing: 0.1em; color: var(--muted, #9aa0a8); margin: 8px 0 6px; font-weight: 400; }
+.champ-table tr.you td { color: var(--accent); }
+.champ-table tr.now td { background: rgba(255, 176, 0, 0.08); }
+.champ-table td .car-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; border: 1px solid rgba(255,255,255,0.3); }
+.career-last { border: 1px solid var(--accent); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; background: rgba(255, 176, 0, 0.06); }
+.career-last b { color: var(--accent); }
+.career-last ol { margin: 6px 0 0; padding-left: 22px; columns: 2; font-size: 13px; }
+.career-last li.you { color: var(--accent); }
+.fin-career { font-family: var(--font-display); font-size: 15px; letter-spacing: 0.04em; margin: 6px 0; color: var(--accent); }
+.fin-career small { display: block; font-family: inherit; color: var(--text); opacity: 0.8; font-size: 12px; margin-top: 2px; }
+.podium { background: radial-gradient(ellipse at 50% 30%, #2a2e38, #0b0d12 70%); }
+.podium canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.podium-card { position: absolute; left: 50%; bottom: calc(18px + var(--safe-b, 0px)); transform: translateX(-50%); width: min(520px, calc(100vw - 32px));
+  background: rgba(11, 13, 18, 0.86); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; text-align: center; }
+.podium-list { text-align: left; margin: 8px auto; padding-left: 24px; max-width: 320px; }
+.podium-list li.you { color: var(--accent); }
+.podium-card .logo { font-size: clamp(30px, 6vw, 46px); margin: 2px 0 4px; }
+.podium-card .podium-list { margin: 4px auto; }

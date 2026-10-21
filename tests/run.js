@@ -358,6 +358,52 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     assert(r.river.fords >= 2 && r.river.water === 'water' && r.river.note, 'river: ' + JSON.stringify(r.river));
   });
 
+  await check('career: a rally through the menus, points, then the season podium', async () => {
+    await S(() => { localStorage.removeItem('sideways.career'); localStorage.setItem('sideways.welcomed', '1'); });
+    await ready();
+    await S(() => document.getElementById('btn-career').click());
+    const cal = await S(() => document.getElementById('career-cal').textContent);
+    assert(/Next/.test(cal), 'career calendar: ' + cal);
+    await S(() => document.getElementById('career-go').click());
+    await page.waitForTimeout(500);
+    await S(() => document.getElementById('garage-go').click());
+    const labels = [];
+    for (let k = 0; k < 3; k++) {
+      await page.waitForFunction(() => { const s = window.__sideways; return s.careerRun && s.stage.seed === s.careerRun.seed && s.run.state === 'countdown' && document.getElementById('loading').hidden; }, null, { timeout: 60000 });
+      const r = await S(() => {
+        const s = window.__sideways;
+        s.run.state = 'running'; s.run.t = (s.stage.finish - s.stage.start) / (82 / 3.6); s.run.splits = [1, 2, 3, 4, 5];
+        s.finishRun();
+        return { fin: document.getElementById('fin-career').textContent, next: document.getElementById('btn-next').textContent, retry: document.getElementById('btn-retry').hidden };
+      });
+      labels.push(r);
+      await S(() => document.getElementById('btn-next').click());
+    }
+    assert(labels[0].next.startsWith('Next stage') && labels[0].retry && /SS1: \d/.test(labels[0].fin), 'stage 1 finish: ' + JSON.stringify(labels[0]));
+    assert(labels[2].next.startsWith('Rally results'), 'rally end: ' + JSON.stringify(labels[2]));
+    await page.waitForFunction(() => !document.getElementById('career').hidden, null, { timeout: 20000 });
+    const after = await S(() => ({ last: document.getElementById('career-last').textContent, pts: window.__sideways.career.points.you, rally: window.__sideways.career.rally }));
+    assert(after.rally === 1 && after.pts > 0 && /you finished/.test(after.last), 'after rally 1: ' + JSON.stringify(after));
+    await page.screenshot({ path: path.join(__dirname, 'out-career.png') }).catch(() => {});
+    // The other three rallies, straight through the career logic, then the finale.
+    const fin = await S(async () => {
+      const s = window.__sideways, C = await import('/src/career.js');
+      while (s.career.rally < 4) {
+        const r = C.seasonPlan(s.career.season)[s.career.rally];
+        C.recordStage(s.career, { seed: r.seeds[s.career.stage], dist: 2400 }, 2400 / (85 / 3.6));
+      }
+      C.saveCareer(s.career);
+      s.renderCareer();
+      document.getElementById('career-go').click();
+      return { podium: !document.getElementById('podium').hidden, title: document.getElementById('podium-title').textContent };
+    });
+    assert(fin.podium && fin.title === 'CHAMPION!', 'podium: ' + JSON.stringify(fin));
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: path.join(__dirname, 'out-podium.png') }).catch(() => {});
+    const next = await S(() => { document.getElementById('podium-go').click(); const c = window.__sideways.career; return { season: c.season, tier: c.tier, rally: c.rally, page: !document.getElementById('career').hidden }; });
+    assert(next.season === 2 && next.tier === 1 && next.rally === 0 && next.page, 'next season: ' + JSON.stringify(next));
+  });
+
   await check('phone drag steering gives analogue steer', async () => {
     const st = await S(async () => {
       const s = window.__sideways;

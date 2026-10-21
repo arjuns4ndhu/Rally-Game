@@ -10,6 +10,8 @@ import { THEMES, pickTheme, specialOf, SPECIAL_LABEL } from './themes.js';
 import { setupWorld, buildScenery } from './scenery.js';
 import { CameraRig, TVCamera } from './camera.js';
 import { Dust, BeamDust } from './particles.js';
+import { TIERS, RESTART_PENALTY, newCareer, loadCareer, saveCareer, resetCareer, seasonPlan, recordStage, standings, finishSeason, ordinal, RIVALS } from './career.js';
+import { Podium } from './podium.js';
 import { AudioEngine } from './audio.js';
 import { DrivingSchool } from './school.js';
 import { Input, ACTIONS, BINDS, bindKey, resetKeys, isDriveKey, keyLabel, FEEL, saveFeel } from './input.js';
@@ -89,6 +91,7 @@ const headlights = [-1, 1].map(() => {
   return l;
 });
 let weather = WEATHER.clear, surfPlan = null;
+let career = loadCareer(), careerRun = null;     // career progress, and the career stage being driven
 
 // ---------- Graphics quality ----------
 // Auto picks Medium on phones/tablets (Low on small ones) and High elsewhere.
@@ -577,6 +580,12 @@ function updateGhost() {
 
 function restartRun() {
   if (replay.on) { replay.on = false; $('hud-replay').hidden = true; document.body.classList.remove('replaying'); }
+  // Career: no free retries. Restarting a stage you were driving costs time.
+  if (inCareerStage() && run.liveSeed === stage.seed && run.state === 'running') {
+    career.restarts++; saveCareer(career);
+    toast(`RESTART · +${RESTART_PENALTY * career.restarts}s CAREER PENALTY`, 1600);
+  }
+  run.liveSeed = stage.seed;
   recorder.reset();
   run.state = stage.kind === 'practice' ? 'free' : 'countdown';
   run.cd = 3.8; run.cdShown = null;
@@ -674,6 +683,10 @@ function finishRun() {
   $('fin-stage').textContent = stageLabel();
   renderBoard();
   $('btn-next').hidden = !(stage.kind === 'champ' && champIndex(stage.seed) < 5);
+  $('btn-next').textContent = 'Next stage';
+  $('btn-retry').hidden = false;
+  $('fin-career').hidden = true;
+  if (inCareerStage()) { if (!careerRun.result) careerFinish(); showCareerFin(); }
   $('btn-retry').classList.toggle('btn-primary', $('btn-next').hidden);
   // Classic stages: medal for this run, and the next target to chase.
   const cl = stage.kind === 'classic' ? classicOf(stage.seed) : null;
@@ -696,7 +709,7 @@ function finishRun() {
     return `<tr><td>S${k + 1}</td><td>${fmt(sec)}</td><td>${fmt(t)}</td><td class="${d == null ? '' : d < 0 ? 'good' : 'bad'}">${d == null ? '' : fmtDelta(d)}</td></tr>`;
   }).join('');
   $('fin-splits').innerHTML = `<tr><th>Sector</th><th>Time</th><th>Total</th><th>vs best</th></tr>${rows}`;
-  setTimeout(() => { if (run.state === 'finished') $('finish').hidden = false; }, 900);
+  setTimeout(() => { if (run.state === 'finished' && running && !replay.on) $('finish').hidden = false; }, 900);
   refreshStageHud();
 }
 
@@ -749,6 +762,7 @@ function toast(msg, ms = 1600) {
 
 function stageLabel() {
   if (stage.kind === 'practice') return 'Practice loop';
+  if (inCareerStage()) return `${careerRun.name} · SS${careerRun.stage + 1}/3 · ${stage.name}`;
   if (stage.kind === 'classic') return `${stage.name} · Classic`;
   if (stage.kind === 'champ') return `${stage.name} · Championship ${champIndex(stage.seed)}/5`;
   if (stage.kind === 'endurance') return `${stage.name} · Endurance #${stage.seed}`;
@@ -1160,7 +1174,11 @@ $('btn-restart').addEventListener('click', () => { restartKey(); setPaused(false
 $('btn-pmenu').addEventListener('click', toMenu);
 $('btn-retry').addEventListener('click', () => { restartRun(); audio.music(musicOn); });   // music back up from the finish-screen level
 // Straight on to the next championship stage in the same car.
-$('btn-next').addEventListener('click', (e) => { e.currentTarget.blur(); start('champ', champWeekOf(stage.seed).seeds[champIndex(stage.seed)]); });
+$('btn-next').addEventListener('click', (e) => {
+  e.currentTarget.blur();
+  if (careerRun?.result) { careerNext(); return; }
+  start('champ', champWeekOf(stage.seed).seeds[champIndex(stage.seed)]);
+});
 $('btn-share').addEventListener('click', (e) => { e.currentTarget.blur(); copyResult(); });
 $('btn-replay').addEventListener('click', (e) => { e.currentTarget.blur(); startReplay(); });
 $('btn-replay-exit').addEventListener('click', (e) => { e.currentTarget.blur(); stopReplay(); });
@@ -1386,7 +1404,7 @@ input.on('action', (act) => {
 // or replay. It is worked out from which screens are showing, so it can't
 // drift from them, and the CSS uses it to decide what else shows (touch
 // pedals only while driving, the HUD hidden under the finish card, ...).
-const PAGES = ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome'];
+const PAGES = ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career'];
 function syncUI() {
   const open = (id) => !$(id).hidden;
   document.body.dataset.ui = open('loading') ? 'loading' : open('hud-replay') ? 'replay' : open('pause') ? 'pause'
@@ -1446,7 +1464,7 @@ $('opt-steer').addEventListener('click', (e) => { const b = e.target.closest('[d
 // D-pad/stick (A picks, B goes back).
 input.on('padconnect', () => { document.body.classList.add('pad'); toast('CONTROLLER CONNECTED', 1400); });
 input.on('paddisconnect', () => toast('CONTROLLER DISCONNECTED', 1400));
-const MENU_LAYERS = ['loading', 'pause', 'finish', 'garage', 'welcome', 'randomgen', 'classics', 'past', 'champ', 'statsview', 'start'];
+const MENU_LAYERS = ['loading', 'podium', 'pause', 'finish', 'garage', 'welcome', 'randomgen', 'classics', 'past', 'champ', 'career', 'statsview', 'start'];
 function menuLayer() { return MENU_LAYERS.map($).find((el) => el && !el.hidden) || null; }
 function focusables(root) {
   return [...root.querySelectorAll('button, input, select, summary, [tabindex="0"]')]
@@ -2293,6 +2311,96 @@ function frame(now) {
 loadStage('daily', dateSeed());
 requestAnimationFrame(frame);
 
+// ---------- Career ----------
+const podium = new Podium($('podium-canvas'));
+function inCareerStage() { return !!careerRun && stage.seed === careerRun.seed && stage.kind === 'random'; }
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const carDot = (c) => `<span class="car-dot" style="background:${/^#[0-9a-f]{3,8}$/i.test(c) ? c : '#888'}"></span>`;
+function renderCareer() {
+  if (!career) career = newCareer();
+  const plan = seasonPlan(career.season);
+  $('career-eyebrow').textContent = `Season ${career.season} · ${TIERS[career.tier].label} class${career.titles ? ` · ${career.titles} title${career.titles > 1 ? 's' : ''}` : ''}`;
+  $('career-cal').innerHTML = '<tr><th>#</th><th>Rally</th><th>Result</th></tr>' + plan.map((r, k) => {
+    const res = career.results.find((x) => x.rally === k);
+    const now = k === career.rally;
+    const status = res ? `${ordinal(res.pos)}` : now ? (career.stage ? `SS${career.stage + 1} next` : 'Next') : '';
+    return `<tr class="${now ? 'now' : ''}"><td>${k + 1}</td><td>${esc(r.name)}<small>${r.label} · 3 stages</small></td><td>${status}</td></tr>`;
+  }).join('');
+  $('career-table').innerHTML = '<tr><th>Pos</th><th>Driver</th><th>Pts</th></tr>' + standings(career).map((x, i) =>
+    `<tr class="${x.you ? 'you' : ''}"><td>${i + 1}</td><td>${carDot(x.you ? garage.color : x.color)}${esc(x.name)}<small>${x.you ? CARS[career.car || carId].name : CARS[x.car].name}</small></td><td>${x.pts}</td></tr>`).join('');
+  const L = career.lastRally && career.showLast ? career.lastRally : null;
+  $('career-last').hidden = !L;
+  if (L) {
+    const me = L.cls.findIndex((x) => x.you), win = L.cls[0].t;
+    $('career-last').innerHTML = `<b>${esc(plan[L.rally]?.name || 'Rally')}: you finished ${ordinal(me + 1)}</b> (+${[25, 18, 15, 12, 10, 8, 6, 4][me] || 0} pts)` +
+      `<ol>${L.cls.map((x, i) => `<li class="${x.you ? 'you' : ''}">${esc(x.name)} <small>${i ? '+' + fmt(x.t - win) : fmt(x.t)}</small></li>`).join('')}</ol>`;
+  }
+  const done = career.rally >= 4;
+  $('career-go').textContent = done ? 'Season finale ▶' : career.stage ? `Continue: ${plan[career.rally].name}, SS${career.stage + 1} ▶` : `Start ${plan[career.rally].name} ▶`;
+  $('career-sub').textContent = `Season ${career.season} · ${TIERS[career.tier].label} · round ${Math.min(4, career.rally + 1)} of 4`;
+}
+function startCareerStage() {
+  if (!career) career = newCareer();
+  saveCareer(career);
+  const r = seasonPlan(career.season)[career.rally];
+  careerRun = { seed: r.seeds[career.stage], stage: career.stage, rally: career.rally, name: r.name, result: null };
+  // Pick the car at the start of each rally; it's the same car for all three stages.
+  if (career.stage === 0) pickThenStart('random', careerRun.seed);
+  else { if (running) toMenu(); hidePages(); launchStage({ kind: 'random', seed: careerRun.seed }); }
+}
+function careerFinish() {
+  const res = recordStage(career, { seed: stage.seed, dist: stage.finish - stage.start, fords: (road.fords || []).length }, run.t);
+  career.car = carId;
+  career.showLast = res.rallyDone;
+  saveCareer(career);
+  careerRun.result = res;
+  const pen = res.t - run.t;
+  careerRun.html = `SS${careerRun.stage + 1}: ${ordinal(res.stagePos)} of 8 · ${res.rallyDone ? 'Rally result' : 'Rally'}: ${ordinal(res.rallyPos)}` +
+    `<small>${pen ? `Includes +${pen}s for restarts · ` : ''}${res.rallyPos === 1 ? `Leading by ${fmt(Math.abs(res.rallyGap))}` : `${fmt(res.rallyGap)} behind the leader`}${res.award ? ` · +${res.award.pts} championship points` : ''}</small>`;
+}
+// The career result on the finish screen (the first finish is the one that counts).
+function showCareerFin() {
+  const res = careerRun.result;
+  $('fin-career').hidden = false;
+  $('fin-career').innerHTML = careerRun.html;
+  $('btn-next').hidden = false;
+  $('btn-next').textContent = res.seasonDone ? 'Season finale ▶' : res.rallyDone ? 'Rally results ▶' : 'Next stage ▶';
+  $('btn-retry').hidden = true;
+}
+function careerNext() {
+  const res = careerRun.result;
+  careerRun = null;
+  if (res.seasonDone) { toMenu(); showPodium(); return; }
+  if (res.rallyDone) { toMenu(); openPage('career'); renderCareer(); return; }
+  startCareerStage();
+}
+function showPodium() {
+  const fin = finishSeason(career);
+  const top = fin.table.slice(0, 3).map((x) => (x.you ? { car: career.car || carId, color: garage.color } : { car: x.car, color: x.color }));
+  $('start').hidden = true;
+  $('podium').hidden = false;
+  podium.show(top); podium.start();
+  $('podium-eyebrow').textContent = `Season ${career.season} · ${TIERS[career.tier].label} class`;
+  $('podium-title').textContent = fin.pos === 1 ? 'CHAMPION!' : `${ordinal(fin.pos).toUpperCase()} OVERALL`;
+  $('podium-list').innerHTML = fin.table.slice(0, 3).map((x) => `<li class="${x.you ? 'you' : ''}">${esc(x.name)} · ${x.pts} pts</li>`).join('') +
+    (fin.pos > 3 ? `<li value="${fin.pos}" class="you">You · ${fin.table[fin.pos - 1].pts} pts</li>` : '');
+  $('podium-note').textContent = fin.promoted ? `Promoted: ${TIERS[fin.next.tier].label} class next season, against quicker rivals.`
+    : fin.pos === 1 ? 'Top class champion. Can you defend it?' : `Same class next season: win the title to move up.`;
+  audio.init(); audio.fanfare(fin.pos <= 3);
+  $('podium-go').onclick = () => {
+    career = fin.next; saveCareer(career);
+    podium.stop(); $('podium').hidden = true;
+    openPage('career'); renderCareer();
+  };
+}
+$('btn-career').addEventListener('click', () => { if (career) career.showLast = false; openPage('career'); renderCareer(); });
+$('career-go').addEventListener('click', () => { if (career && career.rally >= 4) { hidePages(); showPodium(); } else startCareerStage(); });
+$('career-reset').addEventListener('click', () => {
+  if (career && (career.rally || career.stage || career.season > 1) && !confirm('Start a new career? Your current one will be lost.')) return;
+  resetCareer(); career = newCareer(); renderCareer();
+});
+if (career) renderCareer();
+
 // ---------- Menu pages ----------
 const preview = new GaragePreview($('garage-view'));
 function openPage(id) {
@@ -2303,7 +2411,7 @@ function openPage(id) {
 function hidePages() {
   clearPeek();
   if (!$('garage').hidden) markUnlocksSeen();     // NEW badges go once you've seen them
-  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome']) $(id).hidden = true;
+  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career']) $(id).hidden = true;
   preview.stop();
 }
 function closePages() {
@@ -2374,6 +2482,7 @@ function openGarage(mode, label = '') {
 }
 function stageTitle(kind, seed) {
   if (kind === 'practice') return 'Practice loop';
+  if (careerRun && seed === careerRun.seed) return `${careerRun.name} · SS${careerRun.stage + 1}/3`;
   if (kind === 'random' && seed == null) return 'Random stage';
   if (kind === 'endurance' && seed == null) return 'Endurance stage';
   if (kind === 'endurance') return `${stageName(seed)} · Endurance`;
@@ -2399,8 +2508,11 @@ $('garage-go').addEventListener('click', (e) => {
   pendingStart = null;
   if (!p) { closePages(); return; }
   hidePages();                             // straight to the stage, no flash of the title menu
-  // Building a stage takes a moment and blocks the page, so show the loading
-  // screen first and let it paint (two frames) before starting.
+  launchStage(p);
+});
+// Building a stage takes a moment and blocks the page, so show the loading
+// screen first and let it paint (two frames) before starting.
+function launchStage(p) {
   const needLoad = p.seed == null || p.kind !== stage.kind || p.seed !== stage.seed;
   const go = () => {
     try { start(p.kind, p.seed); } catch (err) { showError('The stage could not start', err); toMenu(); }
@@ -2412,7 +2524,7 @@ $('garage-go').addEventListener('click', (e) => {
   $('loading-name').textContent = stageTitle(p.kind, p.seed);
   $('loading').hidden = false;
   requestAnimationFrame(() => requestAnimationFrame(go));
-});
+}
 
 // Locked cars, paints, wheels and styles can be tried on in the preview:
 // the preview shows them with a label saying how to unlock them, but your
@@ -2575,7 +2687,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, echo, measureEcho, replay, startReplay, stopReplay, replayCam, toggleClip, clip, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
+  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, get career() { return career; }, set career(c) { career = c; }, get careerRun() { return careerRun; }, startCareerStage, careerNext, showPodium, renderCareer, finishRun, echo, measureEcho, replay, startReplay, stopReplay, replayCam, toggleClip, clip, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver, crash, get riderFall() { return riderFall; },
