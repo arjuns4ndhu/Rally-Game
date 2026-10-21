@@ -1,19 +1,23 @@
 // Trackside life: crowds behind tape at hairpins, jumps, the start and the
-// finish, hay bales on the outside of sharp corners, and a TV helicopter
-// over the finish. Spectators hop and step back as the car comes past.
+// finish, little groups of fans all along the stage, marshals in orange at
+// the checkpoints, hay bales on the outside of sharp corners, and a TV
+// helicopter over the finish. Spectators cheer (arms up, flags waving) and
+// step back as the car comes past.
 import * as THREE from 'three';
 import { mulberry32 } from './rng.js';
 import { facet } from './retro.js';
 
 const SHIRTS = [0xd8432b, 0x2a6fd8, 0xf2c230, 0x1f9e5a, 0xf1ede2, 0x7a3fd1, 0xff8a1c, 0x16181d, 0x3fc6d1];
 const SKIN = [0xf1c6a0, 0xd9a47c, 0xa8724f, 0x7a4e33, 0xeac0a0];
+const FLAGS = [0xd8432b, 0xf2c230, 0x2a6fd8, 0xf1ede2, 0x1f9e5a, 0x16181d];
+const VEST = 0xff6a00;
 
 function lateralPoint(road, along, lat) {
   const i = road.indexAt(Math.max(0, Math.min(road.length - 0.1, along)));
   return { x: road.px[i] + road.tz[i] * lat, z: road.pz[i] - road.tx[i] * lat, i };
 }
 
-export function buildTrackside(road, { seed, corners, start, finish, groundY }) {
+export function buildTrackside(road, { seed, corners, start, finish, cps = [], groundY, detail = 1 }) {
   const rnd = mulberry32(((seed * 2246822519) ^ 0x68e31da4) >>> 0);
   const group = new THREE.Group();
   const people = [];           // { x, z, y, nx, nz, phase, h }
@@ -47,6 +51,19 @@ export function buildTrackside(road, { seed, corners, start, finish, groundY }) 
     }
   };
 
+  const w = road.width / 2;
+  // Never put anyone near any part of the road (hairpins fold the road back
+  // on itself, so the nearest bit may not be the one we measured from).
+  const safe = (x, z) => road.nearest(x, z).dist > w + 5.5;
+  const addPerson = (p, side, extra = {}) => {
+    if (!safe(p.x, p.z)) return;
+    people.push({
+      x: p.x, z: p.z, y: groundY(p.x, p.z), nx: road.tz[p.i] * side, nz: -road.tx[p.i] * side, phase: rnd() * 6, h: 0.9 + rnd() * 0.25,
+      shirt: SHIRTS[Math.floor(rnd() * SHIRTS.length)], skin: SKIN[Math.floor(rnd() * SKIN.length)],
+      yaw: Math.atan2(-road.tz[p.i] * side, road.tx[p.i] * side),
+      flag: rnd() < 0.32 ? FLAGS[Math.floor(rnd() * FLAGS.length)] : null, keen: 0.6 + rnd() * 0.6, ...extra,
+    });
+  };
   // A crowd spot: tape along the road at `lat`, people standing behind it.
   const crowd = (from, to, side, lat, n) => {
     const pts = [];
@@ -56,13 +73,11 @@ export function buildTrackside(road, { seed, corners, start, finish, groundY }) 
     }
     if (pts.length > 1) tapeLine(pts);
     for (let k = 0; k < n; k++) {
-      const a = from + rnd() * (to - from), l = side * (lat + 1 + rnd() * 3.5);
-      const p = lateralPoint(road, a, l);
-      people.push({ x: p.x, z: p.z, y: groundY(p.x, p.z), nx: road.tz[p.i] * side, nz: -road.tx[p.i] * side, phase: rnd() * 6, h: 0.9 + rnd() * 0.25, shirt: SHIRTS[Math.floor(rnd() * SHIRTS.length)], skin: SKIN[Math.floor(rnd() * SKIN.length)], yaw: Math.atan2(-road.tz[p.i] * side, road.tx[p.i] * side) });
+      // Rows: the front row near the tape, more behind it.
+      const a = from + rnd() * (to - from), l = side * (lat + 1 + rnd() * 5);
+      addPerson(lateralPoint(road, a, l), side);
     }
   };
-
-  const w = road.width / 2;
   for (const c of corners) {
     const outside = -c.dir;
     // Hay bales on the outside of the apex.
@@ -77,16 +92,30 @@ export function buildTrackside(road, { seed, corners, start, finish, groundY }) 
       solid.push({ x: p.x, z: p.z, r: 0.55 });
     }
     // Crowd on the inside of the hairpin (the safe side) for most corners.
-    if (rnd() < 0.75) crowd(c.entry - 6, c.exit + 6, c.dir, w + 7, 8 + Math.floor(rnd() * 10));
+    if (rnd() < 0.85) crowd(c.entry - 8, c.exit + 8, c.dir, w + 7, 16 + Math.floor(rnd() * 16));
   }
   for (const b of road.bumps || []) {
     if (b.kind !== 'jump') continue;
     const side = rnd() < 0.5 ? 1 : -1;
-    crowd(b.at - 8, b.at + 22, side, w + 8, 10 + Math.floor(rnd() * 10));
+    crowd(b.at - 8, b.at + 22, side, w + 8, 18 + Math.floor(rnd() * 14));
   }
-  crowd(start - 30, start - 4, 1, w + 6, 14);
-  crowd(start - 30, start - 4, -1, w + 6, 10);
-  crowd(finish + 4, finish + 34, 1, w + 6, 12);
+  crowd(start - 34, start - 4, 1, w + 6, 26);
+  crowd(start - 34, start - 4, -1, w + 6, 20);
+  // ...and lining the first stretch after the line, where you can see them.
+  crowd(start + 8, start + 44, 1, w + 6, 22);
+  crowd(start + 8, start + 44, -1, w + 6, 18);
+  crowd(finish + 4, finish + 40, 1, w + 6, 24);
+  crowd(finish + 4, finish + 40, -1, w + 6, 16);
+  // Little groups of fans all along the stage, standing well back.
+  for (let a = start + 60; a < finish - 40; a += (120 + rnd() * 80) / Math.max(0.35, detail)) {
+    const side = rnd() < 0.5 ? 1 : -1, lat = w + 7 + rnd() * 6, n = 2 + Math.floor(rnd() * 5);
+    for (let k = 0; k < n; k++) addPerson(lateralPoint(road, a + (rnd() - 0.5) * 7, side * (lat + rnd() * 2.5)), side);
+  }
+  // Marshals in orange at each checkpoint, one each side, flags ready.
+  for (const at of cps) {
+    for (const side of [1, -1]) addPerson(lateralPoint(road, at + 3, side * (w + 6)), side, { shirt: VEST, flag: 0xf2c230, h: 1.05, keen: 0.4, marshal: true });
+  }
+
 
   // People: two instanced meshes (shirts and heads) built from small boxes.
   const bodyGeo = facet(new THREE.BoxGeometry(0.42, 0.62, 0.26).translate(0, 0.31, 0), 0.15);
@@ -101,6 +130,20 @@ export function buildTrackside(road, { seed, corners, start, finish, groundY }) 
     return m;
   };
   const bodies = mk(bodyGeo, (p) => p.shirt), legs = mk(legGeo, () => 0x2b3140), heads = mk(headGeo, (p) => p.skin);
+  // Arms (two per person, hanging from the shoulders) and the flags some carry.
+  const armGeo = facet(new THREE.BoxGeometry(0.11, 0.5, 0.11).translate(0, -0.25, 0), 0.15);
+  const arms = new THREE.InstancedMesh(armGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.9 }), Math.max(1, people.length * 2));
+  arms.count = people.length * 2;
+  people.forEach((p, i) => { const c = new THREE.Color(p.shirt); arms.setColorAt(i * 2, c); arms.setColorAt(i * 2 + 1, c); });
+  arms.frustumCulled = false;
+  group.add(arms);
+  const flagPeople = people.filter((p) => p.flag != null);
+  const flagGeo = new THREE.PlaneGeometry(0.5, 0.34).translate(0.27, -0.12, 0);
+  const flags = new THREE.InstancedMesh(flagGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide, roughness: 0.9 }), Math.max(1, flagPeople.length));
+  flags.count = flagPeople.length;
+  flagPeople.forEach((p, i) => { p.flagIdx = i; flags.setColorAt(i, new THREE.Color(p.flag)); });
+  flags.frustumCulled = false;
+  group.add(flags);
 
   // TV helicopter circling over the finish.
   const heli = new THREE.Group();
@@ -114,6 +157,7 @@ export function buildTrackside(road, { seed, corners, start, finish, groundY }) 
   group.add(heli);
 
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  const am = new THREE.Matrix4(), rz = new THREE.Matrix4(), sh = new THREE.Matrix4(), fm = new THREE.Matrix4();
   let t = 0;
   const pose = (carX, carZ) => {
     for (let i = 0; i < people.length; i++) {
@@ -128,8 +172,25 @@ export function buildTrackside(road, { seed, corners, start, finish, groundY }) 
       s.setScalar(p.h);
       m4.compose(v, q, s);
       bodies.setMatrixAt(i, m4); legs.setMatrixAt(i, m4); heads.setMatrixAt(i, m4);
+      // Arms: down and swaying idle, up and waving as the car comes.
+      const cheer = Math.min(1, near * 1.8 * p.keen);
+      for (const side of [-1, 1]) {
+        const wave = Math.sin(t * 10 + p.phase + side) * 0.35 * cheer;
+        const ang = side * (0.12 + cheer * 2.5 + wave + Math.sin(t * 1.7 + p.phase) * 0.04);
+        sh.makeTranslation(side * 0.27, 0.58, 0);
+        rz.makeRotationZ(ang);
+        am.multiplyMatrices(m4, sh).multiply(rz);
+        arms.setMatrixAt(i * 2 + (side > 0 ? 1 : 0), am);
+        // The flag is held in the right hand.
+        if (side > 0 && p.flagIdx != null) {
+          fm.makeTranslation(0, -0.5, 0);
+          am.multiply(fm).multiply(rz.makeRotationY(Math.sin(t * 6 + p.phase) * 0.6 * (0.3 + cheer)));
+          flags.setMatrixAt(p.flagIdx, am);
+        }
+      }
     }
     bodies.instanceMatrix.needsUpdate = legs.instanceMatrix.needsUpdate = heads.instanceMatrix.needsUpdate = true;
+    arms.instanceMatrix.needsUpdate = flags.instanceMatrix.needsUpdate = true;
   };
   pose();
 

@@ -313,7 +313,7 @@ function loadStage(kind, seed = 0) {
   // Crowds and hay bales (timed stages only).
   trackside = null;
   if (kind !== 'practice') {
-    trackside = buildTrackside(road, { seed, corners: road.findSharpCorners(), start: stage.start, finish: stage.finish, groundY: worldGround });
+    trackside = buildTrackside(road, { seed, corners: road.findSharpCorners(), start: stage.start, finish: stage.finish, cps: stage.cps, groundY: worldGround, detail: QUALITY[qualityLevel()].detail });
     stageGroup.add(trackside.group);
     buildObstacleGrid([...builtObstacles, ...trackside.obstacles]);
   }
