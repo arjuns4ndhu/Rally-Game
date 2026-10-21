@@ -1326,7 +1326,16 @@ $('opt-scan').addEventListener('change', (e) => document.body.classList.toggle('
 
 input.on('key', (code, key) => {
   if (code === 'Escape' && !running && $('start').hidden && $('finish').hidden) { closePages(); return; }
-  if (code === 'Escape') { if (replay.on) { stopReplay(); return; } if (running) setPaused(!paused); return; }
+  if (code === 'Escape') { if (!$('clip-panel').hidden) { $('clip-close').click(); return; } if (replay.on) { stopReplay(); return; } if (running) setPaused(!paused); return; }
+  if (replay.on) {
+    if (code === 'Space') { replay.playing = !replay.playing; showReplayCtl(); }
+    else if (code === 'ArrowLeft') replaySpeed(-1);
+    else if (code === 'ArrowRight') replaySpeed(1);
+    else if (code === 'KeyC') replayCam();
+    else if (code === 'KeyD') { replay.auto = !replay.auto; showReplayCtl(); }
+    else if (code === 'KeyV') toggleClip();
+    return;
+  }
   if (isDriveKey(code)) return;          // a rebound driving key wins over hotkeys
   if (key === '?' || code === 'Slash') { $('debug').hidden = !$('debug').hidden; return; }
   if (code === 'KeyN') { setMap(!mapOn); toast(mapOn ? 'MAP ON' : 'MAP OFF', 800); return; }
@@ -1449,7 +1458,15 @@ function padMove(dir) {
 input.on('pad', (name) => {
   document.body.classList.add('pad');
   const racing = running && !paused && !replay.on && $('finish').hidden;
-  if (replay.on) { if (name === 'b' || name === 'start') stopReplay(); return; }
+  if (replay.on) {
+    if (name === 'b' || name === 'start') stopReplay();
+    else if (name === 'y') replayCam();
+    else if (name === 'lb') replaySpeed(-1);
+    else if (name === 'rb') replaySpeed(1);
+    else if (name === 'a') { replay.playing = !replay.playing; showReplayCtl(); }
+    else if (name === 'x') toggleClip();
+    return;
+  }
   if (racing) {
     if (name === 'start') setPaused(true);
     else if (name === 'y') { toast(rig.cycle().toUpperCase() + ' CAM', 800); school.note('camera'); }
@@ -2022,13 +2039,102 @@ function onLanding(impact) {
 // Plays the run you just finished back on your car, filmed by trackside TV
 // cameras and the drone. Hazards happen again at the same moments, and your
 // previous best's ghost races alongside.
-const replay = { on: false, t: 0, end: 0, samples: null, hint: -1, vx: 0, vz: 0 };
+const replay = { on: false, t: 0, end: 0, samples: null, hint: -1, vx: 0, vz: 0, speed: 1, playing: true, auto: true, slow: 1, cam: 'tv' };
+// Director controls: speed, auto slow motion on jumps and big slides, and
+// a choice of cameras.
+const REPLAY_SPEEDS = [0.25, 0.5, 1, 2];
+const REPLAY_CAMS = [['tv', 'TV cams'], ['chase', 'Chase'], ['heli', 'Helicopter'], ['wheel', 'Wheel cam'], ['bonnet', 'Bonnet'], ['drone', 'Drone']];
+function showReplayCtl() {
+  $('rp-speed').textContent = replay.playing ? `${replay.speed}×` : 'PAUSED';
+  $('rp-play').textContent = replay.playing ? '❚❚' : '▶';
+  $('rp-auto').classList.toggle('on', replay.auto);
+  $('rp-cam').textContent = REPLAY_CAMS.find((c) => c[0] === replay.cam)[1];
+}
+function replaySpeed(dir) {
+  const i = REPLAY_SPEEDS.indexOf(replay.speed);
+  replay.speed = REPLAY_SPEEDS[Math.max(0, Math.min(REPLAY_SPEEDS.length - 1, i + dir))];
+  replay.playing = true; showReplayCtl();
+}
+function replayCam() {
+  const i = REPLAY_CAMS.findIndex((c) => c[0] === replay.cam);
+  replay.cam = REPLAY_CAMS[(i + 1) % REPLAY_CAMS.length][0];
+  tv.reset();
+  if (replay.cam === 'chase' || replay.cam === 'bonnet') { rig.mode = replay.cam; rig.snap(car); }
+  showReplayCtl();
+}
+const camV = new THREE.Vector3();
+let heliAng = 0;
+function updateReplayCam(dt) {
+  const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw), y = car.y ?? 0;
+  if (replay.cam === 'tv') { tv.update(car, dt, road, replay.along, worldGround, drone); return; }
+  if (replay.cam === 'chase' || replay.cam === 'bonnet') { rig.mode = replay.cam; rig.update(car, dt); return; }
+  if (replay.cam === 'drone') { camera.position.copy(drone.pos); camera.lookAt(car.x, y + 0.6, car.z); camera.fov = 50; camera.updateProjectionMatrix(); return; }
+  if (replay.cam === 'heli') {
+    heliAng += dt * 0.25;
+    camV.set(car.x + Math.cos(heliAng) * 38, y + 26, car.z + Math.sin(heliAng) * 38);
+    camera.position.lerp(camV, Math.min(1, dt * 3));
+    camera.lookAt(car.x, y, car.z); camera.fov = 34;
+  } else {
+    // Wheel cam: low on the side of the car, looking forward past the wheel.
+    camera.position.set(car.x + fz * 1.75 - fx * 0.3, y + 0.45, car.z - fx * 1.75 - fz * 0.3);
+    camera.lookAt(car.x + fx * 12 + fz * 0.9, y + 0.3, car.z + fz * 12 - fx * 0.9); camera.fov = 62;
+  }
+  camera.updateProjectionMatrix();
+}
+// Record a clip of the replay (video, plus the game sound where it can).
+const clip = { rec: null, chunks: [], url: null, timer: 0 };
+function toggleClip() {
+  if (clip.rec) { clip.rec.stop(); return; }
+  if (!window.MediaRecorder || !canvas.captureStream) { toast('CLIPS NOT SUPPORTED HERE', 1400); return; }
+  const stream = canvas.captureStream(30);
+  // Sound too, if it's playing (a stopped audio track can stall the recording).
+  if (audio.ctx?.state === 'running' && !muted) { try { audio.stream()?.getAudioTracks().forEach((t) => stream.addTrack(t)); } catch { /* video only */ } }
+  const type = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm', 'video/mp4'].find((t) => MediaRecorder.isTypeSupported?.(t)) || '';
+  let rec;
+  try { rec = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 5e6 } : undefined); } catch { toast('CLIPS NOT SUPPORTED HERE', 1400); return; }
+  clip.chunks = [];
+  rec.ondataavailable = (e) => { clip.sizes = [...(clip.sizes || []), e.data.size]; if (e.data.size) clip.chunks.push(e.data); };
+  rec.onstop = () => {
+    clip.rec = null; clearTimeout(clip.timer);
+    $('rp-clip').classList.remove('recording');
+    stream.getVideoTracks().forEach((t) => t.stop());
+    if (!clip.chunks.length) { toast('CLIP FAILED', 1200); return; }
+    const blob = new Blob(clip.chunks, { type: rec.mimeType || 'video/webm' });
+    if (clip.url) URL.revokeObjectURL(clip.url);
+    clip.url = URL.createObjectURL(blob);
+    const ext = /mp4/.test(blob.type) ? 'mp4' : 'webm';
+    const name = `sideways-${(stage.name || 'stage').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.${ext}`;
+    $('clip-video').src = clip.url;
+    $('clip-save').href = clip.url; $('clip-save').download = name;
+    const file = new File([blob], name, { type: blob.type });
+    $('clip-share').hidden = !(navigator.canShare && navigator.canShare({ files: [file] }));
+    $('clip-share').onclick = () => navigator.share({ files: [file], title: 'Sideways clip' }).catch(() => {});
+    replay.playing = false; showReplayCtl();
+    $('clip-panel').hidden = false;
+  };
+  rec.start(500);
+  clip.rec = rec;
+  clip.timer = setTimeout(() => clip.rec?.stop(), 30000);      // 30 s at most
+  $('rp-clip').classList.add('recording');
+  toast('RECORDING · PRESS CLIP AGAIN TO STOP', 1400);
+}
+$('rp-slow').addEventListener('click', (e) => { e.currentTarget.blur(); replaySpeed(-1); });
+$('rp-fast').addEventListener('click', (e) => { e.currentTarget.blur(); replaySpeed(1); });
+$('rp-play').addEventListener('click', (e) => { e.currentTarget.blur(); replay.playing = !replay.playing; showReplayCtl(); });
+$('rp-auto').addEventListener('click', (e) => { e.currentTarget.blur(); replay.auto = !replay.auto; showReplayCtl(); });
+$('rp-cam').addEventListener('click', (e) => { e.currentTarget.blur(); replayCam(); });
+$('rp-clip').addEventListener('click', (e) => { e.currentTarget.blur(); toggleClip(); });
+$('clip-close').addEventListener('click', () => { $('clip-panel').hidden = true; $('clip-video').pause(); replay.playing = true; showReplayCtl(); });
 const replayPose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, done: false };
+let rigModeBeforeReplay = null;
 function startReplay() {
   const smp = recorder.samples;
   if (!smp.length) return;
+  rigModeBeforeReplay = rig.mode;
   replay.on = true; replay.t = 0; replay.samples = smp.slice(); replay.end = smp[smp.length - 1][0];
   replay.hint = -1; replay.vx = replay.vz = 0;
+  replay.speed = 1; replay.playing = true; replay.slow = 1; replay.cam = 'tv';
+  showReplayCtl();
   $('finish').hidden = true;
   $('hud-replay').hidden = false;
   document.body.classList.add('replaying');
@@ -2043,6 +2149,9 @@ function startReplay() {
 function stopReplay() {
   if (!replay.on) return;
   replay.on = false;
+  if (clip.rec) clip.rec.stop();
+  $('clip-panel').hidden = true;
+  rig.mode = rigModeBeforeReplay ?? rig.mode;
   $('hud-replay').hidden = true;
   document.body.classList.remove('replaying');
   hazards?.update(0, 1e9, null);                  // everything back to how it ended
@@ -2078,6 +2187,10 @@ function applyReplayPose(dt) {
   surface = road.surfaceAt(Math.abs(q.lateral));
 }
 function updateReplay(dt) {
+  // The director drops into slow motion for jumps and big slides.
+  const drama = car.air || (car.rearSlide > 0.85 && car.speed > 14);
+  replay.slow += ((replay.auto && drama ? 0.35 : 1) - replay.slow) * Math.min(1, dt * (drama ? 8 : 2.5));
+  if (replay.t + dt * replay.slow < replay.end + 2) dt *= replay.slow;
   replay.t += dt;
   samplePose(replay.samples, replay.t, replayPose);
   applyReplayPose(dt);
@@ -2101,7 +2214,9 @@ function frame(now) {
   const active = running && !paused && !replay.on;
   if (active) watchFrameRate((now - (frame.prev ?? now)) / 1000);
   frame.prev = now;
-  if (running && !paused && replay.on) updateReplay(dt);
+  // Replay speed: everything (the car, dust, crowds) runs slower or faster.
+  if (replay.on) dt *= replay.playing ? replay.speed : 0;
+  if (running && !paused && replay.on && dt > 0) updateReplay(dt);
   if (active) {
     acc += dt;
     while (acc >= STEP) {
@@ -2129,10 +2244,10 @@ function frame(now) {
   shakeKick *= Math.exp(-dt * 7);
   car.squash = (car.squash || 0) * Math.exp(-dt * 9);
   rig.shake = active ? (car.air ? 0 : (surface.name === 'grass' ? 0.05 : 0.012) * Math.min(car.speed / 25, 1)) + shakeKick : 0;
-  drone.hidden = replay.on ? tv.kind === 'drone' : rig.mode === 'drone';
+  drone.hidden = replay.on ? (replay.cam === 'tv' ? tv.kind === 'drone' : replay.cam === 'drone') : rig.mode === 'drone';
   model.setCockpit(!replay.on && rig.mode === 'cockpit');
   if (!paused) drone.update(car, dt, worldGround);
-  if (replay.on) { if (!paused) tv.update(car, dt, road, replay.along, worldGround, drone); }
+  if (replay.on) { if (!paused) updateReplayCam(Math.max(dt, 1e-4)); }
   else rig.update(car, dt);
   world.sky.position.copy(camera.position);
   if (!paused) { dust.update(dt); updateFlyingRocks(dt); updateRider(dt); }
@@ -2440,7 +2555,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, echo, measureEcho, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
+  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, echo, measureEcho, replay, startReplay, stopReplay, replayCam, toggleClip, clip, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver, crash, get riderFall() { return riderFall; },

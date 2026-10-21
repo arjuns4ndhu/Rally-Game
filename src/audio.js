@@ -132,6 +132,13 @@ export class AudioEngine {
     this.applyTone();
   }
 
+  // A stream of everything you hear, for recording clips.
+  stream() {
+    if (!this.ctx) return null;
+    if (!this._dest) { this._dest = this.ctx.createMediaStreamDestination(); this.master.connect(this._dest); }
+    return this._dest.stream;
+  }
+
   // Surroundings, every frame: crowd (0..1, how many spectators are close
   // and cheering) and echo (0..1, how enclosed the road is; delay in s).
   setEnv({ crowd = 0, echo = 0, delay = 0.28 } = {}) {

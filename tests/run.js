@@ -291,6 +291,41 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     assert(r.maxEcho > 0.3 && r.openEcho < 0.1, 'echo wrong: ' + JSON.stringify(r));
   });
 
+  await check('replay director: speed, slow motion, cameras and a saved clip', async () => {
+    await ready();
+    await S(() => { const s = window.__sideways; s.start('classic', 900122); });
+    await page.waitForTimeout(500);
+    const r0 = await S(() => {
+      const s = window.__sideways, R = s.road, smp = s.recorder.samples;
+      smp.length = 0;
+      for (let i = 0; i < 300; i++) { const k = R.indexAt(30 + i * 1.2); smp.push([i * 0.05, R.px[k], R.py[k] + (i > 100 && i < 130 ? 2 : 0), R.pz[k], Math.atan2(R.tx[k], R.tz[k]), 0, 0]); }
+      s.run.state = 'finished';
+      s.startReplay();
+      s.replay.speed = 0.5;
+      return { on: s.replay.on };
+    });
+    assert(r0.on, 'replay did not start');
+    await page.waitForTimeout(2500);
+    const r1 = await S(() => {
+      const s = window.__sideways, t1 = s.replay.t;
+      const cams = [];
+      for (let k = 0; k < 6; k++) { s.replayCam(); cams.push(s.replay.cam); }
+      return { t1, cams, label: document.getElementById('rp-speed').textContent };
+    });
+    assert(r1.t1 > 0 && r1.t1 < 3, `replay time wrong at half speed: ${r1.t1}`);
+    assert(new Set(r1.cams).size === 6 && r1.label === '0.5×', 'cameras/speed label: ' + JSON.stringify(r1));
+    await S(() => window.__sideways.toggleClip());
+    // Software rendering is slow: wait until a few frames have been encoded.
+    await page.waitForFunction(() => (window.__sideways.clip.sizes || []).some((n) => n > 1000), null, { timeout: 30000 }).catch(() => {});
+    await S(() => window.__sideways.toggleClip());
+    await page.waitForFunction(() => !document.getElementById('clip-panel').hidden, null, { timeout: 15000 }).catch(async (e) => {
+      throw new Error(e.message + ' ' + JSON.stringify(await S(() => ({ mr: !!window.MediaRecorder, toast: document.getElementById('toast').textContent, sizes: window.__sideways.clip.sizes, st: window.__sideways.clip.rec?.state, rec: document.getElementById('rp-clip').className }))));
+    });
+    const r2 = await S(() => ({ src: document.getElementById('clip-video').src, href: document.getElementById('clip-save').getAttribute('download') }));
+    assert(r2.src.startsWith('blob:') && /\.(webm|mp4)$/.test(r2.href), 'clip not made: ' + JSON.stringify(r2));
+    await S(() => { document.getElementById('clip-close').click(); window.__sideways.stopReplay(); });
+  });
+
   await check('phone drag steering gives analogue steer', async () => {
     const st = await S(async () => {
       const s = window.__sideways;

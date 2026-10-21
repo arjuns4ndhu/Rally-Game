@@ -57,7 +57,28 @@
   <canvas class="minimap" id="minimap" role="img" aria-label="Stage map"></canvas>
   <div class="countdown" id="hud-count" hidden aria-live="assertive"></div>
   <div class="hud-banner" id="hud-banner" role="alert" hidden><b id="hud-banner-text"></b><button class="btn btn-sm btn-primary" id="hud-banner-btn">Restart</button></div>
-  <div class="replay-tag" id="hud-replay" hidden><span class="rec"></span>REPLAY <b id="replay-time">0:00.00</b><button id="btn-replay-exit" class="btn replay-exit">Exit <small>Esc</small></button></div>
+  <div class="replay-tag" id="hud-replay" hidden>
+    <span class="rec"></span>REPLAY <b id="replay-time">0:00.00</b>
+    <span class="replay-ctl">
+      <button id="rp-slow" class="btn replay-btn" title="Slower (←)" aria-label="Slower">◀◀</button>
+      <button id="rp-play" class="btn replay-btn" title="Pause / play (Space)" aria-label="Pause or play">❚❚</button>
+      <button id="rp-fast" class="btn replay-btn" title="Faster (→)" aria-label="Faster">▶▶</button>
+      <b id="rp-speed" class="rp-speed">1×</b>
+      <button id="rp-auto" class="btn replay-btn on" title="Director: slow motion on jumps and big slides (D)">Auto slo-mo</button>
+      <button id="rp-cam" class="btn replay-btn" title="Camera (C)">TV cams</button>
+      <button id="rp-clip" class="btn replay-btn" title="Record a clip (V)"><span class="dot"></span> Clip</button>
+    </span>
+    <button id="btn-replay-exit" class="btn replay-exit">Exit <small>Esc</small></button>
+  </div>
+  <div class="clip-panel" id="clip-panel" hidden>
+    <video id="clip-video" controls playsinline loop muted></video>
+    <div class="clip-actions">
+      <a id="clip-save" class="btn btn-sm" download="sideways-clip.webm">Save clip</a>
+      <button id="clip-share" class="btn btn-sm" hidden>Share</button>
+      <button id="clip-close" class="btn btn-sm">Close</button>
+    </div>
+    <p class="hint">If saving is blocked here, right-click or long-press the video to save it.</p>
+  </div>
 </div>
 
 <!-- Short messages: shown over menus as well as in play -->
