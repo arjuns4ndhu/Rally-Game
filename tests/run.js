@@ -115,9 +115,10 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await S(() => document.getElementById('btn-daily').click());
     await page.waitForTimeout(500);
     await S(() => document.getElementById('garage-go').click());
-    await page.waitForFunction(() => !document.getElementById('hud').hidden, null, { timeout: 15000 });
+    await page.waitForFunction(() => !document.getElementById('hud').hidden, null, { timeout: 30000 });
     // Wait out the countdown like a player would, then floor it.
-    await page.waitForFunction(() => ['ready', 'running'].includes(window.__sideways.run.state), null, { timeout: 15000 });
+    // (The countdown runs on frame time; headless software rendering is slow.)
+    await page.waitForFunction(() => ['ready', 'running'].includes(window.__sideways.run.state), null, { timeout: 45000 });
     await S(() => { window.__sideways.auto = () => ({ throttle: 1, brake: 0, steer: 0, handbrake: false }); });
     await page.waitForTimeout(6000);
     const t = await S(() => window.__sideways.run.t);
