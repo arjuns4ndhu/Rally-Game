@@ -100,6 +100,17 @@ export class Road {
     }
   }
 
+  // River fords: the road dips gently into the water and out again.
+  applyFords(fords = []) {
+    this.fords = fords;
+    for (let i = 0; i < this.n; i++) {
+      for (const f of fords) {
+        const rel = this.cum[i] - f.at;
+        if (Math.abs(rel) < f.len / 2) this.py[i] += f.h * 0.5 * (1 + Math.cos(Math.PI * rel / (f.len / 2)));
+      }
+    }
+  }
+
   // Find the really sharp corners (hairpin-tight). Returns
   // [{ entry, apex, exit (distances along), dir (+1 left / -1 right), radius, angle }].
   findSharpCorners({ maxRadius = 17, minAngle = 1.2 } = {}) {
@@ -323,6 +334,12 @@ export function gravelTexture(pal = { base: '#b59c78', rut: [70, 55, 40], edge: 
     const l = 90 + Math.random() * 110;
     g.fillStyle = `rgba(${l + sr},${l + sg},${l + sb},${edge ? 0.75 : 0.45})`;
     g.fillRect(x, y, r, r);
+  }
+  // Sealed roads: painted edge lines and a dashed centre line.
+  if (pal.lines) {
+    g.fillStyle = 'rgba(236,236,228,0.9)';
+    g.fillRect(12, 0, 6, 512); g.fillRect(238, 0, 6, 512);
+    for (let y = 0; y < 512; y += 128) g.fillRect(125, y, 6, 64);
   }
   // Edge darkening
   const eg = g.createLinearGradient(0, 0, 256, 0);

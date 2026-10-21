@@ -7,7 +7,7 @@
 // the generator backtracks. Elevation comes from a seeded terrain field that
 // the scenery also uses, smoothed along the road and grade-limited.
 import { mulberry32 } from './rng.js';
-import { pickTheme } from './themes.js';
+import { pickTheme, specialOf } from './themes.js';
 
 const DS = 2;              // metres per sample
 const CLEAR = 34;          // min distance between non-neighbouring road parts
@@ -253,12 +253,39 @@ export function generateStage(seed) {
     bumps.push({ kind: 'crest', at, h: brand.range(1.0, 1.6), len: brand.range(26, 34) });
   }
   bumps.sort((a, b) => a.at - b.at);
+  // Tarmac stages keep only one jump (they're for sliding, not flying).
+  const special = specialOf(seed);
+  if (special === 'tarmac') { let j = 0; for (let k = bumps.length - 1; k >= 0; k--) if (bumps[k].kind === 'jump' && j++ >= 1) bumps.splice(k, 1); }
+  // River stages: two to four fords where a shallow river runs across the
+  // road, on straights or gentle bends away from jumps and crests.
+  const fords = [];
+  if (special === 'river') {
+    const n = 2 + Math.floor(brand() * 3);
+    for (let tries = 0; tries < 200 && fords.length < n; tries++) {
+      const at = 160 + brand() * (total - 340);
+      if (bumps.some((b) => Math.abs(b.at - at) < 70) || fords.some((f) => Math.abs(f.at - at) < 220)) continue;
+      // Fairly straight here (a river crossing on a hairpin would be cruel).
+      const i = Math.round(at / DS);
+      const h0 = Math.atan2(xs[i + 8] - xs[i - 8], zs[i + 8] - zs[i - 8]), h1 = Math.atan2(xs[i + 16] - xs[i], zs[i + 16] - zs[i]);
+      if (Math.abs(Math.atan2(Math.sin(h1 - h0), Math.cos(h1 - h0))) > 0.25) continue;
+      // Rivers run through the bottom of a valley: gentle ground only, then
+      // level the road out either side so the water lies flat across it.
+      if (Math.abs(pts[i + 10][1] - pts[i - 10][1]) > 2.2) continue;
+      const W = 18, y0 = pts[i][1];
+      for (let d = -W; d <= W; d++) {
+        const t = 1 - Math.abs(d) / W, k = t * t * (3 - 2 * t);
+        pts[i + d][1] += (y0 - pts[i + d][1]) * k;
+      }
+      fords.push({ at, len: 22 + brand() * 8, h: -(0.7 + brand() * 0.4), width: 8 + brand() * 6 });
+    }
+    fords.sort((a, b) => a.at - b.at);
+  }
 
   const counts = {};
   segs.forEach((s) => (counts[s.type] = (counts[s.type] || 0) + 1));
   return {
     seed, name: stageName(seed), points: pts, width: 7.5,
     runout: 70,   // metres of road after the finish line
-    counts, bumps, theme: theme.id, hilliness,
+    counts, bumps, fords, special, theme: theme.id, hilliness,
   };
 }

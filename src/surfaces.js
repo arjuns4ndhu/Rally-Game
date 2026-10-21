@@ -11,12 +11,23 @@ export const PATCH = {
   puddle: { name: 'puddle', grip: 0.8, drag: 0.22, dust: [0.75, 0.8, 0.85], dustK: 1.6, splash: true },
   ice: { name: 'ice', grip: 0.55, drag: 0.0, dust: [0.95, 0.97, 1.0], dustK: 0.3 },
   sand: { name: 'sand', grip: 0.82, drag: 0.2, dust: [0.92, 0.75, 0.5], dustK: 1.8 },
+  water: { name: 'water', grip: 0.74, drag: 0.42, dust: [0.8, 0.86, 0.92], dustK: 2.2, splash: true },
 };
 
-export function planSurfaces(road, seed, { start, finish, theme, weather }) {
+export function planSurfaces(road, seed, { start, finish, theme, weather, fords = [] }) {
   const r = mulberry32(((seed * 40503) ^ 0x1b873593) >>> 0);
   const span = finish - start;
-  const plan = { tarmac: [], patches: [] };
+  const plan = { tarmac: [], patches: [], fords };
+  // A sealed stage is tarmac all the way: only puddles when it's wet.
+  if (theme.road.sealed) {
+    if (weather?.wet) {
+      for (let k = 0; k < 6; k++) {
+        const at = start + 40 + r() * (span - 80), rad = 1.2 + r() * 1.2;
+        plan.patches.push({ kind: 'puddle', at, lat: (r() - 0.5) * (road.width - rad), r: rad });
+      }
+    }
+    return plan;
+  }
   // Sealed sections: 0-2 of them, 140-320 m long.
   const nT = r() < 0.45 ? (r() < 0.35 ? 2 : 1) : 0;
   for (let k = 0; k < nT; k++) {
@@ -43,6 +54,7 @@ export function planSurfaces(road, seed, { start, finish, theme, weather }) {
 // Surface at a road position, or null for the normal gravel.
 export function patchAt(plan, along, lat) {
   if (!plan) return null;
+  for (const f of plan.fords || []) if (Math.abs(along - f.at) < f.len * 0.32) return PATCH.water;
   for (const t of plan.tarmac) if (along >= t.from && along <= t.to) return PATCH.tarmac;
   for (const p of plan.patches) {
     const da = (along - p.at) / (p.r * 1.7), dl = (lat - p.lat) / p.r;
@@ -128,3 +140,37 @@ export function buildSurfaces(road, plan) {
   }
   return grp;
 }
+
+// River fords: a sheet of water across the road at the bottom of the dip,
+// running off into the scenery on both sides and fading out at the ends.
+export function riverLine(road, f, reach = 40) {
+  const i = road.indexAt(f.at), lx = road.tz[i], lz = -road.tx[i];
+  return [[road.px[i] - lx * reach, road.pz[i] - lz * reach], [road.px[i] + lx * reach, road.pz[i] + lz * reach]];
+}
+export function buildFords(road, fords = []) {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4d7f99, roughness: 0.12, metalness: 0.15, transparent: true, opacity: 0.8, vertexColors: true, depthWrite: false });
+  for (const f of fords) {
+    const i = road.indexAt(f.at), lx = road.tz[i], lz = -road.tx[i];
+    const across = road.width / 2 + 26, half = Math.min(f.width, f.len * 0.75) / 2;
+    const geo = new THREE.PlaneGeometry(across * 2, half * 2, 12, 2);
+    geo.rotateX(-Math.PI / 2);
+    // Light foam in the middle, fading to clear at the far ends.
+    const pos = geo.attributes.position, col = new Float32Array(pos.count * 4);
+    for (let v = 0; v < pos.count; v++) {
+      const u = Math.abs(pos.getX(v)) / across, edge = Math.abs(pos.getZ(v)) / half;
+      const foam = edge > 0.9 ? 0.25 : 0;
+      col.set([1 + foam, 1 + foam, 1 + foam, Math.max(0, 1 - Math.max(0, u - 0.7) / 0.3)], v * 4);
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 4));
+    mat.vertexColors = true;
+    const m = new THREE.Mesh(geo, mat);
+    // The plane's X runs across the road, its Z along it.
+    m.rotation.y = Math.atan2(lx, lz) - Math.PI / 2;
+    m.position.set(road.px[i], road.py[i] + 0.32, road.pz[i]);
+    m.renderOrder = 2;
+    group.add(m);
+  }
+  return group;
+}
+

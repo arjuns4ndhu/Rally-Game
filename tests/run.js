@@ -44,6 +44,7 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
   page.on('console', (m) => { if (m.type() === 'error' && !/favicon|leaderboard|Failed to load resource/i.test(m.text())) errors.push(m.text()); });
   const S = (fn, arg) => page.evaluate(fn, arg);
   const ready = async () => { await page.goto(URL); await page.waitForFunction(() => !!window.__sideways, null, { timeout: 20000 }); };
+  if (process.env.ONLY) await ready();
 
   console.log('Sideways tests');
   await check('boots with no errors and shows the welcome to a new player', async () => {
@@ -98,7 +99,7 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
   await check('no rock, tree or prop reaches into the road (Classics + random)', async () => {
     const bad = await S(() => {
       const s = window.__sideways, out = [];
-      for (const [kind, seed] of [['classic', 900031], ['classic', 900122], ['classic', 900228], ['classic', 900016], ['classic', 900151], ['random', 274801], ['random', 512345]]) {
+      for (const [kind, seed] of [['classic', 900031], ['classic', 900122], ['classic', 900228], ['classic', 900016], ['classic', 900151], ['random', 274801], ['random', 512345], ['random', 4000123], ['random', 4300123], ['random', 4600123]]) {
         s.loadStage(kind, seed);
         const road = s.road;
         s.obGrid.forEach((list) => { for (const o of list) {
@@ -132,6 +133,16 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await page.addScriptTag({ path: path.join(__dirname, 'bot.js') });
     const r = await S(() => { const r = window.__bot('vector', 'classic', 900122, { sign: -1, maxT: 200, gripK: 0.62 }); delete r.trace; return r; });
     assert(r.done, `did not finish: ${JSON.stringify(r)}`);
+  });
+
+  await check('a test driver finishes a tarmac stage and a river stage', async () => {
+    if (!(await S(() => !!window.__bot))) await page.addScriptTag({ path: path.join(__dirname, 'bot.js') });
+    const r = await S(() => ['4000123', '4600123'].map((sd) => {
+      let x = window.__bot('vector', 'random', +sd, { sign: -1, maxT: 260, gripK: 0.62 });
+      if (!x.done) x = window.__bot('vector', 'random', +sd, { sign: -1, maxT: 260, gripK: 0.55 });
+      delete x.trace; return x;
+    }));
+    assert(r.every((x) => x.done), 'did not finish: ' + JSON.stringify(r));
   });
 
   await check('cars finish two Classics within 6% of each other', async () => {
@@ -324,6 +335,27 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     const r2 = await S(() => ({ src: document.getElementById('clip-video').src, href: document.getElementById('clip-save').getAttribute('download') }));
     assert(r2.src.startsWith('blob:') && /\.(webm|mp4)$/.test(r2.href), 'clip not made: ' + JSON.stringify(r2));
     await S(() => { document.getElementById('clip-close').click(); window.__sideways.stopReplay(); });
+  });
+
+  await check('new stage types: tarmac, night forest, river crossings', async () => {
+    if (!(await S(() => !!window.__sideways))) await ready();
+    const r = await S(async () => {
+      const s = window.__sideways, out = {};
+      const { patchAt } = await import('/src/surfaces.js');
+      for (const [type, seed] of [['tarmac', 4000123], ['night', 4300123], ['river', 4600123]]) {
+        s.loadStage('random', seed);
+        const f = s.road.fords?.[0];
+        out[type] = {
+          theme: s.stage.theme.id, weather: s.weather.id, surf: s.road.surfaces.gravel.name, fords: (s.road.fords || []).length,
+          water: f ? patchAt(s.surfPlan, f.at, 0)?.name : null,
+          note: f ? s.codriver.notes?.some?.((n) => n.kind === 'ford') : null,
+        };
+      }
+      return out;
+    });
+    assert(r.tarmac.theme === 'tarmac' && r.tarmac.surf === 'tarmac', 'tarmac: ' + JSON.stringify(r.tarmac));
+    assert(r.night.theme === 'nightwood' && r.night.weather === 'night', 'night: ' + JSON.stringify(r.night));
+    assert(r.river.fords >= 2 && r.river.water === 'water' && r.river.note, 'river: ' + JSON.stringify(r.river));
   });
 
   await check('phone drag steering gives analogue steer', async () => {

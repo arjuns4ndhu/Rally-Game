@@ -53,14 +53,46 @@ export const THEMES = {
     hills: 0x5d5a3a, heightAmp: 1.1, hillAmp: 1.2, maxGrade: 0.12,
     names: ['Moor', 'Glen', 'Hollow', 'Vale', 'Woods'],
   },
+  // Special stages only (codes 4000000-4899999), never picked at random.
+  tarmac: {
+    id: 'tarmac', label: 'Tarmac',
+    sky: { top: '#2f6fc0', horizon: '#dfe8ef', fog: '#cdd8de', fogDensity: 0.0045, sunGlow: [1.0, 0.92, 0.75] },
+    light: { hemiSky: '#fff6e6', hemiGround: '#6b6440', hemi: 1.55, sun: '#fff2dc', sunI: 2.5, sunDir: [-0.4, 0.75, -0.5] },
+    ground: { base: '#7d7a3e', dark: [80, 78, 40], light: [190, 175, 110], tintLow: [1.0, 0.97, 0.88], tintHigh: [1.08, 1.0, 0.82], rock: [0.66, 0.62, 0.55] },
+    road: { base: '#55575c', rut: [30, 30, 32], edge: [235, 235, 228], stone: [-30, -30, -28], verge: 0x8a8460, grip: 1.12, dust: [0.5, 0.5, 0.5], lines: true, sealed: true },
+    trees: [['broadleaf', 0.5], ['shrub', 0.35], ['pine', 0.15]], treeDensity: 0.7, rockDensity: 0.7, rockColor: [0.1, 0.12, 0.6],
+    hills: 0x8b8452, heightAmp: 1.3, hillAmp: 1.3, maxGrade: 0.13,
+    names: ['Corniche', 'Terraces', 'Vineyards', 'Coast Road', 'Bends'],
+  },
+  nightwood: {
+    id: 'nightwood', label: 'Night forest',
+    sky: { top: '#2a3a5c', horizon: '#d9a877', fog: '#c79a72', fogDensity: 0.0095, sunGlow: [1.0, 0.75, 0.45] },
+    light: { hemiSky: '#ffe6c4', hemiGround: '#5a5238', hemi: 1.6, sun: '#ffd7a3', sunI: 2.0, sunDir: [-0.6, 0.55, -0.75] },
+    ground: { base: '#3e4a22', dark: [34, 44, 20], light: [120, 120, 70], tintLow: [0.9, 0.95, 0.85], tintHigh: [1.05, 1.0, 0.8], rock: [0.5, 0.5, 0.46] },
+    road: { base: '#a88f6c', rut: [65, 50, 36], edge: [55, 62, 36], stone: [20, 8, -12], verge: 0x5e5536, grip: 0.98, dust: [0.8, 0.72, 0.6] },
+    trees: [['pine', 0.75], ['birch', 0.25]], treeDensity: 1.9, rockDensity: 0.7, rockColor: [0.08, 0.1, 0.4],
+    hills: 0x46502e, heightAmp: 1, hillAmp: 1.1, maxGrade: 0.12,
+    names: ['Darkwood', 'Owl Woods', 'Blackpine', 'Night Ridge', 'Hollow'],
+  },
 };
 
 const ORDER = ['forest', 'desert', 'snow', 'alpine', 'autumn'];
 
+// Special stage types by code: tarmac, night forest, river crossings.
+export function specialOf(seed) {
+  if (!(seed >= 4e6 && seed < 4.9e6)) return null;
+  return ['tarmac', 'night', 'river'][Math.floor((seed - 4e6) / 3e5)];
+}
+export const SPECIAL_LABEL = { tarmac: 'Tarmac', night: 'Night forest', river: 'River crossings' };
+
 // Theme plus a per-stage hilliness multiplier, both from the seed.
 export function pickTheme(seed) {
   const r = mulberry32(((seed * 48271) ^ 0x5bd1e995) >>> 0);
-  const theme = THEMES[ORDER[Math.floor(r() * ORDER.length)]];
+  let theme = THEMES[ORDER[Math.floor(r() * ORDER.length)]];
+  const sp = specialOf(seed);
+  if (sp === 'tarmac') theme = THEMES.tarmac;
+  else if (sp === 'night') theme = THEMES.nightwood;
+  else if (sp === 'river') theme = THEMES[['forest', 'autumn', 'alpine'][Math.floor(r() * 3)]];
   const hilliness = 0.6 + r() * 1.0;        // 0.6 (flat and fast) .. 1.6 (big hills)
   return { theme, hilliness };
 }

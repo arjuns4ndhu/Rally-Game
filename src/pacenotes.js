@@ -74,6 +74,7 @@ export function buildPaceNotes(road, { start = 0, finish = road.length } = {}) {
     const at = b.kind === 'jump' ? b.at - (b.up || 20) : b.at - (b.len || 30) / 2;
     items.push({ kind: b.kind, mods: [], at, end: at + 10, text: b.kind === 'jump' ? 'jump!' : 'over crest', say: b.kind === 'jump' ? 'jump!' : 'over crest' });
   }
+  for (const f of road.fords || []) items.push({ kind: 'ford', mods: [], at: f.at - f.len / 2 - 6, end: f.at + f.len / 2, text: 'water splash', say: 'water splash' });
   if (!road.closed) items.push({ kind: 'finish', mods: [], at: finish - 60, end: finish, text: 'flat to finish', say: 'flat to finish' });
 
   items.sort((a, b) => a.at - b.at);

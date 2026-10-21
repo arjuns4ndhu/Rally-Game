@@ -90,3 +90,52 @@ export class Dust {
     this.geo.attributes.aColor.needsUpdate = true;
   }
 }
+
+// Specks of dust and pollen drifting in the headlight beams at night. They
+// live in the car's frame (a cone ahead of it) and are drawn additive, so
+// they only show where the lamps would light them.
+export class BeamDust {
+  constructor(scene, n = 260) {
+    this.n = n;
+    this.local = new Float32Array(n * 3);
+    this.vel = new Float32Array(n * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    this.points = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.07, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    this.points.frustumCulled = false;
+    this.points.visible = false;
+    scene.add(this.points);
+    for (let i = 0; i < n; i++) this.spawn(i, true);
+  }
+
+  spawn(i, anywhere) {
+    const z = anywhere ? 2 + Math.random() * 24 : 24 + Math.random() * 4;   // metres ahead
+    const w = 0.8 + z * 0.22;
+    this.local.set([(Math.random() - 0.5) * 2 * w, 0.2 + Math.random() * (0.6 + z * 0.06), z], i * 3);
+    this.vel.set([(Math.random() - 0.5) * 0.3, (Math.random() - 0.4) * 0.15, (Math.random() - 0.5) * 0.3], i * 3);
+  }
+
+  // k: how bright the lamps are (0 = off), density: 0..2.
+  update(dt, car, k, density = 1) {
+    this.points.visible = k > 0.05;
+    if (!this.points.visible) return;
+    const pos = this.points.geometry.attributes.position, col = this.points.geometry.attributes.color;
+    const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw), y0 = car.y ?? 0;
+    const vF = car.vx * fx + car.vz * fz;
+    const shown = Math.round(this.n * Math.min(1, density / 2));
+    for (let i = 0; i < this.n; i++) {
+      const L = this.local;
+      // The car drives through them: they stream back past the lamps.
+      L[i * 3] += this.vel[i * 3] * dt; L[i * 3 + 1] += this.vel[i * 3 + 1] * dt; L[i * 3 + 2] += this.vel[i * 3 + 2] * dt - vF * dt;
+      if (L[i * 3 + 2] < 1.5 || L[i * 3 + 2] > 30 || L[i * 3 + 1] < 0) this.spawn(i, false);
+      const lx = L[i * 3], ly = L[i * 3 + 1], lz = L[i * 3 + 2];
+      pos.setXYZ(i, car.x + fx * lz + fz * lx, y0 + ly, car.z + fz * lz - fx * lx);
+      // Brightest near the lamps and in the middle of the beam.
+      const w = 0.8 + lz * 0.22, inBeam = Math.max(0, 1 - Math.abs(lx) / w);
+      const b = i < shown ? k * inBeam * Math.max(0, 1 - lz / 30) * 0.9 : 0;
+      col.setXYZ(i, b, b * 0.95, b * 0.8);
+    }
+    pos.needsUpdate = true; col.needsUpdate = true;
+  }
+}

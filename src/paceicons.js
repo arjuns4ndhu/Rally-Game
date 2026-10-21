@@ -44,6 +44,10 @@ const ICONS = {
   crest: `<svg viewBox="0 0 64 64" aria-hidden="true">
     <path d="M4 48 Q32 14 60 48" class="pn-line" fill="none"/>
     <path d="M24 30 L32 20 L40 30" class="pn-line" fill="none"/></svg>`,
+  ford: `<svg viewBox="0 0 64 64" aria-hidden="true">
+    <path d="M6 26 Q14 18 22 26 T38 26 T54 26" class="pn-line" fill="none"/>
+    <path d="M6 40 Q14 32 22 40 T38 40 T54 40" class="pn-line" fill="none"/>
+    <path d="M10 52 Q18 46 26 52 T42 52 T58 52" class="pn-line" fill="none"/></svg>`,
   finish: `<svg viewBox="0 0 64 64" aria-hidden="true">
     <line x1="14" y1="58" x2="14" y2="8" class="pn-line"/>
     <path d="M16 10h10v8H16zM36 10h10v8H36zM26 18h10v8H26zM46 18h8v8h-8zM16 26h10v8H16zM36 26h10v8H36z" class="pn-head"/></svg>`,
@@ -52,7 +56,7 @@ const ICONS = {
 const MOD_LABEL = { long: 'LONG', tightens: 'TIGHTENS', opens: 'OPENS', "don't cut": "DON'T CUT" };
 
 function severity(n) {
-  if (n.kind === 'jump') return 'warn';
+  if (n.kind === 'jump' || n.kind === 'ford') return 'warn';
   if (n.kind !== 'corner') return 'calm';
   if (n.grade === 'hairpin' || n.grade === '1') return 'danger';
   if (n.grade === '2' || n.grade === '3') return 'warn';
@@ -66,7 +70,7 @@ function tile(n) {
     label = n.grade === 'hairpin' ? 'HAIRPIN' : n.grade;
   } else {
     icon = ICONS[n.kind];
-    label = n.kind === 'jump' ? 'JUMP' : n.kind === 'crest' ? 'CREST' : 'FINISH';
+    label = { jump: 'JUMP', crest: 'CREST', ford: 'WATER' }[n.kind] || 'FINISH';
   }
   const mods = (n.mods || []).map((m) => `<small>${MOD_LABEL[m] || m.toUpperCase()}</small>`).join('');
   const isNum = n.kind === 'corner' && n.grade !== 'hairpin';

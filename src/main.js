@@ -6,10 +6,10 @@ import { Road, createTestRoad, gravelTexture, SURFACES, findShortcuts } from './
 import { generateStage, stageName, isEndurance } from './stagegen.js';
 import { buildGate, buildSign, buildCornerWarnings, buildShortcutMarkers } from './gates.js';
 import { dateSeed, mulberry32 } from './rng.js';
-import { THEMES, pickTheme } from './themes.js';
+import { THEMES, pickTheme, specialOf, SPECIAL_LABEL } from './themes.js';
 import { setupWorld, buildScenery } from './scenery.js';
 import { CameraRig, TVCamera } from './camera.js';
-import { Dust } from './particles.js';
+import { Dust, BeamDust } from './particles.js';
 import { AudioEngine } from './audio.js';
 import { DrivingSchool } from './school.js';
 import { Input, ACTIONS, BINDS, bindKey, resetKeys, isDriveKey, keyLabel, FEEL, saveFeel } from './input.js';
@@ -31,7 +31,7 @@ import { Stats } from './stats.js';
 import { Leaderboard } from './leaderboard.js';
 import { buildTrackside } from './trackside.js';
 import { WEATHER, pickWeather, weatherTheme, blendTheme, Precip, Rain } from './weather.js';
-import { planSurfaces, patchAt, buildSurfaces } from './surfaces.js';
+import { planSurfaces, patchAt, buildSurfaces, buildFords, riverLine } from './surfaces.js';
 import { GaragePreview, garageStatsHTML, garageCarsHTML, calendarHTML, monthLabel, canGoMonth, weekInfo, champHTML, statsHTML, champIndex, champWeekOf, weekTheme, LAUNCH, PAINTS, WHEELS, CLASSICS, MEDAL_ICON, classicOf, medalTimes, medalFor, classicsHTML, SPECIAL_PAINTS, LOCKS, unlockState, carLocked, wheelLocked, skinLocked } from './menus.js';
 import { buildHazards, HAZARD_DEBUG } from './hazards.js';
 
@@ -75,6 +75,7 @@ const world = setupWorld(scene);
 const rig = new CameraRig(camera);
 const drone = new Drone(scene);
 const tv = new TVCamera(camera);
+const beamDust = new BeamDust(scene);
 const minimap = new MiniMap($('minimap'));
 const stats = new Stats();
 const board = new Leaderboard();
@@ -230,6 +231,7 @@ function loadStage(kind, seed = 0) {
     const def = generateStage(seed);
     road = new Road(def.points, { width: def.width, closed: false });
     road.applyBumps(def.bumps);
+    road.applyFords(def.fords);
     runout = def.runout;
     stage.name = def.name;
   }
@@ -237,7 +239,9 @@ function loadStage(kind, seed = 0) {
   // Surface grip and dust colour follow the theme (packed snow is slippery).
   const wg = weather.grip;
   road.surfaces = {
-    gravel: { ...SURFACES.gravel, grip: theme.road.grip * wg, dust: theme.road.dust, dustK: weather.wet ? 0.35 : 1 },
+    gravel: theme.road.sealed
+      ? { ...SURFACES.gravel, name: 'tarmac', grip: theme.road.grip * wg, dust: theme.road.dust, dustK: 0.12 }
+      : { ...SURFACES.gravel, grip: theme.road.grip * wg, dust: theme.road.dust, dustK: weather.wet ? 0.35 : 1 },
     verge: { ...SURFACES.verge, grip: SURFACES.verge.grip * theme.road.grip * wg, dust: theme.road.dust, dustK: weather.wet ? 0.35 : 1 },
     grass: { ...SURFACES.grass, grip: SURFACES.grass.grip * wg, dust: theme.road.dust, dustK: weather.wet ? 0.35 : 1 },
   };
@@ -248,7 +252,8 @@ function loadStage(kind, seed = 0) {
     const cps = [1, 2, 3, 4].map((k) => st + (fin - st) * k / SECTORS);
     cuts = findShortcuts(road, { checkpoints: cps, start: st, finish: fin });
   }
-  const built = buildScenery(road, kind === 'practice' ? 1 : seed, { flat, theme, hilliness, avoid: cuts.map((c) => c.pts), detail: QUALITY[qualityLevel()].detail });
+  const rivers = (road.fords || []).map((f) => riverLine(road, f));
+  const built = buildScenery(road, kind === 'practice' ? 1 : seed, { flat, theme, hilliness, avoid: [...cuts.map((c) => c.pts), ...rivers], detail: QUALITY[qualityLevel()].detail });
   stage.detail = qualityLevel();
   terrain = built.terrain;
   builtObstacles = built.obstacles;
@@ -284,8 +289,9 @@ function loadStage(kind, seed = 0) {
   surfPlan = null;
   if (kind !== 'practice') {
     const st = 24, fin = road.length - runout;
-    surfPlan = planSurfaces(road, seed, { start: st, finish: fin, theme, weather });
+    surfPlan = planSurfaces(road, seed, { start: st, finish: fin, theme, weather, fords: road.fords || [] });
     stageGroup.add(buildSurfaces(road, surfPlan));
+    stageGroup.add(buildFords(road, road.fords));
   }
   // The racing line is always shown as dark, worn tyre tracks.
   lineMesh = buildRacingMarks(road);
@@ -296,6 +302,7 @@ function loadStage(kind, seed = 0) {
   (road.bumps || []).forEach((b, k) => {
     if (b.at > 75) stageGroup.add(buildSign(road, b.at - 70, b.kind === 'jump' ? 'JUMP' : 'CREST', k % 2 ? -1 : 1));
   });
+  (road.fords || []).forEach((f, k) => stageGroup.add(buildSign(road, f.at - 70, 'WATER', k % 2 ? 1 : -1)));
 
   if (kind === 'practice') {
     stage.start = stage.finish = 0; stage.cps = [];
@@ -745,6 +752,7 @@ function stageLabel() {
   if (stage.kind === 'classic') return `${stage.name} · Classic`;
   if (stage.kind === 'champ') return `${stage.name} · Championship ${champIndex(stage.seed)}/5`;
   if (stage.kind === 'endurance') return `${stage.name} · Endurance #${stage.seed}`;
+  if (specialOf(stage.seed)) return `${stage.name} · ${SPECIAL_LABEL[specialOf(stage.seed)]} #${stage.seed}`;
   if (stage.kind === 'daily') {
     const d = new Date(Math.floor(stage.seed / 10000), Math.floor(stage.seed / 100) % 100 - 1, stage.seed % 100);
     return `${stage.name} · ${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
@@ -1063,26 +1071,34 @@ $('btn-daily').addEventListener('click', () => pickThenStart('daily'));
 // code that gives them (the code alone still decides everything, so it can
 // be shared like any other).
 const GEN = {
+  type: [['gravel', 'Gravel'], ['tarmac', 'Tarmac'], ['night', 'Night forest'], ['river', 'River crossings']],
   theme: [['any', 'Any'], ['forest', 'Forest'], ['desert', 'Canyon'], ['snow', 'Snow'], ['alpine', 'Alpine'], ['autumn', 'Autumn']],
   weather: [['any', 'Any'], ['clear', 'Clear'], ['overcast', 'Overcast'], ['dusk', 'Dusk'], ['fog', 'Fog'], ['rain', 'Rain / snowfall'], ['night', 'Night']],
   hills: [['any', 'Any'], ['flat', 'Flat'], ['rolling', 'Rolling'], ['big', 'Big hills']],
 };
 const HILLS = { flat: [0, 0.9], rolling: [0.9, 1.25], big: [1.25, 9] };
-const gen = { theme: 'any', weather: 'any', hills: 'any' };
+const gen = { type: 'gravel', theme: 'any', weather: 'any', hills: 'any' };
 try { Object.assign(gen, JSON.parse(localStorage.getItem('sideways.gen') || '{}')); } catch { /* ignore */ }
 // Canyon stages never get rain, so that pair can't be made.
-const genBlocked = (k, v) => (k === 'weather' && v === 'rain' && gen.theme === 'desert') || (k === 'theme' && v === 'desert' && gen.weather === 'rain');
+// Tarmac and night forest have their own scenery; night forest is always
+// at night; river stages run through forest, autumn or alpine country.
+const genBlocked = (k, v) => (k === 'weather' && v === 'rain' && gen.theme === 'desert') || (k === 'theme' && v === 'desert' && gen.weather === 'rain')
+  || (k === 'theme' && v !== 'any' && (gen.type === 'tarmac' || gen.type === 'night'))
+  || (k === 'theme' && gen.type === 'river' && ['desert', 'snow'].includes(v))
+  || (k === 'weather' && gen.type === 'night' && !['any', 'night'].includes(v));
 function renderGen() {
   for (const k of Object.keys(GEN)) {
     $('gen-' + k).innerHTML = GEN[k].map(([v, label]) => {
       const off = genBlocked(k, v);
-      return `<button class="chip${gen[k] === v ? ' on' : ''}" role="radio" aria-checked="${gen[k] === v}" data-gen="${k}" data-v="${v}"${off ? ' disabled title="Canyon stages are always dry"' : ''}>${label}</button>`;
+      return `<button class="chip${gen[k] === v ? ' on' : ''}" role="radio" aria-checked="${gen[k] === v}" data-gen="${k}" data-v="${v}"${off ? ' disabled title="Not with this stage type"' : ''}>${label}</button>`;
     }).join('');
   }
 }
+// Codes: 100000-999999 gravel; 4000000+ the special types, 300000 each.
+const TYPE_BASE = { tarmac: 4e6, night: 4.3e6, river: 4.6e6 };
 function genSeed() {
   for (let n = 0; n < 20000; n++) {
-    const seed = 100000 + Math.floor(Math.random() * 900000);
+    const seed = gen.type in TYPE_BASE ? TYPE_BASE[gen.type] + Math.floor(Math.random() * 3e5) : 100000 + Math.floor(Math.random() * 900000);
     const { theme, hilliness } = pickTheme(seed);
     if (gen.theme !== 'any' && theme.id !== gen.theme) continue;
     if (gen.hills !== 'any' && (hilliness < HILLS[gen.hills][0] || hilliness >= HILLS[gen.hills][1])) continue;
@@ -1099,6 +1115,7 @@ $('randomgen').addEventListener('click', (e) => {
   if (!c || c.disabled) return;
   gen[c.dataset.gen] = c.dataset.v;
   if (genBlocked('weather', gen.weather)) gen.weather = 'any';
+  if (genBlocked('theme', gen.theme)) gen.theme = 'any';
   try { localStorage.setItem('sideways.gen', JSON.stringify(gen)); } catch { /* ignore */ }
   renderGen();
 });
@@ -1115,6 +1132,7 @@ function kindOfCode(n) {
   if (!Number.isInteger(n) || n <= 0) return null;
   if (classicOf(n)) return 'classic';
   if (isEndurance(n)) return 'endurance';
+  if (specialOf(n)) return 'random';
   if (n >= 1e6 && n < 2e6) return 'champ';
   if (n >= 100000 && n < 1e6) return 'random';
   if (n >= 20000101 && n <= 21001231) {
@@ -2254,6 +2272,7 @@ function frame(now) {
   if (!paused && trackside) crowdNoise = trackside.update(dt, car.x, car.z, { air: car.air && car.airTime > 0.1, speed: car.speed, dark: lampGlow > 0.6 }) || 0;
   if (!paused && (echoT -= dt) <= 0) { echoT = 0.25; measureEcho(); }
   if (skyPlan && road) updateSky(replay.on ? replay.along : roadAlong);
+  if (!paused) beamDust.update(dt, car, headlights[0].intensity / 140 * (lampGlow > 0.6 ? 1 : 0), stage.theme?.id === 'nightwood' ? 2 : 0.8);
   if (!paused) { precip.update(dt, camera, { x: car.vx, z: car.vz }); rain.update(dt, camera, { x: car.vx, z: car.vz }, car.y); }
   wasSplash = !!surface.splash;
   if (headlights[0].intensity > 0) {
@@ -2358,6 +2377,7 @@ function stageTitle(kind, seed) {
   if (kind === 'random' && seed == null) return 'Random stage';
   if (kind === 'endurance' && seed == null) return 'Endurance stage';
   if (kind === 'endurance') return `${stageName(seed)} · Endurance`;
+  if (specialOf(seed)) return `${stageName(seed)} · ${SPECIAL_LABEL[specialOf(seed)]}`;
   if (kind === 'daily' && seed == null) seed = dateSeed();
   const name = stageName(seed);
   if (kind === 'classic') return `${name} · Classic`;

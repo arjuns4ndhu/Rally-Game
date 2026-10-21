@@ -21,6 +21,7 @@ export function pickWeather(seed, theme) {
   let id = x < 0.38 ? 'clear' : x < 0.48 ? 'overcast' : x < 0.62 ? 'dusk' : x < 0.72 ? 'fog' : x < 0.87 ? 'rain' : 'night';
   if (id === 'rain' && theme.id === 'desert') id = 'clear';
   if (id === 'rain' && theme.id === 'snow') id = 'snowfall';
+  if (theme.id === 'nightwood') id = 'night';
   return WEATHER[id];
 }
 
