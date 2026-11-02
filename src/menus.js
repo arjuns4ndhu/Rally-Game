@@ -110,11 +110,11 @@ export class GaragePreview {
     this.scene.add(ring);
   }
 
-  show(id, { color, wheels, skins }) {
+  show(id, { color, wheels, skins, livery }) {
     this._init();
     if (this.model) { this.scene.remove(this.model.root); this.model.dispose(); }
     const spec = CARS[id];
-    this.model = buildCarModel(spec, { color, wheelStyle: wheels, number: 7, skin: skins?.[id] });
+    this.model = buildCarModel(spec, { color, wheelStyle: wheels, number: Math.max(0, Math.min(99, parseInt(livery?.num, 10) || 0)) || 7, skin: skins?.[id] });
     this.model.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     this.scene.add(this.model.root);
     // Frame taller cars a little further out.

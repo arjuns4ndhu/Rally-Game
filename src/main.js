@@ -12,6 +12,7 @@ import { CameraRig, TVCamera } from './camera.js';
 import { Dust, BeamDust } from './particles.js';
 import { stageK, UPGRADES, upgradedSpec, buyUpgrade, TIERS, RESTART_PENALTY, newCareer, loadCareer, saveCareer, resetCareer, seasonPlan, recordStage, standings, finishSeason, ordinal, RIVALS } from './career.js';
 import { Podium } from './podium.js';
+import { CUSTOM, PATTERNS } from './loftcar.js';
 import { buildStreet, buildTunnels, planHarbour, harbourCarve, inHarbour, buildHarbour, Fireworks } from './street.js';
 import { buildCountry, buildLedge } from './country.js';
 import { Net, RemoteCars, newCode, cleanCode, cleanNick, readPlayer, readRace } from './multiplayer.js';
@@ -515,7 +516,13 @@ if (!garage.skins[garage.car]) {
 function saveGarage() { try { localStorage.setItem('sideways.garage', JSON.stringify(garage)); } catch { /* ignore */ } }
 let carId = garage.car;
 const car = new CarPhysics(CARS[carId]);
-let model = buildCarModel(CARS[carId], { color: garage.color, wheelStyle: garage.wheels, number: 7, skin: garage.skins[carId] });
+// The livery editor's design (the Custom style) and your door number.
+garage.livery = { pattern: 'stripes', c1: '#f1ede2', c2: '#16181d', num: 7, ...(garage.livery || {}) };
+if (!PATTERNS.includes(garage.livery.pattern)) garage.livery.pattern = 'stripes';
+const applyLivery = () => { Object.assign(CUSTOM, { pattern: garage.livery.pattern, c1: garage.livery.c1, c2: garage.livery.c2 }); };
+const carNumber = () => Math.max(0, Math.min(99, parseInt(garage.livery.num, 10) || 0)) || 7;
+applyLivery();
+let model = buildCarModel(CARS[carId], { color: garage.color, wheelStyle: garage.wheels, number: carNumber(), skin: garage.skins[carId] });
 scene.add(model.root);
 rig.roofH = model.roofH;
 rig.model = model;
@@ -770,7 +777,8 @@ function setCar(id, quiet = false) {
   scene.remove(model.root);
   model.dispose();
   car.setSpec(CARS[id]);
-  model = buildCarModel(CARS[id], { color: garage.color, wheelStyle: garage.wheels, number: 7, skin: garage.skins[id] });
+  applyLivery();
+  model = buildCarModel(CARS[id], { color: garage.color, wheelStyle: garage.wheels, number: carNumber(), skin: garage.skins[id] });
   scene.add(model.root);
   rig.roofH = model.roofH;
   rig.model = model;
@@ -2958,7 +2966,28 @@ function renderGarage() {
     const key = `${garage.car}:${k.id}`, lk = skinLocked(garage.car, k.id, u);
     return `<button class="chip${k.id === cur ? ' on' : ''}${lk ? ' locked' : ''}" data-skin="${k.id}" ${lk ? `data-why="${LOCKS.skins[key].why}"` : ''}>${lk ? '🔒 ' : ''}${k.name}${!lk && fresh.has('skin:' + key) ? ' <i class="badge-new">NEW</i>' : ''}</button>`;
   }).join('');
+  // Livery editor, for the Custom style.
+  $('garage-livery-row').hidden = cur !== 'custom';
+  const LBL = { stripes: 'Twin stripes', wide: 'Wide stripe', side: 'Side stripe', racing: 'Stripes + side', twotone: 'Two-tone', roof: 'Roof', hoops: 'Hoops', arrows: 'Arrows', checks: 'Checks', none: 'None' };
+  $('liv-pattern').innerHTML = PATTERNS.map((p) => `<button class="chip${p === garage.livery.pattern ? ' on' : ''}" data-liv="${p}">${LBL[p]}</button>`).join('');
+  $('liv-c1').value = garage.livery.c1; $('liv-c2').value = garage.livery.c2; $('liv-num').value = carNumber();
 }
+// Rebuild the car (and the preview) with the current livery design.
+function liveryChanged() {
+  saveGarage();
+  setCar(garage.car, true);
+  preview.show(garage.car, garage);
+}
+$('liv-pattern').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-liv]');
+  if (!b) return;
+  e.stopPropagation();
+  garage.livery.pattern = b.dataset.liv;
+  liveryChanged(); renderGarage();
+});
+$('liv-c1').addEventListener('change', (e) => { garage.livery.c1 = e.target.value; liveryChanged(); });
+$('liv-c2').addEventListener('change', (e) => { garage.livery.c2 = e.target.value; liveryChanged(); });
+$('liv-num').addEventListener('change', (e) => { garage.livery.num = Math.max(0, Math.min(99, parseInt(e.target.value, 10) || 7)); liveryChanged(); });
 // The garage doubles as the car picker: you always land here first, and
 // every stage goes through it so you choose your car before you drive.
 let pendingStart = null;

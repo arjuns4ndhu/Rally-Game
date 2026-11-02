@@ -856,3 +856,9 @@ body.touch .hud-fps { top: auto; bottom: calc(150px + var(--safe-b, 0px)); }
 .mp-status { margin: 0 0 10px; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--line); font-size: 14px; }
 .mp-status.bad { border-color: #ff6b5a; color: #ffb3a8; }
 .mp-status.good { border-color: #2bd47a; color: #a7f0c6; }
+
+.livery-ed { display: flex; flex-direction: column; gap: 6px; }
+.liv-colors { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+.liv-colors label { display: flex; align-items: center; gap: 6px; }
+.liv-colors input[type=color] { width: 34px; height: 26px; border: 0; padding: 0; background: none; }
+#liv-num { width: 3.2em; padding: 4px 6px; border-radius: 4px; border: 2px solid var(--line); background: rgba(0,0,0,0.3); color: var(--text); font: inherit; }

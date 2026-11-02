@@ -364,6 +364,37 @@ for (const d of Object.values(LOFTS)) {
   d.skins.plain = { name: 'Plain', accents: any.accents.map(() => 0x17181b), livery: () => null };
 }
 
+// The livery editor's own style ("Custom"): a pattern and two colours the
+// player picks, the same on every car. CUSTOM is set before a car is built.
+export const CUSTOM = { pattern: 'stripes', c1: '#f1ede2', c2: '#16181d' };
+export const PATTERNS = ['stripes', 'wide', 'side', 'racing', 'twotone', 'roof', 'hoops', 'arrows', 'checks', 'none'];
+const avg = (pts) => pts.reduce((t, p) => t + p[1], 0) / pts.length;
+function customLivery(d) {
+  const belt = avg(d.belt), roof = [d.glass.side[0] - 0.12, d.glass.side[1] + 0.12];
+  const onRoof = (z) => z > roof[0] && z < roof[1];
+  const stripes = (part, x) => part === 'top' && Math.abs(x) > 0.07 && Math.abs(x) < 0.21;
+  const band = (part, y) => part === 'side' && y > belt - 0.24 && y < belt - 0.1;
+  return (part, x, y, z) => {
+    switch (CUSTOM.pattern) {
+      case 'stripes': return stripes(part, x) ? 1 : null;
+      case 'wide': return part === 'top' && Math.abs(x) < 0.3 ? 1 : null;
+      case 'side': return band(part, y) ? 1 : null;
+      case 'racing': return stripes(part, x) ? 1 : band(part, y) ? 2 : null;
+      case 'twotone': return part === 'side' && y < belt - 0.2 ? 1 : null;
+      case 'roof': return part === 'top' && onRoof(z) ? 1 : null;
+      case 'hoops': return (part === 'top' || part === 'side') && Math.floor((z + 8) * 1.5) % 3 === 0 ? 1 : null;
+      case 'arrows': return part === 'top' && (((z - Math.abs(x) * 1.6) * 2 % 1) + 1) % 1 < 0.33 ? 1 : null;
+      case 'checks': return part === 'top' && !onRoof(z) ? ((Math.floor(x * 7 + 50) + Math.floor(z * 7 + 50)) % 2 ? 1 : 2) : null;
+      default: return null;
+    }
+  };
+}
+const hexNum = (c) => parseInt(String(c).replace('#', ''), 16) || 0;
+for (const d of Object.values(LOFTS)) {
+  const lv = customLivery(d);
+  d.skins.custom = { name: 'Custom', get accents() { return [hexNum(CUSTOM.c1), hexNum(CUSTOM.c2), hexNum(CUSTOM.c2)]; }, livery: lv };
+}
+
 // Points of one half cross-section at z, from the bottom centre out, up the
 // side and over the top to the top centre. Always the same count, so rings
 // join up. Over a wheel the bottom steps up into a real wheel well.
