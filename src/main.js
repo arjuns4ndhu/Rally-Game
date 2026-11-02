@@ -13,6 +13,7 @@ import { Dust, BeamDust } from './particles.js';
 import { stageK, UPGRADES, upgradedSpec, buyUpgrade, TIERS, RESTART_PENALTY, newCareer, loadCareer, saveCareer, resetCareer, seasonPlan, recordStage, standings, finishSeason, ordinal, RIVALS } from './career.js';
 import { Podium } from './podium.js';
 import { CoDriverVoice } from './voice.js';
+import { Achievements } from './achievements.js';
 import { CUSTOM, PATTERNS } from './loftcar.js';
 import { buildStreet, buildTunnels, planHarbour, harbourCarve, inHarbour, buildHarbour, Fireworks } from './street.js';
 import { buildCountry, buildLedge } from './country.js';
@@ -776,6 +777,19 @@ function finishRun() {
   }).join('');
   $('fin-splits').innerHTML = `<tr><th>Sector</th><th>Time</th><th>Total</th><th>vs best</th></tr>${rows}`;
   setTimeout(() => { if (run.state === 'finished' && running && !replay.on) $('finish').hidden = false; }, 900);
+  // Achievements for this finish.
+  if (stage.kind !== 'practice') {
+    if (!run.respawns) ach.earn('clean');
+    if (medal === 'gold' && stage.kind !== 'classic') ach.earn('gold_any');
+    const sp = specialOf(stage.seed);
+    if (sp && !CUSTOM_STAGES.has(stage.seed)) { ach.finishedType(sp); if (['street', 'cliff', 'country'].includes(sp)) ach.earn(sp); }
+    if (stage.kind === 'endurance') ach.earn('endurance');
+    if (CUSTOM_STAGES.has(stage.seed)) ach.earn('builder');
+    if (stage.seed === eventInfo().seed) ach.earn('event');
+    if (garage.skins[carId] === 'custom') ach.earn('designer');
+    if (mpActive()) ach.earn('mp_race');
+  }
+  checkAch();
   refreshStageHud();
 }
 
@@ -1494,7 +1508,7 @@ input.on('action', (act) => {
 // or replay. It is worked out from which screens are showing, so it can't
 // drift from them, and the CSS uses it to decide what else shows (touch
 // pedals only while driving, the HUD hidden under the finish card, ...).
-const PAGES = ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career', 'mp', 'event', 'editor'];
+const PAGES = ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career', 'mp', 'event', 'editor', 'settings', 'ach'];
 function syncUI() {
   const open = (id) => !$(id).hidden;
   document.body.dataset.ui = open('loading') ? 'loading' : open('hud-replay') ? 'replay' : open('pause') ? 'pause'
@@ -1554,7 +1568,7 @@ $('opt-steer').addEventListener('click', (e) => { const b = e.target.closest('[d
 // D-pad/stick (A picks, B goes back).
 input.on('padconnect', () => { document.body.classList.add('pad'); toast('CONTROLLER CONNECTED', 1400); });
 input.on('paddisconnect', () => toast('CONTROLLER DISCONNECTED', 1400));
-const MENU_LAYERS = ['loading', 'podium', 'pause', 'finish', 'garage', 'welcome', 'randomgen', 'classics', 'past', 'champ', 'career', 'mp', 'event', 'editor', 'statsview', 'start'];
+const MENU_LAYERS = ['loading', 'podium', 'pause', 'finish', 'garage', 'welcome', 'randomgen', 'classics', 'past', 'champ', 'career', 'mp', 'event', 'editor', 'settings', 'ach', 'statsview', 'start'];
 function menuLayer() { return MENU_LAYERS.map($).find((el) => el && !el.hidden) || null; }
 function focusables(root) {
   return [...root.querySelectorAll('button, input, select, summary, [tabindex="0"]')]
@@ -2135,7 +2149,7 @@ function stepPhysics(dt, inp) {
       const vyGround = gx * car.vx + gz * car.vz;
       const impact = Math.max(0, vyGround - car.vy);
       car.y = h0; car.vy = vyGround; car.air = false;
-      if (car.airTime > 0.12) { settleLanding(inp); onLanding(impact); }
+      if (car.airTime > 0.12) { if (car.airTime > 1.5 && run.state === 'running') ach.earn('big_air'); settleLanding(inp); onLanding(impact); }
     }
     return;
   }
@@ -2580,6 +2594,33 @@ window.addEventListener('keydown', skipPreview, true);
 window.addEventListener('pointerdown', skipPreview, true);
 input.on('pad', skipPreview);
 
+// ---------- Achievements and title-screen settings ----------
+const ach = new Achievements((a) => {
+  toast(`★ ACHIEVEMENT: ${a.name.toUpperCase()}`, 2600);
+  audio.beep(1320, 0.12); setTimeout(() => audio.beep(1760, 0.16), 120);
+  renderAchCount();
+});
+const achCtx = () => ({ s: stats.d, u: unlockState(stats.d) });
+function checkAch() { ach.check(achCtx()); }
+function renderAchCount() { const l = ach.list(achCtx()); $('ach-count').textContent = `${l.filter((a) => a.at).length}/${l.length}`; }
+function renderAch() {
+  const l = ach.list(achCtx()), n = l.filter((a) => a.at).length;
+  $('ach-sub').textContent = `${n} of ${l.length} earned`;
+  // Earned first (newest first), then the rest by how close you are.
+  l.sort((a, b) => (!!b.at - !!a.at) || (b.at || 0) - (a.at || 0) || ((b.have ?? 0) / (b.want || 1)) - ((a.have ?? 0) / (a.want || 1)));
+  $('ach-grid').innerHTML = l.map((a) => `<div class="ach${a.at ? ' got' : ''}"><b>${esc(a.name)}</b><small>${esc(a.desc)}</small>${
+    a.at ? `<small>Earned ${new Date(a.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</small>`
+      : a.want ? `<small>${a.have} / ${a.want}</small><div class="prog"><i style="width:${Math.round(100 * a.have / a.want)}%"></i></div>` : ''}</div>`).join('');
+}
+$('btn-ach').addEventListener('click', () => { checkAch(); openPage('ach'); renderAch(); });
+checkAch(); renderAchCount();
+// Settings from the title: the pause menu's settings panel is moved into
+// this page while it's open, and put back when it closes.
+const settingsPanel = document.querySelector('.pause-settings');
+const settingsParent = settingsPanel.parentNode, settingsNextSib = settingsPanel.nextSibling;
+function settingsHome() { if (settingsPanel.parentNode !== settingsParent) settingsParent.insertBefore(settingsPanel, settingsNextSib); }
+$('btn-settings').addEventListener('click', () => { $('settings-body').appendChild(settingsPanel); openPage('settings'); });
+
 // ---------- Track editor ----------
 // Build a stage from pieces; the code holds everything, so it can be shared.
 const ed = { theme: 'forest', weather: 'clear', hills: 1, pieces: 'sLlRkshSj' };
@@ -2787,6 +2828,7 @@ function mpStandings() {
 function mpShowFin() {
   const list = mpStandings();
   const win = list.find((p) => p.st === 'done');
+  if (list.length > 1 && list.every((p) => p.st !== 'racing') && win?.me) ach.earn('mp_win');
   $('fin-mp').hidden = false;
   $('fin-mp').innerHTML = `<table>${list.map((p, k) => `<tr class="${p.me ? 'you' : ''}"><td>${k + 1}</td><td>${carDot(p.color)}${esc(p.nick)}</td><td>${
     p.st === 'done' ? (p === win ? fmt(p.fin) : '+' + fmt(p.fin - win.fin)) : p.st === 'dnf' ? 'DNF' : 'racing…'}</td></tr>`).join('')}</table>`;
@@ -2939,6 +2981,7 @@ function careerFinish() {
   career.showLast = res.rallyDone;
   saveCareer(career);
   careerRun.result = res;
+  if (res.award?.pos === 1) ach.earn('rally_win');
   const pen = res.t - run.t;
   careerRun.html = `SS${careerRun.stage + 1}: ${ordinal(res.stagePos)} of 8 · ${res.rallyDone ? 'Rally result' : 'Rally'}: ${ordinal(res.rallyPos)}` +
     `<small>${pen ? `Includes +${pen}s for restarts · ` : ''}${res.rallyPos === 1 ? `Leading by ${fmt(Math.abs(res.rallyGap))}` : `${fmt(res.rallyGap)} behind the leader`}${res.award ? ` · +${res.award.pts} championship points · +${res.award.prize} credits` : ''}</small>`;
@@ -2961,6 +3004,8 @@ function careerNext() {
 }
 function showPodium() {
   const fin = finishSeason(career);
+  if (fin.pos === 1) ach.earn('champion');
+  if (fin.next.tier >= 2) ach.earn('legend');
   const top = fin.table.slice(0, 3).map((x) => (x.you ? { car: career.car || carId, color: garage.color } : { car: x.car, color: x.color }));
   $('start').hidden = true;
   $('podium').hidden = false;
@@ -3001,8 +3046,9 @@ function openPage(id) {
 function hidePages() {
   clearPeek();
   if (!$('garage').hidden) markUnlocksSeen();     // NEW badges go once you've seen them
-  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career', 'mp', 'event', 'editor']) $(id).hidden = true;
+  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career', 'mp', 'event', 'editor', 'settings', 'ach']) $(id).hidden = true;
   preview.stop();
+  settingsHome();
 }
 function closePages() {
   if (pendingStart && !$('garage').hidden) pendingStart = null;

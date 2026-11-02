@@ -496,6 +496,23 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     assert(!missing.length, 'phrases with no voice line: ' + missing.join(' | '));
   });
 
+  await check('achievements and title-screen settings', async () => {
+    if (!(await S(() => !!window.__sideways))) await ready();
+    const r = await S(() => {
+      const s = window.__sideways;
+      s.loadStage('random', 4900123); s.run.state = 'running'; s.run.t = 90; s.run.splits = [1, 2, 3, 4, 5]; s.run.respawns = 0;
+      s.finishRun();
+      const got = JSON.parse(localStorage.getItem('sideways.ach') || '{}').got || {};
+      document.getElementById('btn-settings').click();
+      const moved = !!document.querySelector('#settings .pause-settings');
+      document.querySelector('#settings [data-back]').click();
+      const back = !!document.querySelector('#pause .pause-settings');
+      return { clean: !!got.clean, street: !!got.street, first: !!got.first_finish, moved, back, count: document.getElementById('ach-count').textContent };
+    });
+    assert(r.clean && r.street && r.first && r.moved && r.back && /^\d+\/28$/.test(r.count), JSON.stringify(r));
+    await ready();
+  });
+
   await check('phone drag steering gives analogue steer', async () => {
     const st = await S(async () => {
       const s = window.__sideways;
@@ -694,7 +711,7 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await p3.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await p3.waitForFunction(() => navigator.serviceWorker?.controller || navigator.serviceWorker?.ready.then(() => true), null, { timeout: 60000 });
     await p3.evaluate(() => navigator.serviceWorker.ready);
-    await p3.waitForFunction(async () => (await (await caches.open('sideways-v5')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
+    await p3.waitForFunction(async () => (await (await caches.open('sideways-v6')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
     await c3.setOffline(true);
     await p3.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
     const ok = await p3.waitForFunction(() => !!window.__sideways, null, { timeout: 60000 }).then(() => true).catch(() => false);

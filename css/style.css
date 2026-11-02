@@ -884,3 +884,24 @@ body.touch .hud-fps { top: auto; bottom: calc(150px + var(--safe-b, 0px)); }
 #ed-code { font-family: monospace; font-size: 13px; word-break: break-all; color: var(--accent); }
 #ed-load { margin: 8px 0; }
 #ed-in { flex: 1; min-width: 0; padding: 7px 10px; border-radius: 4px; border: 2px solid var(--line); background: rgba(0,0,0,0.3); color: var(--text); font: inherit; }
+
+/* ---------- Title footer: achievements + settings beside the code box ---------- */
+.foot-row { display: flex; gap: 8px; justify-content: space-between; align-items: stretch; flex-wrap: wrap; }
+.foot-btns { display: flex; gap: 8px; }
+.foot-btns .btn { font-size: 14px; white-space: nowrap; }
+.foot-btns b { color: var(--accent); font-weight: 400; margin-left: 4px; }
+@media (max-width: 700px) { .foot-row { flex-direction: column; } .foot-btns .btn { flex: 1; } }
+@media (max-height: 500px) {
+  .foot-row { grid-area: code; flex-direction: column; gap: 6px; }
+  .foot-btns .btn { flex: 1; font-size: 12px; padding: 6px 8px; }
+}
+.settings-body .pause-settings { max-height: none; }
+/* ---------- Achievements ---------- */
+.ach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.ach { border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; opacity: 0.6; display: flex; flex-direction: column; gap: 3px; }
+.ach.got { opacity: 1; border-color: var(--accent); background: rgba(255, 176, 0, 0.07); }
+.ach b { font-family: var(--font-display); font-weight: 400; letter-spacing: 0.05em; }
+.ach.got b::before { content: '★ '; color: var(--accent); }
+.ach small { font-size: 12px; opacity: 0.85; }
+.ach .prog { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin-top: 3px; }
+.ach .prog i { display: block; height: 100%; background: var(--accent); }

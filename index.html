@@ -150,11 +150,17 @@
         <button id="btn-stats" class="btn btn-sm">Stats</button>
         <button id="btn-install" class="btn btn-sm" hidden>Install</button>
       </div>
-      <form id="code-form" class="code-form" autocomplete="off">
-        <input id="code-in" placeholder="Stage code" aria-label="Stage code">
-        <button class="btn btn-sm" type="button" id="btn-paste" title="Paste a stage code">Paste</button>
-        <button class="btn btn-sm" type="submit">Drive</button>
-      </form>
+      <div class="foot-row">
+        <div class="foot-btns">
+          <button id="btn-ach" class="btn btn-sm">Achievements <b id="ach-count"></b></button>
+          <button id="btn-settings" class="btn btn-sm">Settings</button>
+        </div>
+        <form id="code-form" class="code-form" autocomplete="off">
+          <input id="code-in" placeholder="Stage code" aria-label="Stage code">
+          <button class="btn btn-sm" type="button" id="btn-paste" title="Paste a stage code">Paste</button>
+          <button class="btn btn-sm" type="submit">Drive</button>
+        </form>
+      </div>
     </div>
     <details class="tips-box">
       <summary>How to drift</summary>
@@ -230,6 +236,22 @@
       <button class="btn btn-primary" id="career-go">Start ▶</button>
     </div>
     <p class="hint">Three stages a rally against seven rivals; your rally time is the three stage times added up. Points for the rally result: 25, 18, 15, 12, 10, 8, 6, 4. No retries: restarting a stage costs 10 s. Win the championship to move up a class.</p>
+  </div>
+</div>
+
+<!-- Settings (the same controls as the pause menu, moved in while open) -->
+<div id="settings" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><h2 class="logo">SETTINGS</h2><button class="btn btn-sm" data-back>Back</button></div>
+    <div id="settings-body" class="settings-body"></div>
+  </div>
+</div>
+
+<!-- Achievements -->
+<div id="ach" class="overlay page" hidden>
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow" id="ach-sub"></div><h2 class="logo">ACHIEVEMENTS</h2></div><button class="btn btn-sm" data-back>Back</button></div>
+    <div class="ach-grid" id="ach-grid"></div>
   </div>
 </div>
 
