@@ -144,6 +144,7 @@
       <div class="menu-row">
         <button id="btn-garage" class="btn btn-sm">Garage</button>
         <button id="btn-champ" class="btn btn-sm">Championship</button>
+        <button id="btn-event" class="btn btn-sm">Weekly event</button>
         <button id="btn-past" class="btn btn-sm">Past stages</button>
         <button id="btn-stats" class="btn btn-sm">Stats</button>
         <button id="btn-install" class="btn btn-sm" hidden>Install</button>
@@ -218,6 +219,19 @@
       <button class="btn btn-primary" id="career-go">Start ▶</button>
     </div>
     <p class="hint">Three stages a rally against seven rivals; your rally time is the three stage times added up. Points for the rally result: 25, 18, 15, 12, 10, 8, 6, 4. No retries: restarting a stage costs 10 s. Win the championship to move up a class.</p>
+  </div>
+</div>
+
+<!-- Weekly online event -->
+<div id="event" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><div><div class="eyebrow" id="event-week"></div><h2 class="logo">WEEKLY EVENT</h2></div><button class="btn btn-sm" data-back>Back</button></div>
+    <p class="mp-setup" id="event-stage"></p>
+    <p class="hint" id="event-ends"></p>
+    <table class="champ-table" id="event-table"></table>
+    <p class="hint" id="event-you"></p>
+    <div class="champ-foot"><span></span><button class="btn btn-primary" id="event-go">Drive it ▶</button></div>
+    <p class="hint">One stage for everyone, all week. A new one every Monday. Your best time this week goes on the board.</p>
   </div>
 </div>
 

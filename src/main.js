@@ -1097,7 +1097,7 @@ function renderBoard() {
   $('board-note').textContent = !top.length ? 'No times yet. Be the first.' :
     board.denied ? 'View-only access: the owner can invite you with edit access to post times.' : '';
 }
-board.on(() => { renderBoard(); if (!$('classics').hidden) renderClassics(); });
+board.on(() => { renderBoard(); if (!$('classics').hidden) renderClassics(); if (!$('event').hidden) renderEvent(); });
 async function raceGhostOf(id, nick, btn) {
   btn.disabled = true; btn.textContent = '…';
   const g = await board.fetchGhost(id, stage.seed);
@@ -1467,7 +1467,7 @@ input.on('action', (act) => {
 // or replay. It is worked out from which screens are showing, so it can't
 // drift from them, and the CSS uses it to decide what else shows (touch
 // pedals only while driving, the HUD hidden under the finish card, ...).
-const PAGES = ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career', 'mp'];
+const PAGES = ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career', 'mp', 'event'];
 function syncUI() {
   const open = (id) => !$(id).hidden;
   document.body.dataset.ui = open('loading') ? 'loading' : open('hud-replay') ? 'replay' : open('pause') ? 'pause'
@@ -1527,7 +1527,7 @@ $('opt-steer').addEventListener('click', (e) => { const b = e.target.closest('[d
 // D-pad/stick (A picks, B goes back).
 input.on('padconnect', () => { document.body.classList.add('pad'); toast('CONTROLLER CONNECTED', 1400); });
 input.on('paddisconnect', () => toast('CONTROLLER DISCONNECTED', 1400));
-const MENU_LAYERS = ['loading', 'podium', 'pause', 'finish', 'garage', 'welcome', 'randomgen', 'classics', 'past', 'champ', 'career', 'mp', 'statsview', 'start'];
+const MENU_LAYERS = ['loading', 'podium', 'pause', 'finish', 'garage', 'welcome', 'randomgen', 'classics', 'past', 'champ', 'career', 'mp', 'event', 'statsview', 'start'];
 function menuLayer() { return MENU_LAYERS.map($).find((el) => el && !el.hidden) || null; }
 function focusables(root) {
   return [...root.querySelectorAll('button, input, select, summary, [tabindex="0"]')]
@@ -2552,6 +2552,38 @@ window.addEventListener('keydown', skipPreview, true);
 window.addEventListener('pointerdown', skipPreview, true);
 input.on('pad', skipPreview);
 
+// ---------- Weekly online event ----------
+// One special stage a week for everyone (the type rotates), with its own
+// shared leaderboard. The code comes from the week number, so every player
+// gets the same road without anything being stored.
+const EVENT_TYPES = ['street', 'cliff', 'country', 'tarmac', 'night', 'river'];
+function eventInfo(date = new Date()) {
+  const w = weekInfo(date);
+  const type = EVENT_TYPES[((w.weekNo % EVENT_TYPES.length) + EVENT_TYPES.length) % EVENT_TYPES.length];
+  const seed = TYPE_BASE[type] + (((w.weekNo * 2654435761) >>> 0) % 300000);
+  const end = new Date(date.getFullYear(), date.getMonth(), date.getDate() + (7 - ((date.getDay() + 6) % 7)));
+  return { ...w, type, seed, end };
+}
+function renderEvent() {
+  const ev = eventInfo();
+  $('event-week').textContent = `Week of ${ev.label}`;
+  $('event-stage').textContent = `${stageName(ev.seed)} · ${SPECIAL_LABEL[ev.type]} · code ${ev.seed}`;
+  const days = Math.max(0, Math.ceil((ev.end - new Date()) / 86400000));
+  $('event-ends').textContent = `Ends in ${days} day${days === 1 ? '' : 's'}.`;
+  const mine = (() => { try { return JSON.parse(localStorage.getItem('sideways.best.' + ev.seed) || 'null'); } catch { return null; } })();
+  if (!board.available) {
+    $('event-table').innerHTML = '';
+    $('event-you').textContent = `${mine ? `Your best: ${fmt(mine.time)}. ` : ''}The shared leaderboard is on the claude.ai page of the game.`;
+    return;
+  }
+  const top = board.top(ev.seed, 20), r = board.rank(ev.seed);
+  $('event-table').innerHTML = '<tr><th>#</th><th>Driver</th><th>Car</th><th>Time</th></tr>' + (top.length ? top.map((x, i) =>
+    `<tr class="${x.me ? 'you' : ''}"><td>${i + 1}</td><td>${esc(x.nick)}</td><td>${esc(x.car || '')}</td><td>${fmt(x.t)}</td></tr>`).join('') : '<tr><td colspan="4">No times yet. Be the first!</td></tr>');
+  $('event-you').textContent = r ? `You're ${ordinal(r.pos)} of ${r.of}.` : mine ? `Your best: ${fmt(mine.time)}` : 'You haven\'t set a time yet.';
+}
+$('btn-event').addEventListener('click', () => { openPage('event'); renderEvent(); });
+$('event-go').addEventListener('click', () => pickThenStart('random', eventInfo().seed));
+
 // ---------- Multiplayer ----------
 function mpActive() { return !!(net.inLobby && mp.race && road && stage.seed === mp.race.seed && stage.kind === mp.race.kind); }
 const players = () => net.peers.filter((p) => p.kind === 'viewer').map(readPlayer);
@@ -2841,7 +2873,7 @@ function openPage(id) {
 function hidePages() {
   clearPeek();
   if (!$('garage').hidden) markUnlocksSeen();     // NEW badges go once you've seen them
-  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career', 'mp']) $(id).hidden = true;
+  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career', 'mp', 'event']) $(id).hidden = true;
   preview.stop();
 }
 function closePages() {

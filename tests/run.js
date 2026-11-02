@@ -448,6 +448,17 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     assert(more[0].theme === 'country' && more[1].theme === 'cliff' && more.every((m) => m.walls > 0 && m.done), 'country / cliff: ' + JSON.stringify(more));
   });
 
+  await check('weekly event: one special stage a week, the same for everyone', async () => {
+    if (!(await S(() => !!window.__sideways))) await ready();
+    const r = await S(() => {
+      document.getElementById('btn-event').click();
+      const txt = document.getElementById('event-stage').textContent;
+      document.getElementById('event').hidden = true; document.getElementById('start').hidden = false;
+      return txt;
+    });
+    assert(/· (Street circuit|Mountain edge|Countryside|Tarmac|Night forest|River crossings) · code \d{7}/.test(r), 'event: ' + r);
+  });
+
   await check('phone drag steering gives analogue steer', async () => {
     const st = await S(async () => {
       const s = window.__sideways;
