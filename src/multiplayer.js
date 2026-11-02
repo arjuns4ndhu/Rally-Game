@@ -20,6 +20,8 @@ export class Net {
     this.peers = [];
     this.code = '';
     this.onChange = null;
+    this.onStatus = null;       // (connected, errorCode) for the lobby screen
+    this.lastError = '';
   }
 
   async available() {
@@ -33,15 +35,17 @@ export class Net {
     await this.leave();
     this.lobby = await this.room.join(`race-${code}`);
     this.code = code;
-    this.unsub = this.lobby.onPeers((ch) => { this.peers = ch.peers; this.onChange?.(ch); });
+    const fail = (e) => { this.lastError = e?.code || 'upstream_error'; this.onStatus?.(false, this.lastError); };
+    this.unsub = this.lobby.onPeers((ch) => { this.peers = ch.peers; this.onChange?.(ch); }, fail);
+    this.unsubC = this.lobby.onConnection?.((c) => { this.connected = c; this.onStatus?.(c, c ? '' : this.lastError); }, fail);
     this.peers = this.lobby.peers();
     await this.lobby.presence(presence);
   }
 
-  set(patch) { this.lobby?.presence(patch).catch(() => {}); }
+  set(patch) { this.lobby?.presence(patch).catch((e) => { this.lastError = e?.code || 'upstream_error'; this.onStatus?.(this.connected, this.lastError); }); }
 
   async leave() {
-    this.unsub?.(); this.unsub = null;
+    this.unsub?.(); this.unsub = null; this.unsubC?.(); this.unsubC = null;
     const l = this.lobby; this.lobby = null; this.peers = []; this.code = '';
     if (l) await l.leave().catch(() => {});
   }

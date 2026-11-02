@@ -2599,20 +2599,49 @@ function mpPick(type) {
   return { type, seed, kind: kindOfCode(seed), collisions: mp.setup?.collisions ?? true };
 }
 function myPresence() { return { nick: myNick(), car: carId, color: garage.color, st: 'lobby' }; }
+// What went wrong, in words, for the lobby screen.
+const MP_ERRORS = {
+  not_permitted: "This account isn't allowed into live lobbies on this page. Everyone must be signed in to claude.ai and invited from the page's Share menu by name or email (a public link can't join lobbies).",
+  not_granted: "Live lobbies aren't available to this viewer. Everyone must be signed in to claude.ai and invited from the page's Share menu by name or email (a public link can't join lobbies).",
+  revoked: 'Access to this page changed. Reload it.',
+  limit_reached: 'Too many lobbies open in this tab. Leave one or reload, then try again.',
+  upstream_error: "Couldn't reach the live lobby server. Check your connection and try again.",
+  invalid_argument: 'Something in the lobby data was refused. Try a shorter name.',
+};
+function mpStatus(text, kind = '') {
+  $('mp-status').hidden = !text;
+  $('mp-status').textContent = text || '';
+  $('mp-status').className = `mp-status ${kind}`;
+}
+net.onStatus = (connected, code) => {
+  if (code) mpStatus(MP_ERRORS[code] || `Lobby problem (${code}).`, 'bad');
+  else if (net.inLobby && !connected) mpStatus('Reconnecting…');
+  else if (net.inLobby) renderLobby();
+};
+async function mpConnect() {
+  if (net.room === undefined) mpStatus('Connecting to live lobbies…');
+  const ok = await net.available();
+  if (!ok) { mpStatus(MP_ERRORS.not_granted, 'bad'); renderLobby(); }
+  return ok;
+}
 async function mpCreate() {
-  if (!(await net.available())) return;
+  if (!(await mpConnect())) return;
   mp.setup = mpPick('daily');
-  await net.join(newCode(), { ...myPresence(), host: true, setup: mp.setup });
+  mpStatus('Opening a lobby…');
+  try { await net.join(newCode(), { ...myPresence(), host: true, setup: mp.setup }); } catch (e) { mpStatus(MP_ERRORS[e?.code] || `Couldn't open a lobby (${e?.code || e}).`, 'bad'); return; }
+  mpStatus('');
   renderLobby();
 }
 async function mpJoin(code) {
   code = cleanCode(code);
-  if (code.length < 4) { toast('TYPE THE LOBBY CODE', 1200); return; }
-  if (!(await net.available())) return;
-  try { await net.join(code, myPresence()); } catch { toast('COULD NOT JOIN THAT LOBBY', 1600); return; }
+  if (code.length < 4) { mpStatus('Type the lobby code your friend sent you.', 'bad'); return; }
+  if (!(await mpConnect())) return;
+  mpStatus('Joining…');
+  try { await net.join(code, myPresence()); } catch (e) { mpStatus(MP_ERRORS[e?.code] || `Couldn't join that lobby (${e?.code || e}).`, 'bad'); return; }
+  mpStatus('');
   renderLobby();
 }
-async function mpLeave() { await net.leave(); mp.race = null; remote.clear(); renderLobby(); }
+async function mpLeave() { await net.leave(); mp.race = null; remote.clear(); mpStatus(''); renderLobby(); }
 function mpSetSetup(patch) { mp.setup = { ...mp.setup, ...patch }; net.set({ setup: mp.setup }); renderLobby(); }
 function mpStartRace() {
   if (!amHost() || !mp.setup) return;
@@ -2723,6 +2752,9 @@ function renderLobby() {
   $('mp-sub').textContent = net.inLobby ? `In lobby ${net.code.toUpperCase()} · ${players().length} player${players().length === 1 ? '' : 's'}` : 'Private lobbies: race your friends live';
   if (!net.inLobby) return;
   $('mp-codeval').textContent = net.code.toUpperCase();
+  if (!$('mp-status').classList.contains('bad')) {
+    mpStatus(players().length < 2 ? `Waiting for others. Send them the code ${net.code.toUpperCase()}; they open this same page, press Multiplayer and type it in.` : `Connected · ${players().length} players in the lobby`, players().length < 2 ? '' : 'good');
+  }
   const host = net.hostPeer(), hp = host ? readPlayer(host) : null, iHost = amHost();
   const setup = iHost ? mp.setup : hp?.setup;
   $('mp-players').innerHTML = '<tr><th></th><th>Driver</th><th>Car</th><th></th></tr>' + players().map((p) =>
@@ -2740,7 +2772,7 @@ function renderLobby() {
 $('btn-mp').addEventListener('click', async () => {
   openPage('mp');
   if (!$('mp-nick').value) $('mp-nick').value = board.nick || '';
-  await net.available();
+  await mpConnect();
   renderLobby();
   if (net.inLobby) net.set(myPresence());
 });
