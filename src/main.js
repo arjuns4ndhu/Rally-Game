@@ -3,10 +3,10 @@ import * as THREE from 'three';
 import { CarPhysics, CARS, CAR_ORDER, TUNE } from './car.js';
 import { buildCarModel, carSkins } from './carModel.js';
 import { Road, createTestRoad, gravelTexture, SURFACES, findShortcuts } from './track.js';
-import { generateStage, stageName, isEndurance } from './stagegen.js';
+import { generateStage, stageName, isEndurance, layPieces, selfCrossing } from './stagegen.js';
 import { buildGate, buildSign, buildCornerWarnings, buildShortcutMarkers } from './gates.js';
 import { dateSeed, mulberry32 } from './rng.js';
-import { THEMES, pickTheme, specialOf, SPECIAL_LABEL } from './themes.js';
+import { THEMES, pickTheme, specialOf, SPECIAL_LABEL, CUSTOM_STAGES, EDIT_THEMES, EDIT_WEATHER, EDIT_PIECES, encodeStage, parseStageCode, registerStage } from './themes.js';
 import { setupWorld, buildScenery } from './scenery.js';
 import { CameraRig, TVCamera } from './camera.js';
 import { Dust, BeamDust } from './particles.js';
@@ -841,7 +841,7 @@ function stageMedal() {
 function refreshStageHud() {
   const timed = stage.kind !== 'practice';
   $('hud-stage').textContent = stageLabel();
-  $('pause-code').textContent = stage.kind === 'practice' ? '' : `Stage code ${stage.seed}`;
+  $('pause-code').textContent = stage.kind === 'practice' ? '' : `Stage code ${codeFor(stage.seed)}`;
   $('btn-pcopy').hidden = stage.kind === 'practice';
   $('hud-timing').hidden = !timed;
   const md = stageMedal();
@@ -1021,7 +1021,7 @@ function shareText(r) {
     `SIDEWAYS · ${r.label}`,
     `⏱ ${fmt(r.time)}${r.medal ? ' ' + MEDAL_ICON[r.medal] : ''}${r.isBest && r.prev ? ' · NEW BEST' : ''}${r.respawns ? ` · ${r.respawns} reset${r.respawns > 1 ? 's' : ''}` : ''}`,
     `${squares} · ${r.car}`,
-    ...(r.seed ? [`Beat it: stage code ${r.seed}`] : []),
+    ...(r.seed ? [`Beat it: stage code ${codeFor(r.seed)}`] : []),
   ].join('\n');
 }
 // Copy text, falling back to the old textarea trick where the clipboard
@@ -1042,15 +1042,19 @@ async function copyText(text, btn) {
   }
 }
 function copyResult() { if (lastResult) copyText(shareText(lastResult), $('btn-share')); }
-const copyCode = (btn) => { if (stage.kind !== 'practice') { copyText(String(stage.seed), btn); toast(`STAGE CODE ${stage.seed} COPIED`, 1400); } };
+// A stage's shareable code: its number, or the editor code for a player-made stage.
+const codeFor = (seed) => CUSTOM_STAGES.get(seed)?.code || String(seed);
+const copyCode = (btn) => { if (stage.kind !== 'practice') { copyText(codeFor(stage.seed), btn); toast('STAGE CODE COPIED', 1400); } };
+// Editor codes (SW-...) are kept whole; anything else keeps only its digits.
+const cleanCodeText = (t) => { const m = /SW-\d\d[0-3]-[sSlrLRhHcCeEjk]+/.exec(t || ''); return m ? m[0] : (t || '').replace(/\D/g, '').slice(0, 9); };
 $('btn-pcopy').addEventListener('click', (e) => { e.currentTarget.blur(); copyCode(e.currentTarget); });
 $('btn-fcopy').addEventListener('click', (e) => { e.currentTarget.blur(); copyCode(e.currentTarget); });
 // Pasting: keep only the digits (so "Stage code 274801" pastes fine).
-$('code-in').addEventListener('input', (e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 9); if (v !== e.target.value) e.target.value = v; });
+$('code-in').addEventListener('input', (e) => { if (/^\s*SW/i.test(e.target.value)) return; const v = e.target.value.replace(/\D/g, '').slice(0, 9); if (v !== e.target.value) e.target.value = v; });
 $('btn-paste').addEventListener('click', async () => {
   try {
     const t = await navigator.clipboard.readText();
-    const v = (t || '').replace(/\D/g, '').slice(0, 9);
+    const v = cleanCodeText(t);
     if (!v) { toast('NO STAGE CODE ON THE CLIPBOARD', 1400); return; }
     $('code-in').value = v;
   } catch {
@@ -1216,6 +1220,7 @@ function kindOfCode(n) {
   if (!Number.isInteger(n) || n <= 0) return null;
   if (classicOf(n)) return 'classic';
   if (isEndurance(n)) return 'endurance';
+  if (CUSTOM_STAGES.has(n)) return 'random';
   if (specialOf(n)) return 'random';
   if (n >= 1e6 && n < 2e6) return 'champ';
   if (n >= 100000 && n < 1e6) return 'random';
@@ -1227,7 +1232,10 @@ function kindOfCode(n) {
 }
 $('code-form').addEventListener('submit', (e) => {
   e.preventDefault();
-  const n = Number($('code-in').value.replace(/\D/g, ''));
+  const txt = $('code-in').value.trim();
+  const def = /^SW-/i.test(txt) ? parseStageCode(txt.replace(/^sw-/, 'SW-')) : null;
+  if (/^SW-/i.test(txt) && !def) { toast('THAT EDITOR CODE IS BROKEN', 1400); return; }
+  const n = def ? registerStage(def) : Number(txt.replace(/\D/g, ''));
   const kind = kindOfCode(n);
   if (!kind) { toast('UNKNOWN STAGE CODE', 1400); return; }
   $('code-in').blur();
@@ -1475,7 +1483,7 @@ input.on('action', (act) => {
 // or replay. It is worked out from which screens are showing, so it can't
 // drift from them, and the CSS uses it to decide what else shows (touch
 // pedals only while driving, the HUD hidden under the finish card, ...).
-const PAGES = ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career', 'mp', 'event'];
+const PAGES = ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career', 'mp', 'event', 'editor'];
 function syncUI() {
   const open = (id) => !$(id).hidden;
   document.body.dataset.ui = open('loading') ? 'loading' : open('hud-replay') ? 'replay' : open('pause') ? 'pause'
@@ -1535,7 +1543,7 @@ $('opt-steer').addEventListener('click', (e) => { const b = e.target.closest('[d
 // D-pad/stick (A picks, B goes back).
 input.on('padconnect', () => { document.body.classList.add('pad'); toast('CONTROLLER CONNECTED', 1400); });
 input.on('paddisconnect', () => toast('CONTROLLER DISCONNECTED', 1400));
-const MENU_LAYERS = ['loading', 'podium', 'pause', 'finish', 'garage', 'welcome', 'randomgen', 'classics', 'past', 'champ', 'career', 'mp', 'event', 'statsview', 'start'];
+const MENU_LAYERS = ['loading', 'podium', 'pause', 'finish', 'garage', 'welcome', 'randomgen', 'classics', 'past', 'champ', 'career', 'mp', 'event', 'editor', 'statsview', 'start'];
 function menuLayer() { return MENU_LAYERS.map($).find((el) => el && !el.hidden) || null; }
 function focusables(root) {
   return [...root.querySelectorAll('button, input, select, summary, [tabindex="0"]')]
@@ -2560,6 +2568,70 @@ window.addEventListener('keydown', skipPreview, true);
 window.addEventListener('pointerdown', skipPreview, true);
 input.on('pad', skipPreview);
 
+// ---------- Track editor ----------
+// Build a stage from pieces; the code holds everything, so it can be shared.
+const ed = { theme: 'forest', weather: 'clear', hills: 1, pieces: 'sLlRkshSj' };
+try { Object.assign(ed, JSON.parse(localStorage.getItem('sideways.editor') || '{}')); } catch { /* ignore */ }
+const ED_THEME_LBL = { forest: 'Forest', desert: 'Canyon', snow: 'Snow', alpine: 'Alpine', autumn: 'Autumn', tarmac: 'Tarmac', street: 'Street', country: 'Countryside', cliff: 'Mountain edge', nightwood: 'Night forest' };
+const ED_PIECE_ICON = { s: '│ Straight', S: '┃ Long straight', l: '↖ Sweeper', r: '↗ Sweeper', L: '↰ Corner', R: '↱ Corner', h: '⟲ Hairpin', H: '⟳ Hairpin', c: '⤨ Chicane L', C: '⤧ Chicane R', e: '∿ Esses L', E: '∿ Esses R', j: '⤴ Jump', k: '⌒ Crest' };
+function edDef() { return parseStageCode(encodeStage(ed)); }
+function renderEditor() {
+  $('ed-pieces').innerHTML = Object.keys(EDIT_PIECES).map((p) => `<button class="btn btn-sm" data-piece="${p}" title="${EDIT_PIECES[p]}">${ED_PIECE_ICON[p]}</button>`).join('');
+  const chips = (list, cur, attr, lbl) => list.map((v, i) => `<button class="chip${v === cur ? ' on' : ''}" data-${attr}="${v}">${lbl ? lbl(v, i) : v}</button>`).join('');
+  $('ed-theme').innerHTML = chips(EDIT_THEMES, ed.theme, 'edt', (v) => ED_THEME_LBL[v]);
+  $('ed-weather').innerHTML = chips(EDIT_WEATHER, ed.weather, 'edw', (v) => v[0].toUpperCase() + v.slice(1));
+  $('ed-hills').innerHTML = chips(['0', '1', '2', '3'], String(ed.hills), 'edh', (v) => ['Flat', 'Rolling', 'Hilly', 'Mountains'][+v]);
+  const def = edDef();
+  $('ed-code').textContent = def ? def.code : '—';
+  // Map from above: start green, finish chequered, jumps and crests marked.
+  const { xs, zs, marks } = layPieces(ed.pieces);
+  const crossing = selfCrossing(xs, zs);
+  const cv = $('ed-map'), g = cv.getContext('2d'), W = cv.width;
+  g.clearRect(0, 0, W, W);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  const sc = (W - 40) / Math.max(maxX - minX, maxZ - minZ, 200);
+  // Forward is up the map; the road's left (+x in the generator) is on the left.
+  const P = (i) => [20 + (maxX - xs[i]) * sc + ((W - 40) - (maxX - minX) * sc) / 2, W - 20 - ((zs[i] - minZ) * sc + ((W - 40) - (maxZ - minZ) * sc) / 2)];
+  g.lineCap = g.lineJoin = 'round';
+  for (const [w, c] of [[7, 'rgba(0,0,0,0.6)'], [3.5, crossing ? '#ff6b5a' : '#f1e9da']]) {
+    g.strokeStyle = c; g.lineWidth = w; g.beginPath();
+    xs.forEach((_, i) => { const [u, v] = P(i); if (i) g.lineTo(u, v); else g.moveTo(u, v); }); g.stroke();
+  }
+  const dot = (i, c, r = 6) => { const [u, v] = P(i); g.fillStyle = c; g.beginPath(); g.arc(u, v, r, 0, Math.PI * 2); g.fill(); };
+  dot(Math.min(xs.length - 1, 12), '#2bd47a'); dot(xs.length - 36, '#ffffff');
+  for (const m of marks) dot(Math.round(m.at / 2), m.kind === 'jump' ? '#ffb000' : '#3fc6d1', 4);
+  const km = ((xs.length - 1) * 2 / 1000).toFixed(2);
+  $('ed-info').textContent = crossing ? `${km} km · The road crosses or touches itself: change some pieces to drive it.` : `${km} km · ${ed.pieces.length} pieces · green = start`;
+  $('ed-info').className = `ed-info${crossing ? ' bad' : ''}`;
+  $('ed-go').disabled = crossing || ed.pieces.length < 3;
+  try { localStorage.setItem('sideways.editor', JSON.stringify(ed)); } catch { /* ignore */ }
+}
+$('btn-editor').addEventListener('click', () => { openPage('editor'); renderEditor(); });
+$('editor').addEventListener('click', (e) => {
+  const p = e.target.closest('[data-piece]'), t = e.target.closest('[data-edt]'), w = e.target.closest('[data-edw]'), h = e.target.closest('[data-edh]');
+  if (p && ed.pieces.length < 80) ed.pieces += p.dataset.piece;
+  if (t) ed.theme = t.dataset.edt;
+  if (w) ed.weather = w.dataset.edw;
+  if (h) ed.hills = +h.dataset.edh;
+  if (p || t || w || h) renderEditor();
+});
+$('ed-undo').addEventListener('click', () => { ed.pieces = ed.pieces.slice(0, -1); renderEditor(); });
+$('ed-clear').addEventListener('click', () => { ed.pieces = ''; renderEditor(); });
+$('ed-copy').addEventListener('click', (e) => { const d = edDef(); if (d) copyText(d.code, e.currentTarget); });
+$('ed-load').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const d = parseStageCode(cleanCodeText($('ed-in').value));
+  if (!d) { toast('THAT ISN\'T AN EDITOR CODE', 1400); return; }
+  Object.assign(ed, { theme: d.theme, weather: d.weather, hills: d.hills, pieces: d.pieces });
+  renderEditor();
+});
+$('ed-go').addEventListener('click', () => {
+  const d = edDef();
+  if (!d) return;
+  d.name = 'Custom stage';
+  pickThenStart('random', registerStage(d));
+});
+
 // ---------- Weekly online event ----------
 // One special stage a week for everyone (the type rotates), with its own
 // shared leaderboard. The code comes from the week number, so every player
@@ -2653,12 +2725,14 @@ async function mpLeave() { await net.leave(); mp.race = null; remote.clear(); mp
 function mpSetSetup(patch) { mp.setup = { ...mp.setup, ...patch }; net.set({ setup: mp.setup }); renderLobby(); }
 function mpStartRace() {
   if (!amHost() || !mp.setup) return;
-  const race = { id: Date.now().toString(36), seed: mp.setup.seed, kind: mp.setup.kind, collisions: !!mp.setup.collisions, go: false };
+  const race = { id: Date.now().toString(36), seed: mp.setup.seed, kind: mp.setup.kind, collisions: !!mp.setup.collisions, go: false, ...(mp.setup.code ? { code: mp.setup.code } : {}) };
   mp.goTimer = performance.now();
   net.set({ host: true, race });
 }
 // Someone's in a new race: load it and line up on the grid.
 function mpEnter(race) {
+  // A player-made stage travels as its editor code: register it here first.
+  if (race.code) { const d = parseStageCode(race.code); if (d && d.seed === race.seed) registerStage(d); }
   const order = players().filter((p) => p.st !== 'racing').map((p) => p.peer).sort();
   mp.race = race; mp.hold = !race.go;
   mp.slot = Math.max(0, order.indexOf(net.me()?.peer));
@@ -2775,6 +2849,7 @@ function renderLobby() {
     document.querySelectorAll('#mp-coll [data-coll]').forEach((b) => b.classList.toggle('on', (b.dataset.coll === '1') === !!mp.setup.collisions));
   }
   const seed = Number.isInteger(setup?.seed) ? setup.seed : null;
+  if (seed && setup.code && !CUSTOM_STAGES.has(seed)) { const d = parseStageCode(String(setup.code)); if (d && d.seed === seed) registerStage(d); }
   $('mp-setup').textContent = seed ? `${stageTitle(kindOfCode(seed) || 'random', seed)} · code ${seed} · collisions ${setup.collisions ? 'ON' : 'OFF'}${iHost ? '' : ' · waiting for the host to start'}` : 'Waiting for the host…';
 }
 $('btn-mp').addEventListener('click', async () => {
@@ -2795,10 +2870,11 @@ $('mp-stage').addEventListener('click', (e) => { const b = e.target.closest('[da
 $('mp-coll').addEventListener('click', (e) => { const b = e.target.closest('[data-coll]'); if (b) mpSetSetup({ collisions: b.dataset.coll === '1' }); });
 $('mp-seedform').addEventListener('submit', (e) => {
   e.preventDefault();
-  const n = Number(String($('mp-seed').value).replace(/\D/g, ''));
+  const txt = cleanCodeText($('mp-seed').value), def = /^SW-/.test(txt) ? parseStageCode(txt) : null;
+  const n = def ? registerStage(def) : Number(txt);
   const kind = kindOfCode(n);
   if (!kind) { toast('NOT A STAGE CODE', 1200); return; }
-  mpSetSetup({ type: 'code', seed: n, kind });
+  mpSetSetup({ type: 'code', seed: n, kind, code: def ? def.code : null });
 });
 
 // ---------- Career ----------
@@ -2913,7 +2989,7 @@ function openPage(id) {
 function hidePages() {
   clearPeek();
   if (!$('garage').hidden) markUnlocksSeen();     // NEW badges go once you've seen them
-  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career', 'mp', 'event']) $(id).hidden = true;
+  for (const id of ['garage', 'past', 'champ', 'statsview', 'classics', 'randomgen', 'welcome', 'career', 'mp', 'event', 'editor']) $(id).hidden = true;
   preview.stop();
 }
 function closePages() {

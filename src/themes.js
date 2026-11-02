@@ -111,8 +111,39 @@ export const THEMES = {
 
 const ORDER = ['forest', 'desert', 'snow', 'alpine', 'autumn'];
 
+// ---------- Player-made stages (the track editor) ----------
+// A stage code like "SW-a1b2-scLhj" holds the scenery, weather, hills and a
+// list of road pieces. Reading one registers it under a number (7000000 +
+// a hash of the code), and from then on that number plays like any other
+// stage: best times, ghosts, leaderboards, multiplayer.
+export const CUSTOM_STAGES = new Map();
+export const EDIT_THEMES = ['forest', 'desert', 'snow', 'alpine', 'autumn', 'tarmac', 'street', 'country', 'cliff', 'nightwood'];
+export const EDIT_WEATHER = ['clear', 'overcast', 'dusk', 'fog', 'rain', 'night'];
+export const EDIT_PIECES = {
+  s: 'Straight', S: 'Long straight', l: 'Sweeper left', r: 'Sweeper right', L: 'Corner left', R: 'Corner right',
+  h: 'Hairpin left', H: 'Hairpin right', c: 'Chicane (left first)', C: 'Chicane (right first)', e: 'Esses (left first)', E: 'Esses (right first)',
+  j: 'Jump', k: 'Crest',
+};
+export function encodeStage(def) {
+  return `SW-${EDIT_THEMES.indexOf(def.theme)}${EDIT_WEATHER.indexOf(def.weather)}${def.hills}-${def.pieces}`;
+}
+export function parseStageCode(text) {
+  const m = /^SW-(\d)(\d)([0-3])-([sSlrLRhHcCeEjk]{1,80})$/.exec(String(text || '').trim());
+  if (!m || !EDIT_THEMES[+m[1]] || !EDIT_WEATHER[+m[2]]) return null;
+  const def = { theme: EDIT_THEMES[+m[1]], weather: EDIT_WEATHER[+m[2]], hills: +m[3], pieces: m[4] };
+  def.code = encodeStage(def);
+  let h = 2166136261;
+  for (const ch of def.code) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  def.seed = 7e6 + ((h >>> 0) % 1e6);
+  return def;
+}
+export function registerStage(def) { CUSTOM_STAGES.set(def.seed, def); return def.seed; }
+const SPECIAL_OF_THEME = { tarmac: 'tarmac', street: 'street', country: 'country', cliff: 'cliff', nightwood: 'night' };
+
 // Special stage types by code: tarmac, night forest, river crossings.
 export function specialOf(seed) {
+  const cs = CUSTOM_STAGES.get(seed);
+  if (cs) return SPECIAL_OF_THEME[cs.theme] || null;
   if (!(seed >= 4e6 && seed < 5.8e6)) return null;
   return ['tarmac', 'night', 'river', 'street', 'country', 'cliff'][Math.floor((seed - 4e6) / 3e5)];
 }
@@ -120,6 +151,8 @@ export const SPECIAL_LABEL = { tarmac: 'Tarmac', night: 'Night forest', river: '
 
 // Theme plus a per-stage hilliness multiplier, both from the seed.
 export function pickTheme(seed) {
+  const cs = CUSTOM_STAGES.get(seed);
+  if (cs) return { theme: THEMES[cs.theme], hilliness: [0.45, 0.8, 1.15, 1.55][cs.hills] };
   const r = mulberry32(((seed * 48271) ^ 0x5bd1e995) >>> 0);
   let theme = THEMES[ORDER[Math.floor(r() * ORDER.length)]];
   const sp = specialOf(seed);

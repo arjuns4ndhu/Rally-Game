@@ -406,7 +406,7 @@ body.touch .replay-tag { left: calc(18px + var(--safe-l)); transform: none; bott
 .picks .btn:nth-child(-n+4) { min-height: 92px; display: flex; flex-direction: column; justify-content: flex-start; }
 .picks .btn:nth-child(n+5) { grid-column: span 4; }
 .title-foot { display: flex; gap: 10px; align-items: stretch; }
-.menu-row { flex: 1; display: grid; grid-template-columns: repeat(5, auto); gap: 8px; }
+.menu-row { flex: 1; display: grid; grid-template-columns: repeat(6, auto); gap: 8px; }
 .menu-row .btn { white-space: nowrap; padding-left: 8px; padding-right: 8px; }
 .code-form { display: flex; gap: 8px; margin: 0; }
 .code-form input {
@@ -650,7 +650,7 @@ button.cal-day:hover, button.cal-day:focus-visible { border-color: var(--accent)
   .picks .btn:nth-child(odd):last-child { grid-column: 1 / -1; }
   .picks .btn small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .title-foot { display: contents; }
-  .menu-row { grid-area: menu; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .menu-row { grid-area: menu; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .menu-row .btn { padding-left: 4px; padding-right: 4px; font-size: 12px; }
   .code-form { grid-area: code; }
   .code-form input { flex: 1; width: auto; min-width: 0; padding: 6px 8px; }
@@ -862,3 +862,16 @@ body.touch .hud-fps { top: auto; bottom: calc(150px + var(--safe-b, 0px)); }
 .liv-colors label { display: flex; align-items: center; gap: 6px; }
 .liv-colors input[type=color] { width: 34px; height: 26px; border: 0; padding: 0; background: none; }
 #liv-num { width: 3.2em; padding: 4px 6px; border-radius: 4px; border: 2px solid var(--line); background: rgba(0,0,0,0.3); color: var(--text); font: inherit; }
+
+/* ---------- Track editor ---------- */
+.ed-grid { display: grid; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }
+@media (max-width: 860px) { .ed-grid { grid-template-columns: 1fr; } }
+.ed-pieces { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+.ed-pieces .btn { font-size: 12px; padding: 7px 6px; text-align: center; }
+.ed-tools { display: flex; gap: 8px; margin-bottom: 8px; }
+#ed-map { width: 100%; max-width: 360px; aspect-ratio: 1; background: rgba(0,0,0,0.35); border: 1px solid var(--line); border-radius: 6px; }
+.ed-info { font-size: 13px; margin: 6px 0 0; }
+.ed-info.bad { color: #ffb3a8; }
+#ed-code { font-family: monospace; font-size: 13px; word-break: break-all; color: var(--accent); }
+#ed-load { margin: 8px 0; }
+#ed-in { flex: 1; min-width: 0; padding: 7px 10px; border-radius: 4px; border: 2px solid var(--line); background: rgba(0,0,0,0.3); color: var(--text); font: inherit; }

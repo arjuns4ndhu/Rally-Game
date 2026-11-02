@@ -459,6 +459,28 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     assert(/· (Street circuit|Mountain edge|Countryside|Tarmac|Night forest|River crossings) · code \d{7}/.test(r), 'event: ' + r);
   });
 
+  await check('track editor: build a stage, share its code, drive it', async () => {
+    if (!(await S(() => !!window.__sideways))) await ready();
+    const r = await S(() => {
+      document.getElementById('btn-editor').click();
+      document.getElementById('ed-clear').click();
+      for (const p of 'sLrSjlRksHs') document.querySelector(`[data-piece="${p}"]`).click();
+      document.querySelector('[data-edt="cliff"]').click();
+      const code = document.getElementById('ed-code').textContent, info = document.getElementById('ed-info').textContent;
+      document.getElementById('editor').hidden = true; document.getElementById('start').hidden = false;
+      // Typed into the title's code box: it builds and loads that stage.
+      document.getElementById('code-in').value = code;
+      document.getElementById('code-form').requestSubmit();
+      return { code, info, pending: !document.getElementById('garage').hidden };
+    });
+    assert(/^SW-801-sLrSjlRksHs$/.test(r.code) && r.pending, 'editor: ' + JSON.stringify(r));
+    await S(() => document.getElementById('garage-go').click());
+    await page.waitForFunction(() => { const s = window.__sideways; return s.stage.seed >= 7e6 && s.stage.seed < 8e6 && document.getElementById('loading').hidden; }, null, { timeout: 60000 });
+    const st = await S(() => { const s = window.__sideways; return { theme: s.stage.theme.id, jumps: s.road.bumps.filter((b) => b.kind === 'jump').length, crests: s.road.bumps.filter((b) => b.kind === 'crest').length, walls: s.stage.walls, label: document.getElementById('hud-stage').textContent }; });
+    assert(st.theme === 'cliff' && st.jumps === 1 && st.crests === 1 && st.walls > 0, 'custom stage: ' + JSON.stringify(st));
+    await ready();
+  });
+
   await check('phone drag steering gives analogue steer', async () => {
     const st = await S(async () => {
       const s = window.__sideways;

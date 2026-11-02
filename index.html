@@ -145,12 +145,13 @@
         <button id="btn-garage" class="btn btn-sm">Garage</button>
         <button id="btn-champ" class="btn btn-sm">Championship</button>
         <button id="btn-event" class="btn btn-sm">Weekly event</button>
+        <button id="btn-editor" class="btn btn-sm">Track editor</button>
         <button id="btn-past" class="btn btn-sm">Past stages</button>
         <button id="btn-stats" class="btn btn-sm">Stats</button>
         <button id="btn-install" class="btn btn-sm" hidden>Install</button>
       </div>
       <form id="code-form" class="code-form" autocomplete="off">
-        <input id="code-in" inputmode="numeric" placeholder="Stage code" aria-label="Stage code">
+        <input id="code-in" placeholder="Stage code" aria-label="Stage code">
         <button class="btn btn-sm" type="button" id="btn-paste" title="Paste a stage code">Paste</button>
         <button class="btn btn-sm" type="submit">Drive</button>
       </form>
@@ -232,6 +233,30 @@
   </div>
 </div>
 
+<!-- Track editor -->
+<div id="editor" class="overlay page" hidden>
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Build your own stage</div><h2 class="logo">TRACK EDITOR</h2></div><button class="btn btn-sm" data-back>Back</button></div>
+    <div class="ed-grid">
+      <div class="ed-left">
+        <div class="ed-pieces" id="ed-pieces"></div>
+        <div class="ed-tools"><button class="btn btn-sm" id="ed-undo">Undo</button><button class="btn btn-sm" id="ed-clear">Clear</button></div>
+        <div class="garage-row"><span class="lbl">Scenery</span><div class="chips" id="ed-theme"></div></div>
+        <div class="garage-row"><span class="lbl">Weather</span><div class="chips" id="ed-weather"></div></div>
+        <div class="garage-row"><span class="lbl">Hills</span><div class="chips" id="ed-hills"></div></div>
+      </div>
+      <div class="ed-right">
+        <canvas id="ed-map" width="360" height="360" aria-label="Your stage from above"></canvas>
+        <p class="ed-info" id="ed-info"></p>
+      </div>
+    </div>
+    <div class="code-line"><span class="eyebrow">Code</span> <code id="ed-code"></code> <button class="btn btn-sm" id="ed-copy">Copy</button></div>
+    <form class="mp-row" id="ed-load" autocomplete="off"><input id="ed-in" placeholder="Paste an editor code (SW-…)" aria-label="Editor code"><button class="btn btn-sm" type="submit">Load</button></form>
+    <div class="champ-foot"><span></span><button class="btn btn-primary" id="ed-go">Drive it ▶</button></div>
+    <p class="hint">Add pieces in order from the start line. Share the code: anyone who types it in (on the title screen, or in a multiplayer lobby) drives exactly your stage.</p>
+  </div>
+</div>
+
 <!-- Weekly online event -->
 <div id="event" class="overlay page" hidden>
   <div class="panel narrow">
@@ -264,7 +289,7 @@
       <table class="champ-table" id="mp-players"></table>
       <div id="mp-hostctl" class="gen-rows">
         <div class="garage-row"><span class="lbl">Stage</span><div class="chips" id="mp-stage" role="radiogroup" aria-label="Stage"></div></div>
-        <form class="garage-row" id="mp-seedform" autocomplete="off"><span class="lbl">Or a code</span><input id="mp-seed" inputmode="numeric" placeholder="Stage code" aria-label="Stage code"><button class="btn btn-sm" type="submit">Use</button></form>
+        <form class="garage-row" id="mp-seedform" autocomplete="off"><span class="lbl">Or a code</span><input id="mp-seed" placeholder="Stage code or SW- code" aria-label="Stage code"><button class="btn btn-sm" type="submit">Use</button></form>
         <div class="garage-row"><span class="lbl">Collisions</span><div class="chips" id="mp-coll" role="radiogroup" aria-label="Collisions"><button class="chip" data-coll="1">On</button><button class="chip" data-coll="0">Off (ghosts)</button></div></div>
       </div>
       <p class="mp-setup" id="mp-setup"></p>

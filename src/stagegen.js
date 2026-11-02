@@ -7,7 +7,7 @@
 // the generator backtracks. Elevation comes from a seeded terrain field that
 // the scenery also uses, smoothed along the road and grade-limited.
 import { mulberry32 } from './rng.js';
-import { pickTheme, specialOf } from './themes.js';
+import { pickTheme, specialOf, CUSTOM_STAGES } from './themes.js';
 
 const DS = 2;              // metres per sample
 const CLEAR = 34;          // min distance between non-neighbouring road parts
@@ -52,6 +52,7 @@ export function makeHillHeight(seed, amp = 1) {
 const NAME_A = ['Kar', 'Vel', 'Ost', 'Mira', 'Tal', 'Bru', 'Sen', 'Alt', 'Kor', 'Lun', 'Fen', 'Var', 'Hol', 'Rav', 'Esk', 'Dun', 'Sol', 'Mar', 'Tor', 'Ash'];
 const NAME_B = ['vik', 'berg', 'dal', 'moor', 'by', 'wald', 'stad', 'ford', 'heim', 'holt', 'mere', 'lund', 'ness', 'rock'];
 export function stageName(seed) {
+  if (CUSTOM_STAGES.has(seed)) return CUSTOM_STAGES.get(seed).name || 'Custom stage';
   const r = mulberry32((seed * 2654435761) >>> 0);
   const { theme } = pickTheme(seed);
   return `${r.pick(NAME_A)}${r.pick(NAME_B)} ${r.pick(theme.names)}`;
@@ -185,9 +186,44 @@ function tryGenerate(seed, salt) {
   return { xs, zs, segs };
 }
 
+// A player-made stage: its pieces laid end to end, with fixed sizes (no
+// randomness, so the same code is always the same road). Jumps and crests
+// sit in the middle of their own straights.
+const PIECE_KS = {
+  s: () => straight(60), S: () => straight(130),
+  l: () => arc(110, 50, 1), r: () => arc(110, 50, -1), L: () => arc(36, 80, 1), R: () => arc(36, 80, -1),
+  h: () => [...straight(40), ...arc(13, 178, 1), ...straight(20)], H: () => [...straight(40), ...arc(13, 178, -1), ...straight(20)],
+  c: () => [...arc(30, 45, 1), ...straight(8), ...arc(30, 45, -1)], C: () => [...arc(30, 45, -1), ...straight(8), ...arc(30, 45, 1)],
+  e: () => [...arc(55, 45, 1), ...arc(55, 45, -1), ...arc(55, 45, 1)], E: () => [...arc(55, 45, -1), ...arc(55, 45, 1), ...arc(55, 45, -1)],
+  j: () => straight(110), k: () => straight(80),
+};
+export function layPieces(pieces) {
+  const xs = [0], zs = [0], segs = [{ type: 'straight', start: 1 }], marks = [];
+  let h = 0;
+  const lay = (ks) => { for (const k of ks) { h += k * DS; xs.push(xs[xs.length - 1] + Math.sin(h) * DS); zs.push(zs[zs.length - 1] + Math.cos(h) * DS); } };
+  lay(straight(60));
+  for (const p of pieces) {
+    const start = xs.length, ks = (PIECE_KS[p] || PIECE_KS.s)();
+    segs.push({ type: p === 'S' || p === 's' || p === 'j' || p === 'k' ? 'straight' : 'corner', start });
+    lay(ks);
+    if (p === 'j') marks.push({ kind: 'jump', at: (start + 22) * DS });
+    if (p === 'k') marks.push({ kind: 'crest', at: (start + 20) * DS });
+  }
+  lay(straight(70));
+  return { xs, zs, segs, marks };
+}
+// Does a laid road cross or brush itself? (index pairs far apart along it)
+export function selfCrossing(xs, zs) {
+  for (let i = 0; i < xs.length; i += 3) for (let j = i + NEIGHBOUR; j < xs.length; j += 3) {
+    if (Math.hypot(xs[i] - xs[j], zs[i] - zs[j]) < 22) return true;
+  }
+  return false;
+}
+
 // Public: build a stage definition from a seed.
 export function generateStage(seed) {
-  let raw = null;
+  const custom = CUSTOM_STAGES.get(seed);
+  let raw = custom ? layPieces(custom.pieces) : null;
   for (let salt = 0; salt < 20 && !raw; salt++) raw = tryGenerate(seed, salt);
   if (!raw) throw new Error(`Stage generation failed for seed ${seed}`);
   const { xs, zs, segs } = raw;
@@ -259,6 +295,11 @@ export function generateStage(seed) {
   // Street circuits: no jumps (a car flying in a town is a bad idea) and
   // only gentle crests.
   if (special === 'street' || special === 'cliff') { for (let k = bumps.length - 1; k >= 0; k--) if (bumps[k].kind === 'jump') bumps.splice(k, 1); else bumps[k].h = Math.min(bumps[k].h, 0.8); }
+  // Player-made stages: exactly the jumps and crests the player put in.
+  if (custom) {
+    bumps.length = 0;
+    for (const m of raw.marks) bumps.push(m.kind === 'jump' ? { kind: 'jump', at: m.at, h: 1.25, up: 21, down: 9.5 } : { kind: 'crest', at: m.at, h: 1.3, len: 30 });
+  }
   // Tunnels: one long curving one on street circuits (plus a short one
   // sometimes), one through a hillside on tarmac stages. Never on a jump or
   // crest, or where a sector gantry stands.

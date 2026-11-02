@@ -77,7 +77,7 @@ export function readPlayer(p) {
 // A race setup from the host, checked.
 export function readRace(r) {
   if (!r || typeof r.id !== 'string' || !Number.isInteger(r.seed) || r.seed <= 0) return null;
-  return { id: r.id.slice(0, 24), seed: r.seed, kind: String(r.kind || 'random').slice(0, 12), collisions: !!r.collisions, go: !!r.go };
+  return { id: r.id.slice(0, 24), seed: r.seed, kind: String(r.kind || 'random').slice(0, 12), collisions: !!r.collisions, go: !!r.go, code: typeof r.code === 'string' ? r.code.slice(0, 100) : null };
 }
 
 // Other players' cars on the road: a car model each, moved smoothly between

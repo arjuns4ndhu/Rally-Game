@@ -3,6 +3,7 @@
 // fog and light, the road grip, and adds falling rain or snow.
 import * as THREE from 'three';
 import { mulberry32 } from './rng.js';
+import { CUSTOM_STAGES } from './themes.js';
 
 export const WEATHER = {
   clear: { id: 'clear', label: 'Clear', grip: 1 },
@@ -15,6 +16,11 @@ export const WEATHER = {
 };
 
 export function pickWeather(seed, theme) {
+  const cs = CUSTOM_STAGES.get(seed);
+  if (cs) {
+    const w = cs.weather === 'rain' ? (theme.id === 'snow' ? 'snowfall' : theme.id === 'desert' || theme.id === 'cliff' ? 'overcast' : 'rain') : cs.weather;
+    return WEATHER[theme.id === 'nightwood' ? 'night' : w];
+  }
   const r = mulberry32(((seed * 69069) ^ 0x2545f491) >>> 0);
   r(); r();
   const x = r();
