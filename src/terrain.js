@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { makeBaseHeight, makeHillHeight } from './stagegen.js';
 import { facet, RETRO, steady } from './retro.js';
 
+const FIELDS = ['#6c9a3e', '#7fa84a', '#5b8a36', '#b9aa5c', '#8db357', '#a59a4e'].map((c) => new THREE.Color(c));
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, baseAmp = 1, hillAmp = 1, theme = null } = {}) {
@@ -30,10 +31,11 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
     if (!rgrid.has(k)) rgrid.set(k, []);
     rgrid.get(k).push(i);
   }
+  const reach = theme?.cliff ? 4 : 2;      // cliffs look further for their road
   const nearestRoad = (x, z) => {
     const cx = Math.floor(x / RC), cz = Math.floor(z / RC);
     let best = -1, bd = Infinity;
-    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+    for (let dx = -reach; dx <= reach; dx++) for (let dz = -reach; dz <= reach; dz++) {
       const list = rgrid.get(`${cx + dx},${cz + dz}`);
       if (!list) continue;
       for (const i of list) {
@@ -49,7 +51,41 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
   // the ground breaks up into visible triangles (retro look).
   const lumpK = RETRO.on ? 1 : 0;
   const lump = (x, z) => lumpK * ((Math.abs(Math.sin(x * 0.3711 + z * 1.913) * 43758.5453) % 1) - 0.5) * 1.8;
+  // Mountain-edge stages: the whole landscape tilts towards the sea along
+  // one direction (U). Wherever the road's left points uphill, ground on
+  // the left climbs as a rock face and ground on the right drops away to
+  // the sea, and the other way round. sg[i] says which (smoothed along the
+  // road, so the sides swap gently where the road turns across the slope).
+  let cliffH = null, seaY = null, sgArr = null;
+  if (theme?.cliff) {
+    const ang = ((seed * 2654435761) >>> 0) / 4294967296 * Math.PI * 2, ux = Math.cos(ang), uz = Math.sin(ang);
+    const raw = new Float32Array(road.n), sg = new Float32Array(road.n);
+    for (let i = 0; i < road.n; i++) raw[i] = Math.max(-1, Math.min(1, (road.tz[i] * ux - road.tx[i] * uz) * 1.6));
+    for (let i = 0; i < road.n; i++) {
+      let t = 0, c = 0;
+      for (let k = -20; k <= 20; k++) { const j = i + k; if (j >= 0 && j < road.n) { t += raw[j]; c++; } }
+      sg[i] = t / c;
+    }
+    sgArr = sg;
+    let rmin = Infinity, rsum = 0, cxm = 0, czm = 0;
+    for (let i = 0; i < road.n; i++) { rmin = Math.min(rmin, road.py[i]); rsum += road.py[i]; cxm += road.px[i]; czm += road.pz[i]; }
+    seaY = rmin - 45;
+    const rmean = rsum / road.n; cxm /= road.n; czm /= road.n;
+    // Far away: one big slope down to the sea.
+    const plane = (x, z) => Math.max(seaY - 8, Math.min(rmean + 140, rmean + ((x - cxm) * ux + (z - czm) * uz) * 0.55));
+    cliffH = (x, z) => {
+      const nr = nearestRoad(x, z);
+      if (!nr) return plane(x, z);
+      const i = nr.i, lat = (x - road.px[i]) * road.tz[i] - (z - road.pz[i]) * road.tx[i];
+      const ry = road.py[i] - 0.6, edge = road.width / 2 + 1.8, k = Math.abs(sg[i]);
+      if (Math.abs(lat) < edge) return ry;
+      const d = Math.abs(lat) - edge, up = lat * sg[i] > 0;
+      const near = up ? Math.min(ry + 120, ry + d * (0.3 + 1.25 * k) + lump(x, z) * 2) : Math.max(seaY - 8, ry - d * (0.3 + 1.6 * k));
+      return near + (plane(x, z) - near) * smooth(90, 125, nr.d);
+    };
+  }
   const heightRaw = (x, z) => {
+    if (cliffH) return cliffH(x, z);
     const nr = nearestRoad(x, z);
     const far = base(x, z) + hills(x, z) * smooth(25, 200, nr ? nr.d : 999) + lump(x, z) * smooth(flatZone + 8, flatZone + 40, nr ? nr.d : 999);
     if (!nr) return far;
@@ -101,6 +137,13 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
     c.r *= g.tintLow[0] + (g.tintHigh[0] - g.tintLow[0]) * t + n * 0.04;
     c.g *= g.tintLow[1] + (g.tintHigh[1] - g.tintLow[1]) * t + n * 0.04;
     c.b *= g.tintLow[2] + (g.tintHigh[2] - g.tintLow[2]) * t + n * 0.04;
+    // Country: a patchwork of fields, each its own green (or a wheat field).
+    if (theme?.patchwork) {
+      const px = minX + i * cell, pz = minZ + j * cell, ca = 0.94, sa = 0.34;
+      const fx = Math.floor((px * ca - pz * sa) / 64), fz = Math.floor((px * sa + pz * ca) / 48);
+      const hsh = Math.abs(Math.sin(fx * 127.1 + fz * 311.7) * 43758.5453) % 1;
+      c.lerp(FIELDS[Math.floor(hsh * FIELDS.length)], 0.6);
+    }
     // Steep slopes show bare rock.
     const hx = H[j * nx + Math.min(nx - 1, i + 1)] - H[j * nx + Math.max(0, i - 1)];
     const hz = H[Math.min(nz - 1, j + 1) * nx + i] - H[Math.max(0, j - 1) * nx + i];
@@ -120,7 +163,8 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
   mesh.receiveShadow = true;
 
   return {
-    mesh, heightAt, nearestRoad,
+    mesh, heightAt, nearestRoad, seaY,
+    cliffSide: (i) => (sgArr ? sgArr[i] : 0),      // + : ground rises on the road's left
     bounds: { minX, maxX, minZ, maxZ },
     minH, maxH, meanH: sumH / pos.count,
   };

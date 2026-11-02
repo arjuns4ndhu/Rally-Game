@@ -2,7 +2,7 @@
 // is installed, and served from the cache (then refreshed in the background)
 // so it starts with no connection. Music is cached the first time each
 // track plays. Bump VERSION when the file list changes.
-const VERSION = 'sideways-v2';
+const VERSION = 'sideways-v3';
 const SHELL = [
   './',
   './index.html',
@@ -14,6 +14,7 @@ const SHELL = [
   './src/camera.js',
   './src/car.js',
   './src/carModel.js',
+  './src/country.js',
   './src/career.js',
   './src/drone.js',
   './src/gates.js',

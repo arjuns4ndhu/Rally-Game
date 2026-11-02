@@ -19,7 +19,7 @@ function lateralPoint(road, along, lat) {
   return { x: road.px[i] + road.tz[i] * lat, z: road.pz[i] - road.tx[i] * lat, i };
 }
 
-export function buildTrackside(road, { seed, corners, start, finish, cps = [], groundY, detail = 1 }) {
+export function buildTrackside(road, { seed, corners, start, finish, cps = [], groundY, detail = 1, level = false }) {
   const rnd = mulberry32(((seed * 2246822519) ^ 0x68e31da4) >>> 0);
   const group = new THREE.Group();
   const people = [];           // { x, z, y, nx, nz, phase, h }
@@ -56,7 +56,9 @@ export function buildTrackside(road, { seed, corners, start, finish, cps = [], g
   const w = road.width / 2;
   // Never put anyone near any part of the road (hairpins fold the road back
   // on itself, so the nearest bit may not be the one we measured from).
-  const safe = (x, z) => road.nearest(x, z).dist > w + 5.5;
+  // On a mountain ledge, only where the ground is about level with the road
+  // (not halfway down the cliff).
+  const safe = (x, z) => { const n = road.nearest(x, z); return n.dist > w + 5.5 && (!level || Math.abs(groundY(x, z) - road.py[n.i]) < 2.5); };
   const addPerson = (p, side, extra = {}) => {
     if (!safe(p.x, p.z)) return;
     people.push({

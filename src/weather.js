@@ -22,6 +22,9 @@ export function pickWeather(seed, theme) {
   if (id === 'rain' && theme.id === 'desert') id = 'clear';
   if (id === 'rain' && theme.id === 'snow') id = 'snowfall';
   if (theme.id === 'nightwood') id = 'night';
+  // The countryside: grey skies and drizzle as often as not.
+  if (theme.id === 'country') id = ['clear', 'overcast', 'overcast', 'rain', 'fog', 'dusk'][Math.floor(x * 6)];
+  if (theme.id === 'cliff' && id === 'rain') id = 'clear';
   // Street circuits look best under lights: dusk or night half the time.
   if (theme.id === 'street') id = ['clear', 'clear', 'dusk', 'night', 'night', 'overcast'][Math.floor(x * 6)];
   return WEATHER[id];

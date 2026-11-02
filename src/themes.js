@@ -75,6 +75,28 @@ export const THEMES = {
     hills: 0x8d8678, heightAmp: 0.9, hillAmp: 1.2, maxGrade: 0.11, street: true,
     names: ['Harbour', 'Casino Hill', 'Promenade', 'Old Town', 'Marina'],
   },
+  // Country lanes: narrow, walled and hedged, through green patchwork fields.
+  country: {
+    id: 'country', label: 'Countryside',
+    sky: { top: '#5f7898', horizon: '#d6dbd8', fog: '#c3cbc6', fogDensity: 0.0058, sunGlow: [0.9, 0.88, 0.8] },
+    light: { hemiSky: '#eef0ea', hemiGround: '#4f5a36', hemi: 1.7, sun: '#fff4e0', sunI: 1.7, sunDir: [-0.5, 0.6, -0.6] },
+    ground: { base: '#5f8a3a', dark: [60, 90, 40], light: [150, 180, 90], tintLow: [0.95, 1.0, 0.9], tintHigh: [1.05, 1.05, 0.85], rock: [0.55, 0.52, 0.46] },
+    road: { base: '#5d5c58', rut: [40, 40, 38], edge: [70, 90, 50], stone: [-20, -18, -22], verge: 0x5d7f3a, grip: 1.06, dust: [0.5, 0.5, 0.48], sealed: true },
+    trees: [['oak', 0.85], ['birch', 0.15]], treeDensity: 0.45, rockDensity: 0.1, rockColor: [0.1, 0.05, 0.5],
+    hills: 0x6b8c45, heightAmp: 0.8, hillAmp: 0.9, maxGrade: 0.1, patchwork: true, lanes: true,
+    names: ['Lane', 'Green', 'Bottom', 'Combe', 'Wold'],
+  },
+  // Mountain road on a ledge: rock face on one side, a drop to the sea on the other.
+  cliff: {
+    id: 'cliff', label: 'Mountain edge',
+    sky: { top: '#2565c4', horizon: '#cfe2ee', fog: '#bcd3e0', fogDensity: 0.0032, sunGlow: [1.0, 0.9, 0.7] },
+    light: { hemiSky: '#f4f7ff', hemiGround: '#6b6252', hemi: 1.5, sun: '#fff1dc', sunI: 2.5, sunDir: [-0.45, 0.65, -0.55] },
+    ground: { base: '#7b7a5a', dark: [90, 85, 60], light: [170, 160, 120], tintLow: [1.0, 0.98, 0.9], tintHigh: [1.05, 1.0, 0.95], rock: [0.6, 0.56, 0.5] },
+    road: { base: '#55575c', rut: [30, 30, 32], edge: [235, 235, 228], stone: [-30, -30, -28], verge: 0x8a8470, grip: 1.1, dust: [0.55, 0.55, 0.52], lines: true, sealed: true },
+    trees: [['pine', 0.6], ['shrub', 0.4]], treeDensity: 0.3, rockDensity: 0.6, rockColor: [0.08, 0.08, 0.55],
+    hills: 0x7c7560, heightAmp: 1.6, hillAmp: 1.0, maxGrade: 0.12, cliff: true,
+    names: ['Corniche', 'Ledge', 'Col', 'Balcony Road', 'Heights'],
+  },
   nightwood: {
     id: 'nightwood', label: 'Night forest',
     sky: { top: '#2a3a5c', horizon: '#d9a877', fog: '#c79a72', fogDensity: 0.0095, sunGlow: [1.0, 0.75, 0.45] },
@@ -91,10 +113,10 @@ const ORDER = ['forest', 'desert', 'snow', 'alpine', 'autumn'];
 
 // Special stage types by code: tarmac, night forest, river crossings.
 export function specialOf(seed) {
-  if (!(seed >= 4e6 && seed < 5.2e6)) return null;
-  return ['tarmac', 'night', 'river', 'street'][Math.floor((seed - 4e6) / 3e5)];
+  if (!(seed >= 4e6 && seed < 5.8e6)) return null;
+  return ['tarmac', 'night', 'river', 'street', 'country', 'cliff'][Math.floor((seed - 4e6) / 3e5)];
 }
-export const SPECIAL_LABEL = { tarmac: 'Tarmac', night: 'Night forest', river: 'River crossings', street: 'Street circuit' };
+export const SPECIAL_LABEL = { tarmac: 'Tarmac', night: 'Night forest', river: 'River crossings', street: 'Street circuit', country: 'Countryside', cliff: 'Mountain edge' };
 
 // Theme plus a per-stage hilliness multiplier, both from the seed.
 export function pickTheme(seed) {
@@ -104,6 +126,8 @@ export function pickTheme(seed) {
   if (sp === 'tarmac') theme = THEMES.tarmac;
   else if (sp === 'night') theme = THEMES.nightwood;
   else if (sp === 'street') theme = THEMES.street;
+  else if (sp === 'country') theme = THEMES.country;
+  else if (sp === 'cliff') theme = THEMES.cliff;
   else if (sp === 'river') theme = THEMES[['forest', 'autumn', 'alpine'][Math.floor(r() * 3)]];
   const hilliness = 0.6 + r() * 1.0;        // 0.6 (flat and fast) .. 1.6 (big hills)
   return { theme, hilliness };

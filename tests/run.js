@@ -100,7 +100,7 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
   await check('no rock, tree or prop reaches into the road (Classics + random)', async () => {
     const bad = await S(() => {
       const s = window.__sideways, out = [];
-      for (const [kind, seed] of [['classic', 900031], ['classic', 900122], ['classic', 900228], ['classic', 900016], ['classic', 900151], ['random', 274801], ['random', 512345], ['random', 4000123], ['random', 4300123], ['random', 4600123], ['random', 4900123]]) {
+      for (const [kind, seed] of [['classic', 900031], ['classic', 900122], ['classic', 900228], ['classic', 900016], ['classic', 900151], ['random', 274801], ['random', 512345], ['random', 4000123], ['random', 4300123], ['random', 4600123], ['random', 4900123], ['random', 5200123], ['random', 5500123]]) {
         s.loadStage(kind, seed);
         const road = s.road;
         s.obGrid.forEach((list) => { for (const o of list) {
@@ -408,7 +408,7 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     assert(next.season === 2 && next.tier === 1 && next.rally === 0 && next.page, 'next season: ' + JSON.stringify(next));
   });
 
-  await check('street circuit: barriers keep the car on the road, tunnels light up', async () => {
+  await check('street circuit, countryside and mountain edge: barriers hold, tunnels light up, all drivable', async () => {
     if (!(await S(() => !!window.__sideways))) await ready();
     const r = await S(() => {
       const s = window.__sideways;
@@ -428,6 +428,17 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     if (!(await S(() => !!window.__bot))) await page.addScriptTag({ path: path.join(__dirname, 'bot.js') });
     const b = await S(() => { let x = window.__bot('vector', 'random', 4900123, { sign: -1, maxT: 260, gripK: 0.62 }); if (!x.done) x = window.__bot('vector', 'random', 4900123, { sign: -1, maxT: 260, gripK: 0.55 }); delete x.trace; return x; });
     assert(b.done, 'test driver did not finish the street stage: ' + JSON.stringify(b));
+    // Country lanes and the mountain ledge are walled in too, and drivable.
+    const more = await S(() => [5200123, 5500123].map((sd) => {
+      const s = window.__sideways;
+      s.loadStage('random', sd);
+      const out = { sd, theme: s.stage.theme.id, walls: s.stage.walls };
+      let x = window.__bot('vector', 'random', sd, { sign: -1, maxT: 280, gripK: 0.62 });
+      if (!x.done) x = window.__bot('vector', 'random', sd, { sign: -1, maxT: 280, gripK: 0.55 });
+      out.done = x.done; out.t = x.t;
+      return out;
+    }));
+    assert(more[0].theme === 'country' && more[1].theme === 'cliff' && more.every((m) => m.walls > 0 && m.done), 'country / cliff: ' + JSON.stringify(more));
   });
 
   await check('phone drag steering gives analogue steer', async () => {
@@ -558,7 +569,7 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await p3.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await p3.waitForFunction(() => navigator.serviceWorker?.controller || navigator.serviceWorker?.ready.then(() => true), null, { timeout: 60000 });
     await p3.evaluate(() => navigator.serviceWorker.ready);
-    await p3.waitForFunction(async () => (await (await caches.open('sideways-v2')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
+    await p3.waitForFunction(async () => (await (await caches.open('sideways-v3')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
     await c3.setOffline(true);
     await p3.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
     const ok = await p3.waitForFunction(() => !!window.__sideways, null, { timeout: 60000 }).then(() => true).catch(() => false);

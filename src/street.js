@@ -10,7 +10,7 @@ import { facet } from './retro.js';
 export const BARRIER_GAP = 0.55;          // barrier face, metres beyond the road edge
 
 // Merge plain geometries (positions, normals, uvs, optional colours) into one.
-function merge(geos) {
+export function merge(geos) {
   const parts = geos.map((g) => (g.index ? g.toNonIndexed() : g));
   const n = parts.reduce((s, g) => s + g.attributes.position.count, 0);
   const out = new THREE.BufferGeometry();
@@ -25,14 +25,14 @@ function merge(geos) {
 }
 
 // Point at distance `along` and lateral offset `lat` (left +).
-function at(road, along, lat) {
+export function at(road, along, lat) {
   const i = road.indexAt(Math.max(0, Math.min(road.length - 0.01, along)));
   return { x: road.px[i] + road.tz[i] * lat, y: road.py[i], z: road.pz[i] - road.tx[i] * lat, i };
 }
 const inTunnel = (tunnels, a, pad = 0) => tunnels.some((t) => a > t.from - pad && a < t.to + pad);
 
 // A strip following the road at lateral `lat`, from height y0 to y1.
-function wallStrip(road, from, to, lat, y0, y1, step = 2) {
+export function wallStrip(road, from, to, lat, y0, y1, step = 2) {
   const pos = [], uv = [];
   let prev = null;
   for (let a = from; a <= to + 0.01; a += step) {
@@ -52,7 +52,7 @@ function wallStrip(road, from, to, lat, y0, y1, step = 2) {
   return g;
 }
 
-function canvasTex(w, h, draw) {
+export function canvasTex(w, h, draw) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   draw(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c);

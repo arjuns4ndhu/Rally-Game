@@ -143,6 +143,7 @@ function buildTreeKits() {
     pine: { parts: [[trunk, trunkMat, false], [pine, leafMat, true]], color: H([0.24, 0.08], [0.35, 0.2], [0.18, 0.1]), r: 0.42 },
     snowpine: { parts: [[trunk, trunkMat, false], [pine, leafMat, true], [snowCaps, snowMat, false]], color: H([0.36, 0.06], [0.25, 0.15], [0.14, 0.08]), r: 0.42 },
     broadleaf: { parts: [[broadTrunk, trunkMat, false], [canopy, leafMat, true]], color: H([0.02, 0.11], [0.6, 0.25], [0.35, 0.15]), r: 0.42 },
+    oak: { parts: [[broadTrunk, trunkMat, false], [canopy, leafMat, true]], color: H([0.2, 0.08], [0.4, 0.2], [0.2, 0.1]), r: 0.42 },
     birch: { parts: [[birchTrunk, birchMat, false], [birchTop, leafMat, true]], color: H([0.12, 0.05], [0.6, 0.2], [0.45, 0.12]), r: 0.25 },
     cactus: { parts: [[cactus, leafMat, true]], color: H([0.26, 0.06], [0.35, 0.15], [0.28, 0.08]), r: 0.35 },
     shrub: { parts: [[shrub, leafMat, true]], color: H([0.12, 0.1], [0.3, 0.2], [0.25, 0.1]), r: 0 },
@@ -175,6 +176,11 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial({ map: apronTex, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(cx, terrain.minH - 3, cz);
+  // Mountain-edge stages: the apron is the sea, far below.
+  if (terrain.seaY != null) {
+    ground.material = new THREE.MeshStandardMaterial({ color: 0x2c6e9a, roughness: 0.25, metalness: 0.2 });
+    ground.position.y = terrain.seaY;
+  }
   group.add(ground);
   const groundY = terrain.heightAt;
   // Lowest ground under a footprint, so nothing hangs off a slope.
@@ -182,6 +188,7 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
 
   // Keep things off the road, and off any shortcut tracks.
   const clear = (x, z, r) => {
+    if (terrain.seaY != null && groundY(x, z) < terrain.seaY + 1.5) return false;   // not in the sea
     const n = terrain.nearestRoad(x, z);
     if (n && n.d <= r) return false;
     return avoid.every((pts) => distToPolyline(pts, x, z) > 5.5);

@@ -56,7 +56,7 @@ Driving: tap the brake while turning to kick the rear out. Hold the throttle to 
 ## Features
 
 - **Career**: seasons of four rallies, three stages each, against seven rival drivers. Your rally time is your three stage times added up; points for the rally result (25, 18, 15 …); no free retries (restarting a stage costs 10 s). Win the title to move up from Rookie to Pro to Legend class, where the rivals are quicker. Each season ends on a **podium** with the top three cars and confetti.
-- **Stage types** (Random stage → Stage type): gravel, **tarmac** (sealed roads with painted lines, grippy, one jump at most), **night forest** (dense woods, always at night, dust drifting in the headlight beams) and **river crossings** (two to four fords: the road dips into a shallow river that slows you and throws up spray; pace notes call "water splash"). Their codes are 4000000–4899999.
+- **Stage types** (Random stage → Stage type): gravel, **tarmac** (sealed roads with painted lines, grippy, one jump at most, a tunnel through a rocky hill), **street circuit** (a harbour town: steel barriers both sides, palms, lamp posts, apartment blocks with lit windows after dark, banners over the road and a long curving tunnel), **mountain edge** (a road on a ledge: rock face one side, a stone parapet and red-and-white rail over a drop to the sea on the other, rock tunnels), **countryside** (narrow lanes between dry-stone walls and hedgerows, patchwork fields, sheep, cottages and a church spire), **night forest** (dense woods, always at night, dust drifting in the headlight beams) and **river crossings** (two to four fords that slow you and throw up spray). In tunnels the headlights come on, the rain stops and the engine echoes; the co-driver calls "into tunnel". Barriers and walls keep you on the road: hit them hard and you'll know. Codes 4000000–5799999 (300000 per type).
 - **Stages**: a seeded 2–3 km point-to-point gravel stage every day, plus random stages, 5–8 km **endurance** stages (the light and weather change as you go: the sun sets, rain or fog rolls in, and the co-driver warns you) and a practice loop. Every stage has a **stage code** (shown in the pause menu); type one on the title screen to drive that exact road. Five scenery themes (forest, canyon, snow, alpine, autumn), each stage with its own hills, jumps, crests and five timed sectors. Some stages hide a **shortcut**: a rough track across where the road doubles back.
 - **Weather and time of day** from the seed: clear, overcast, dusk, fog, rain (snowfall on snow stages) and night with working headlights. Rain cuts grip and darkens the gravel, with streaks and splashes drawn on the GPU.
 - **Surfaces**: sealed tarmac sections, mud, puddles that splash, ice on snow stages and soft sand in the canyon.
@@ -124,6 +124,8 @@ src/minimap.js    HUD mini map
 src/menus.js      garage, calendar, championship, stats pages
 src/career.js     career seasons: calendar, rival times, points, promotion
 src/podium.js     end-of-season podium scene
+src/street.js     street circuits (barriers, buildings, banners) and tunnels
+src/country.js    country lanes (walls, hedges, villages, sheep) and mountain ledges
 src/stats.js      lifetime stats
 src/themes.js     stage themes (sky, light, ground, road, trees, hills)
 sw.js             service worker: offline cache

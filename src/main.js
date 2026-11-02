@@ -13,6 +13,7 @@ import { Dust, BeamDust } from './particles.js';
 import { TIERS, RESTART_PENALTY, newCareer, loadCareer, saveCareer, resetCareer, seasonPlan, recordStage, standings, finishSeason, ordinal, RIVALS } from './career.js';
 import { Podium } from './podium.js';
 import { buildStreet, buildTunnels } from './street.js';
+import { buildCountry, buildLedge } from './country.js';
 import { AudioEngine } from './audio.js';
 import { DrivingSchool } from './school.js';
 import { Input, ACTIONS, BINDS, bindKey, resetKeys, isDriveKey, keyLabel, FEEL, saveFeel } from './input.js';
@@ -252,7 +253,7 @@ function loadStage(kind, seed = 0) {
   };
   // Shortcuts (stages only): rough tracks across where the road doubles back.
   let cuts = [];
-  if (kind !== 'practice' && !theme.street) {        // barriers on street circuits: no way across
+  if (kind !== 'practice' && !theme.street && !theme.lanes && !theme.cliff) {   // walled-in roads: no way across
     const st = 24, fin = road.length - runout;
     const cps = [1, 2, 3, 4].map((k) => st + (fin - st) * k / SECTORS);
     cuts = findShortcuts(road, { checkpoints: cps, start: st, finish: fin });
@@ -328,7 +329,7 @@ function loadStage(kind, seed = 0) {
   // Crowds and hay bales (timed stages only).
   trackside = null;
   if (kind !== 'practice') {
-    trackside = buildTrackside(road, { seed, corners: road.findSharpCorners(), start: stage.start, finish: stage.finish, cps: stage.cps, groundY: worldGround, detail: QUALITY[qualityLevel()].detail });
+    trackside = buildTrackside(road, { seed, corners: road.findSharpCorners(), start: stage.start, finish: stage.finish, cps: stage.cps, groundY: worldGround, detail: QUALITY[qualityLevel()].detail, level: !!theme.cliff });
     stageGroup.add(trackside.group);
     buildObstacleGrid([...builtObstacles, ...trackside.obstacles]);
   }
@@ -339,6 +340,16 @@ function loadStage(kind, seed = 0) {
     const street = buildStreet(road, { seed, tunnels: road.tunnels, start: stage.start, finish: stage.finish, groundY: worldGround, night: weather.dark ? 1 : weather.id === 'dusk' ? 0.55 : 0 });
     stageGroup.add(street.group);
     stage.walls = street.barrier;
+  }
+  if (theme.lanes) {
+    const lanes = buildCountry(road, { seed, start: stage.start, finish: stage.finish, groundY: worldGround });
+    stageGroup.add(lanes.group);
+    stage.walls = lanes.barrier;
+  }
+  if (theme.cliff) {
+    const ledge = buildLedge(road, { side: terrain.cliffSide, tunnels: road.tunnels });
+    stageGroup.add(ledge.group);
+    stage.walls = ledge.barrier;
   }
   if (road.tunnels?.length) {
     stageGroup.add(buildTunnels(road, road.tunnels, { rock: !theme.street, seed }));
@@ -1102,7 +1113,7 @@ $('btn-daily').addEventListener('click', () => pickThenStart('daily'));
 // code that gives them (the code alone still decides everything, so it can
 // be shared like any other).
 const GEN = {
-  type: [['gravel', 'Gravel'], ['tarmac', 'Tarmac'], ['street', 'Street circuit'], ['night', 'Night forest'], ['river', 'River crossings']],
+  type: [['gravel', 'Gravel'], ['tarmac', 'Tarmac'], ['street', 'Street circuit'], ['cliff', 'Mountain edge'], ['country', 'Countryside'], ['night', 'Night forest'], ['river', 'River crossings']],
   theme: [['any', 'Any'], ['forest', 'Forest'], ['desert', 'Canyon'], ['snow', 'Snow'], ['alpine', 'Alpine'], ['autumn', 'Autumn']],
   weather: [['any', 'Any'], ['clear', 'Clear'], ['overcast', 'Overcast'], ['dusk', 'Dusk'], ['fog', 'Fog'], ['rain', 'Rain / snowfall'], ['night', 'Night']],
   hills: [['any', 'Any'], ['flat', 'Flat'], ['rolling', 'Rolling'], ['big', 'Big hills']],
@@ -1114,7 +1125,7 @@ try { Object.assign(gen, JSON.parse(localStorage.getItem('sideways.gen') || '{}'
 // Tarmac and night forest have their own scenery; night forest is always
 // at night; river stages run through forest, autumn or alpine country.
 const genBlocked = (k, v) => (k === 'weather' && v === 'rain' && gen.theme === 'desert') || (k === 'theme' && v === 'desert' && gen.weather === 'rain')
-  || (k === 'theme' && v !== 'any' && (gen.type === 'tarmac' || gen.type === 'night' || gen.type === 'street'))
+  || (k === 'theme' && v !== 'any' && ['tarmac', 'night', 'street', 'country', 'cliff'].includes(gen.type))
   || (k === 'theme' && gen.type === 'river' && ['desert', 'snow'].includes(v))
   || (k === 'weather' && gen.type === 'night' && !['any', 'night'].includes(v));
 function renderGen() {
@@ -1126,7 +1137,7 @@ function renderGen() {
   }
 }
 // Codes: 100000-999999 gravel; 4000000+ the special types, 300000 each.
-const TYPE_BASE = { tarmac: 4e6, night: 4.3e6, river: 4.6e6, street: 4.9e6 };
+const TYPE_BASE = { tarmac: 4e6, night: 4.3e6, river: 4.6e6, street: 4.9e6, country: 5.2e6, cliff: 5.5e6 };
 function genSeed() {
   for (let n = 0; n < 20000; n++) {
     const seed = gen.type in TYPE_BASE ? TYPE_BASE[gen.type] + Math.floor(Math.random() * 3e5) : 100000 + Math.floor(Math.random() * 900000);
