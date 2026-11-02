@@ -56,7 +56,13 @@ Driving: tap the brake while turning to kick the rear out. Hold the throttle to 
 ## Features
 
 - **Multiplayer** (title screen → Multiplayer, on the shared claude.ai page): create a **private lobby** and send friends its code. The host picks the stage (today's, any stage type, a Classic, or any stage code) and turns **collisions on or off** (off = everyone drives through each other as ghosts). Cars line up two abreast on a grid behind the line, the countdown starts once everyone has loaded, and the HUD shows your position and the gap to the car ahead. Name tags float over every car; results fill in live as people finish. No restarts mid-race (T still takes you back to a checkpoint). Stages are exactly the same as in single player.
-- **Career**: seasons of four rallies, three stages each, against seven rival drivers. Your rally time is your three stage times added up; points for the rally result (25, 18, 15 …); no free retries (restarting a stage costs 10 s). Win the title to move up from Rookie to Pro to Legend class, where the rivals are quicker. Each season ends on a **podium** with the top three cars and confetti.
+- **Track editor** (title screen → Track editor): lay a stage piece by piece (straights, sweepers, corners, hairpins, chicanes, esses, jumps, crests), pick the scenery, weather and hills, and watch it draw from above. It gives you a code like `SW-801-sLrSjlRksHs`: type it on the title screen (or in a multiplayer lobby) to drive it; anyone with the code gets exactly the same stage, with best times, ghosts and leaderboard.
+- **Weekly event** (title screen → Weekly event): one special stage for everyone each week, with its own leaderboard.
+- **Livery editor** (Garage → Style → Custom): ten patterns (stripes, side stripe, two-tone, hoops, checks, arrows…), two colours and your own door number, on any car.
+- **Medal targets on every stage**: bronze, silver and gold from the stage's length, scenery and weather; gold pace shows at the top, and on a first run the sector splits compare you to it.
+- **Spoken co-driver** (Pause → Driving → Co-driver → Signs + spoken calls): pace notes read out loud. A recorded voice can be dropped in (see `.claude/skills/codriver-voice`).
+- **Stage fly-over** before the countdown on a new stage (any key skips; switch off under Display), and racing tips while a stage loads.
+- **Career**: seasons of four rallies, three stages each, against seven rival drivers. Your rally time is your three stage times added up; points for the rally result (25, 18, 15 …); no free retries (restarting a stage costs 10 s). Prize money from every rally buys engine, tyre, suspension and gearbox upgrades in the service park (career stages only). Win the title to move up from Rookie to Pro to Legend class, where the rivals are quicker. Each season ends on a **podium** with the top three cars and confetti.
 - **Stage types** (Random stage → Stage type): gravel, **tarmac** (sealed roads with painted lines, grippy, one jump at most, a tunnel through a rocky hill), **street circuit** (a harbour town: steel barriers both sides, palms, lamp posts, apartment blocks with lit windows after dark, banners over the road and a long curving tunnel), **mountain edge** (a road on a ledge: rock face one side, a stone parapet and red-and-white rail over a drop to the sea on the other, rock tunnels), **countryside** (narrow lanes between dry-stone walls and hedgerows, patchwork fields, sheep, cottages and a church spire), **night forest** (dense woods, always at night, dust drifting in the headlight beams) and **river crossings** (two to four fords that slow you and throw up spray). In tunnels the headlights come on, the rain stops and the engine echoes; the co-driver calls "into tunnel". Barriers and walls keep you on the road: hit them hard and you'll know. Codes 4000000–5799999 (300000 per type).
 - **Stages**: a seeded 2–3 km point-to-point gravel stage every day, plus random stages, 5–8 km **endurance** stages (the light and weather change as you go: the sun sets, rain or fog rolls in, and the co-driver warns you) and a practice loop. Every stage has a **stage code** (shown in the pause menu); type one on the title screen to drive that exact road. Five scenery themes (forest, canyon, snow, alpine, autumn), each stage with its own hills, jumps, crests and five timed sectors. Some stages hide a **shortcut**: a rough track across where the road doubles back.
 - **Weather and time of day** from the seed: clear, overcast, dusk, fog, rain (snowfall on snow stages) and night with working headlights. Rain cuts grip and darkens the gravel, with streaks and splashes drawn on the GPU.
@@ -123,6 +129,7 @@ src/hazards.js    fallen trees and landslides
 src/drone.js      chase drone
 src/minimap.js    HUD mini map
 src/menus.js      garage, calendar, championship, stats pages
+src/voice.js      the co-driver's voice (recorded clips or speech synthesis)
 src/multiplayer.js live lobbies (claude.ai rooms), other players' cars
 src/career.js     career seasons: calendar, rival times, points, promotion
 src/podium.js     end-of-season podium scene
@@ -135,3 +142,5 @@ manifest.webmanifest, icons/  installable app
 tools/make-artifact.py  writes a copy for hosting as a claude.ai artifact
 tools/make-single.sh    builds one self-contained HTML file in dist/
 ```
+
+Ideas saved for later are in `BACKLOG.md`.
