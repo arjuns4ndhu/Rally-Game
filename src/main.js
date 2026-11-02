@@ -12,7 +12,7 @@ import { CameraRig, TVCamera } from './camera.js';
 import { Dust, BeamDust } from './particles.js';
 import { stageK, TIERS, RESTART_PENALTY, newCareer, loadCareer, saveCareer, resetCareer, seasonPlan, recordStage, standings, finishSeason, ordinal, RIVALS } from './career.js';
 import { Podium } from './podium.js';
-import { buildStreet, buildTunnels } from './street.js';
+import { buildStreet, buildTunnels, planHarbour, harbourCarve, inHarbour, buildHarbour, Fireworks } from './street.js';
 import { buildCountry, buildLedge } from './country.js';
 import { Net, RemoteCars, newCode, cleanCode, cleanNick, readPlayer, readRace } from './multiplayer.js';
 import { AudioEngine } from './audio.js';
@@ -81,6 +81,7 @@ const rig = new CameraRig(camera);
 const drone = new Drone(scene);
 const tv = new TVCamera(camera);
 const beamDust = new BeamDust(scene);
+const fireworks = new Fireworks(scene);
 const minimap = new MiniMap($('minimap'));
 const stats = new Stats();
 const board = new Leaderboard();
@@ -95,6 +96,7 @@ const headlights = [-1, 1].map(() => {
 });
 let weather = WEATHER.clear, surfPlan = null;
 let career = loadCareer(), careerRun = null;     // career progress, and the career stage being driven
+let harbour = null, marina = null;               // street circuits: the marina, and its yachts
 // Multiplayer: the race this page is in (host's setup), held on the grid
 // until everyone has loaded, grid slot, other cars' poses for collisions.
 const mp = { race: null, hold: false, slot: 0, sendT: 0, posT: 0, poses: [], seen: '', goTimer: 0, setup: null };
@@ -202,6 +204,7 @@ function disposeGroup(g) {
 let lampGlow = 0;
 function loadStage(kind, seed = 0) {
   if (stageGroup) { scene.remove(stageGroup); disposeGroup(stageGroup); }
+  marina = null;
   stageGroup = new THREE.Group();
   stage.kind = kind; stage.seed = seed;
   let flat = false, runout = 0;
@@ -265,7 +268,10 @@ function loadStage(kind, seed = 0) {
     cuts = findShortcuts(road, { checkpoints: cps, start: st, finish: fin });
   }
   const rivers = (road.fords || []).map((f) => riverLine(road, f));
-  const built = buildScenery(road, kind === 'practice' ? 1 : seed, { flat, theme, hilliness, avoid: [...cuts.map((c) => c.pts), ...rivers], detail: QUALITY[qualityLevel()].detail });
+  // Street circuits: a marina beside a straight bit, carved into the ground.
+  harbour = theme.street ? planHarbour(road, { seed, start: 24, finish: road.length - runout, tunnels: road.tunnels || [] }) : null;
+  const built = buildScenery(road, kind === 'practice' ? 1 : seed, { flat, theme, hilliness, avoid: [...cuts.map((c) => c.pts), ...rivers], detail: QUALITY[qualityLevel()].detail,
+    carve: harbour ? harbourCarve(harbour) : null, keepOut: harbour ? (x, z) => inHarbour(harbour, x, z, 4) : null });
   stage.detail = qualityLevel();
   terrain = built.terrain;
   builtObstacles = built.obstacles;
@@ -343,8 +349,9 @@ function loadStage(kind, seed = 0) {
   // street and tarmac stages.
   stage.walls = 0;
   if (theme.street) {
-    const street = buildStreet(road, { seed, tunnels: road.tunnels, start: stage.start, finish: stage.finish, groundY: worldGround, night: weather.dark ? 1 : weather.id === 'dusk' ? 0.55 : 0 });
+    const street = buildStreet(road, { seed, tunnels: road.tunnels, start: stage.start, finish: stage.finish, groundY: worldGround, night: weather.dark ? 1 : weather.id === 'dusk' ? 0.55 : 0, harbour });
     stageGroup.add(street.group);
+    if (harbour) { marina = buildHarbour(harbour, { seed }); stageGroup.add(marina.group); }
     stage.walls = street.barrier;
   }
   if (theme.lanes) {
@@ -2413,6 +2420,13 @@ function frame(now) {
   if (!paused && trackside) crowdNoise = trackside.update(dt, car.x, car.z, { air: car.air && car.airTime > 0.1, speed: car.speed, dark: lampGlow > 0.6 }) || 0;
   if (!paused && (echoT -= dt) <= 0) { echoT = 0.25; measureEcho(); }
   if (skyPlan && road) updateSky(replay.on ? replay.along : roadAlong);
+  // Street circuits: yachts bob; after dark, fireworks over the town.
+  if (marina && harbour && stage.theme?.street) marina.update(performance.now() / 1000);
+  if (!paused) {
+    const fwOn = running && !!stage.theme?.street && (weather.dark || weather.id === 'dusk');
+    fireworks.update(dt, fwOn, harbour ? { x: harbour.cx, z: harbour.cz, y: harbour.y } : { x: car.x, z: car.z, y: car.y ?? 0 },
+      (v, delay) => setTimeout(() => { if (running) audio.thud(v * 0.6); }, delay * 1000));
+  }
   mpFrame(dt);
   // Tunnels: lights on inside, back to how they were outside.
   if (road?.tunnels?.length) {
@@ -3091,7 +3105,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, hitBarriers, flyover, net, mp, mpActive, mpCreate, mpJoin, mpStartRace, mpToLobby, remote, inTunnelAt, get career() { return career; }, set career(c) { career = c; }, get careerRun() { return careerRun; }, startCareerStage, careerNext, showPodium, renderCareer, finishRun, echo, measureEcho, replay, startReplay, stopReplay, replayCam, toggleClip, clip, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
+  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, get harbour() { return harbour; }, hitBarriers, flyover, net, mp, mpActive, mpCreate, mpJoin, mpStartRace, mpToLobby, remote, inTunnelAt, get career() { return career; }, set career(c) { career = c; }, get careerRun() { return careerRun; }, startCareerStage, careerNext, showPodium, renderCareer, finishRun, echo, measureEcho, replay, startReplay, stopReplay, replayCam, toggleClip, clip, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver, crash, get riderFall() { return riderFall; },

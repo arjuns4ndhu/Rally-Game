@@ -154,7 +154,7 @@ function buildTreeKits() {
 }
 
 // Build the terrain and dressing around a road. Returns { group, terrain, obstacles }.
-export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.forest, hilliness = 1, avoid = [], detail = 1 } = {}) {
+export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.forest, hilliness = 1, avoid = [], detail = 1, carve = null, keepOut = null } = {}) {
   const rand = mulberry32(seed * 7919 + 13);
   const group = new THREE.Group();
 
@@ -168,7 +168,7 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
   // Ground: shaped terrain around the road, plus a flat apron under the horizon.
   const terrain = buildTerrain(road, {
     seed, flat, theme, grassMap: RETRO.on ? null : detailTexture(),
-    baseAmp: theme.heightAmp * hilliness, hillAmp: theme.hillAmp * hilliness,
+    baseAmp: theme.heightAmp * hilliness, hillAmp: theme.hillAmp * hilliness, carve,
   });
   group.add(terrain.mesh);
   const apronTex = pixelTex(groundTexture(theme));
@@ -189,6 +189,7 @@ export function buildScenery(road, seed = 1, { flat = false, theme = THEMES.fore
   // Keep things off the road, and off any shortcut tracks.
   const clear = (x, z, r) => {
     if (terrain.seaY != null && groundY(x, z) < terrain.seaY + 1.5) return false;   // not in the sea
+    if (keepOut && keepOut(x, z)) return false;                                     // nor in a harbour
     const n = terrain.nearestRoad(x, z);
     if (n && n.d <= r) return false;
     return avoid.every((pts) => distToPolyline(pts, x, z) > 5.5);

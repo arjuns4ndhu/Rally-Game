@@ -7,7 +7,7 @@ import { facet, RETRO, steady } from './retro.js';
 const FIELDS = ['#6c9a3e', '#7fa84a', '#5b8a36', '#b9aa5c', '#8db357', '#a59a4e'].map((c) => new THREE.Color(c));
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, baseAmp = 1, hillAmp = 1, theme = null } = {}) {
+export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, baseAmp = 1, hillAmp = 1, theme = null, carve = null } = {}) {
   // Must match the road's landform exactly (same seed and amplitude).
   const base = flat ? () => 0 : makeBaseHeight(seed, baseAmp);
   const hills = makeHillHeight(seed, hillAmp);
@@ -84,7 +84,9 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
       return near + (plane(x, z) - near) * smooth(90, 125, nr.d);
     };
   }
-  const heightRaw = (x, z) => {
+  // carve(x, z, h): a stage feature (a harbour basin) can lower the ground.
+  const heightRaw = (x, z) => (carve ? carve(x, z, heightRaw0(x, z)) : heightRaw0(x, z));
+  const heightRaw0 = (x, z) => {
     if (cliffH) return cliffH(x, z);
     const nr = nearestRoad(x, z);
     const far = base(x, z) + hills(x, z) * smooth(25, 200, nr ? nr.d : 999) + lump(x, z) * smooth(flatZone + 8, flatZone + 40, nr ? nr.d : 999);

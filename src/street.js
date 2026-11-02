@@ -141,7 +141,7 @@ export function buildTunnels(road, tunnels, { rock = false, seed = 1 } = {}) {
 }
 
 // ---------- Street dressing ----------
-export function buildStreet(road, { seed = 1, tunnels = [], start = 0, finish = road.length, groundY, night = 0 }) {
+export function buildStreet(road, { seed = 1, tunnels = [], start = 0, finish = road.length, groundY, night = 0, harbour = null }) {
   const rnd = mulberry32((seed * 2654435761 ^ 0x9e3779b9) >>> 0);
   const group = new THREE.Group();
   const w = road.width / 2, B = w + BARRIER_GAP;
@@ -236,7 +236,8 @@ export function buildStreet(road, { seed = 1, tunnels = [], start = 0, finish = 
         const yaw = Math.atan2(road.tx[p.i], road.tz[p.i]);
         const cs = Math.cos(yaw), sn = Math.sin(yaw);
         const corners = [[-depth / 2, -len / 2], [depth / 2, -len / 2], [-depth / 2, len / 2], [depth / 2, len / 2]].map(([lx, lz]) => [p.x + lx * cs + lz * sn, p.z - lx * sn + lz * cs]);
-        if (corners.every(([x, z]) => clearOf(x, z, B + 12)) && clearOf(p.x, p.z, B + 12)) {
+        const wet = harbour && (inHarbour(harbour, p.x, p.z, 6) || corners.some(([x, z]) => inHarbour(harbour, x, z, 6)));
+        if (!wet && corners.every(([x, z]) => clearOf(x, z, B + 12)) && clearOf(p.x, p.z, B + 12)) {
           const y0 = Math.min(...corners.map(([x, z]) => groundY(x, z)), groundY(p.x, p.z)) - 0.5;
           blocks.push({ x: p.x, z: p.z, y0, yaw, wd: depth, ln: len, h: h + (p.y - y0) * 0.3, col: PALETTE[Math.floor(rnd() * PALETTE.length)] });
         }
@@ -275,7 +276,7 @@ export function buildStreet(road, { seed = 1, tunnels = [], start = 0, finish = 
     for (let a = start - 20; a < finish + 20; a += 14 + rnd() * 6) {
       if (inTunnel(tunnels, a, 10)) continue;
       const p = at(road, a, s * (B + 6.5 + rnd() * 3));
-      if (!clearOf(p.x, p.z, B + 4)) continue;
+      if (!clearOf(p.x, p.z, B + 4) || (harbour && inHarbour(harbour, p.x, p.z, 2))) continue;
       palms.push([p.x, groundY(p.x, p.z), p.z, rnd() * 6, 0.85 + rnd() * 0.4]);
     }
     for (let a = start - 10; a < finish + 10; a += 26) {
@@ -330,4 +331,171 @@ export function buildStreet(road, { seed = 1, tunnels = [], start = 0, finish = 
   }
 
   return { group, nightMaterials: [bmat], barrier: B };
+}
+
+// ---------- Harbour ----------
+// A marina beside a straight bit of a street circuit: a rectangular basin
+// behind the promenade, quay walls, jetties and yachts at their moorings.
+// The ground is carved down so the water sits in it.
+export function planHarbour(road, { seed = 1, start = 0, finish = road.length, tunnels = [] }) {
+  const rnd = mulberry32((seed * 69069 + 777) >>> 0);
+  const B = road.width / 2 + BARRIER_GAP, L = 190, D = 80;
+  const head = (a) => { const i = road.indexAt(a); return Math.atan2(road.tx[i], road.tz[i]); };
+  const tries = [];
+  for (let a = start + 120; a < finish - L - 60; a += 25) tries.push(a);
+  for (let k = tries.length - 1; k > 0; k--) { const j = Math.floor(rnd() * (k + 1)); [tries[k], tries[j]] = [tries[j], tries[k]]; }
+  for (const a of tries) {
+    if (inTunnel(tunnels, a + L / 2, L / 2 + 20)) continue;
+    const dh = Math.atan2(Math.sin(head(a + L) - head(a)), Math.cos(head(a + L) - head(a)));
+    if (Math.abs(dh) > 0.3) continue;
+    for (const s of rnd() < 0.5 ? [1, -1] : [-1, 1]) {
+      const mid = a + L / 2, c = at(road, mid, s * (B + 14 + D / 2)), yaw = head(mid);
+      const h = { cx: c.x, cz: c.z, yaw, L, D, y: road.py[c.i] - 1.2, side: s };
+      // Nothing of the road may run through the basin (or too close to it).
+      let ok = true;
+      for (let u = -0.5; u <= 0.5 && ok; u += 0.125) for (let v = -0.5; v <= 0.5 && ok; v += 0.25) {
+        const p = toWorld(h, u * L, v * D);
+        if (road.nearest(p[0], p[1]).dist < B + 12) ok = false;
+      }
+      if (ok) return h;
+    }
+  }
+  return null;
+}
+// Harbour local (u along the road, v across) to world, and back.
+function toWorld(h, u, v) {
+  const fx = Math.sin(h.yaw), fz = Math.cos(h.yaw);
+  return [h.cx + fx * u + fz * v, h.cz + fz * u - fx * v];
+}
+function toLocal(h, x, z) {
+  const fx = Math.sin(h.yaw), fz = Math.cos(h.yaw), dx = x - h.cx, dz = z - h.cz;
+  return [dx * fx + dz * fz, dx * fz - dz * fx];
+}
+export const inHarbour = (h, x, z, pad = 0) => { const [u, v] = toLocal(h, x, z); return Math.abs(u) < h.L / 2 + pad && Math.abs(v) < h.D / 2 + pad; };
+// Ground inside the basin goes down below the water.
+export function harbourCarve(h) {
+  return (x, z, ht) => {
+    const [u, v] = toLocal(h, x, z);
+    const out = Math.max(Math.abs(u) - h.L / 2, Math.abs(v) - h.D / 2);
+    if (out > 10) return ht;
+    const floor = h.y - 3;
+    if (out <= 0) return Math.min(ht, floor);
+    return Math.min(ht, floor + (Math.max(ht, h.y + 1.2) - floor) * (out / 10));
+  };
+}
+
+export function buildHarbour(h, { seed = 1 }) {
+  const rnd = mulberry32((seed * 31337 + 4242) >>> 0);
+  const group = new THREE.Group();
+  const place = (obj, u, v, y, yaw = 0) => { const [x, z] = toWorld(h, u, v); obj.position.set(x, y, z); obj.rotation.y = h.yaw + yaw; group.add(obj); return obj; };
+  // Water.
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(h.D + 2, h.L + 2).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x1f6f95, roughness: 0.15, metalness: 0.25, transparent: true, opacity: 0.92 }));
+  place(water, 0, 0, h.y);
+  // Quay walls around the edge.
+  const quay = new THREE.MeshStandardMaterial({ color: 0xcfc6b4, roughness: 0.9 });
+  for (const [u, v, w, d] of [[0, h.D / 2, h.L + 3, 1.5], [0, -h.D / 2, h.L + 3, 1.5], [h.L / 2, 0, 1.5, h.D + 3], [-h.L / 2, 0, 1.5, h.D + 3]]) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(d, 4.4, w), quay);
+    wall.castShadow = wall.receiveShadow = true;
+    place(wall, u, v, h.y - 0.9);
+  }
+  // Jetties out from the town-side quay, yachts moored either side.
+  const roadSide = -h.side;                      // the quay nearest the road
+  const jettyMat = new THREE.MeshStandardMaterial({ color: 0x8a6a48, roughness: 0.95 });
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: 0.4 });
+  const trimMat = [0x16365c, 0x1f9e5a, 0xc4162a, 0x16181d, 0xb9aa5c].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.5 }));
+  const glass = new THREE.MeshStandardMaterial({ color: 0x24303e, roughness: 0.2, metalness: 0.4 });
+  const mastMat = new THREE.MeshStandardMaterial({ color: 0xd9d9d9, roughness: 0.4 });
+  const hullGeo = (len, wd) => {
+    // A box hull with a pointed bow.
+    const g = new THREE.CylinderGeometry(wd / 2, wd / 2, len, 4, 1).rotateY(Math.PI / 4).rotateX(Math.PI / 2).scale(1, 0.6, 1);
+    return g;
+  };
+  for (let u = -h.L / 2 + 16; u < h.L / 2 - 10; u += 26) {
+    const len = h.D * 0.62;
+    const jetty = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.4, len), jettyMat);
+    place(jetty, u, roadSide * (h.D / 2 - len / 2), h.y + 0.5, Math.PI / 2);
+    for (const side of [-1, 1]) {
+      for (let k = 0; k < 3; k++) {
+        if (rnd() < 0.2) continue;
+        const L = 9 + rnd() * 9, W = 3 + rnd() * 1.5, sail = rnd() < 0.5;
+        const yacht = new THREE.Group();
+        const hull = new THREE.Mesh(hullGeo(L, W), hullMat); hull.position.y = 0.3; yacht.add(hull);
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(W * 0.72, 0.18, L * 0.7), trimMat[Math.floor(rnd() * trimMat.length)]); stripe.position.y = 0.55; yacht.add(stripe);
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(W * 0.55, 1.2, L * 0.35), hullMat); cabin.position.set(0, 1.3, -L * 0.08); yacht.add(cabin);
+        const win = new THREE.Mesh(new THREE.BoxGeometry(W * 0.57, 0.4, L * 0.3), glass); win.position.set(0, 1.5, -L * 0.08); yacht.add(win);
+        if (sail) { const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, L * 1.2, 5), mastMat); mast.position.set(0, L * 0.6 + 0.8, L * 0.05); yacht.add(mast); }
+        else { const fly = new THREE.Mesh(new THREE.BoxGeometry(W * 0.4, 0.8, L * 0.2), hullMat); fly.position.set(0, 2.3, -L * 0.05); yacht.add(fly); }
+        yacht.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        // Moored at right angles to the jetty, bow out.
+        const vAlong = roadSide * (h.D / 2 - 6 - k * (len / 3.2));
+        place(yacht, u + side * (W / 2 + 1.6), vAlong, h.y, side > 0 ? 0 : Math.PI);
+        yacht.userData.bob = rnd() * 6;
+      }
+    }
+  }
+  return {
+    group,
+    update(t) { for (const o of group.children) if (o.userData.bob != null) { o.position.y = h.y + Math.sin(t * 0.9 + o.userData.bob) * 0.08; o.rotation.z = Math.sin(t * 0.7 + o.userData.bob) * 0.02; } },
+  };
+}
+
+// ---------- Fireworks ----------
+// Bursts of coloured sparks over the town after dark: each rises unseen,
+// bursts into a sphere of embers that fall and fade, and booms a moment
+// later (sound travels slower than light).
+export class Fireworks {
+  constructor(scene, n = 900) {
+    this.n = n; this.next = 0; this.timer = 1;
+    this.pos = new Float32Array(n * 3); this.vel = new Float32Array(n * 3); this.life = new Float32Array(n); this.base = new Float32Array(n * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    this.points = new THREE.Points(geo, new THREE.PointsMaterial({ size: 2.6, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    this.points.frustumCulled = false;
+    this.points.visible = false;
+    scene.add(this.points);
+  }
+
+  burst(x, y, z) {
+    const PAL = [[1, 0.25, 0.2], [1, 0.8, 0.25], [0.3, 0.6, 1], [0.4, 1, 0.5], [1, 0.4, 0.9], [1, 1, 1]];
+    const c = PAL[Math.floor(Math.random() * PAL.length)], sp = 13 + Math.random() * 8;
+    for (let k = 0; k < 90; k++) {
+      const i = this.next++ % this.n;
+      const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u), s = sp * (0.85 + Math.random() * 0.3);
+      this.pos.set([x, y, z], i * 3);
+      this.vel.set([Math.cos(a) * r * s, u * s, Math.sin(a) * r * s], i * 3);
+      this.base.set(c, i * 3);
+      this.life[i] = 1.6 + Math.random() * 0.6;
+    }
+  }
+
+  // on: fireworks tonight; at: where to set them off around ({x, z, y});
+  // boom(volume, delay): sound for a burst.
+  update(dt, on, at, boom) {
+    if (on) {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.timer = 0.8 + Math.random() * 2.2;
+        const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 120;
+        const x = at.x + Math.cos(a) * d, z = at.z + Math.sin(a) * d, y = at.y + 45 + Math.random() * 35;
+        this.burst(x, y, z);
+        boom?.(Math.max(0.15, 0.6 - d / 400), Math.hypot(d, y - at.y) / 343);
+      }
+    }
+    const col = this.points.geometry.attributes.color;
+    let alive = false;
+    for (let i = 0; i < this.n; i++) {
+      if (this.life[i] <= 0) { col.setXYZ(i, 0, 0, 0); continue; }
+      alive = true;
+      this.life[i] -= dt;
+      const p = i * 3;
+      this.vel[p] *= 1 - dt * 1.2; this.vel[p + 2] *= 1 - dt * 1.2; this.vel[p + 1] = this.vel[p + 1] * (1 - dt * 1.2) - 6 * dt;
+      this.pos[p] += this.vel[p] * dt; this.pos[p + 1] += this.vel[p + 1] * dt; this.pos[p + 2] += this.vel[p + 2] * dt;
+      const f = Math.max(0, Math.min(1, this.life[i] / 1.2)) * (0.75 + Math.random() * 0.25);
+      col.setXYZ(i, this.base[p] * f, this.base[p + 1] * f, this.base[p + 2] * f);
+    }
+    this.points.visible = alive;
+    this.points.geometry.attributes.position.needsUpdate = true;
+    col.needsUpdate = true;
+  }
 }
