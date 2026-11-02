@@ -33,6 +33,7 @@
     <div class="brand">SIDEWAYS</div>
     <div class="hud-sub"><span id="hud-stage">Test road</span> · <span id="hud-car">Stiletto V6</span></div>
     <div class="hud-chip" id="hud-assist" hidden>LINE ASSIST</div>
+    <div class="hud-mp" id="hud-mp" hidden></div>
   </div>
   <div class="hud-drift" id="hud-drift"><span class="label">DRIFT</span> <span id="hud-drift-val">0°</span></div>
   <div class="hud-br">
@@ -134,6 +135,7 @@
       <button id="btn-classics" class="btn">Classics<small>Five fixed stages: compare times</small></button>
       <button id="btn-random" class="btn">Random<small>A new road: gravel, tarmac, night, rivers</small></button>
       <button id="btn-endurance" class="btn">Endurance<small>Long 5–8 km stages as day turns to night</small></button>
+      <button id="btn-mp" class="btn">Multiplayer<small id="mp-sub">Private lobbies: race your friends live</small></button>
       <button id="btn-practice" class="btn">Practice loop<small>No clock, just driving</small></button>
       <button id="btn-school" class="btn">Driving school<small>Learn to drift in nine quick steps</small></button>
     </div>
@@ -213,6 +215,37 @@
       <button class="btn btn-primary" id="career-go">Start ▶</button>
     </div>
     <p class="hint">Three stages a rally against seven rivals; your rally time is the three stage times added up. Points for the rally result: 25, 18, 15, 12, 10, 8, 6, 4. No retries: restarting a stage costs 10 s. Win the championship to move up a class.</p>
+  </div>
+</div>
+
+<!-- Multiplayer lobby -->
+<div id="mp" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><div><div class="eyebrow">Race your friends live</div><h2 class="logo">MULTIPLAYER</h2></div><button class="btn btn-sm" data-back>Back</button></div>
+    <div id="mp-off" hidden>
+      <p>Live races work on the shared claude.ai page of the game. Open it there, share it with your friends from its Share menu, and come back here.</p>
+    </div>
+    <div id="mp-entry" class="mp-entry" hidden>
+      <label class="mp-row"><span class="lbl">Your name</span><input id="mp-nick" maxlength="16" autocomplete="off" placeholder="Racing name"></label>
+      <button id="mp-create" class="btn btn-primary">Create private lobby</button>
+      <form id="mp-joinform" class="mp-row" autocomplete="off"><input id="mp-code" placeholder="Lobby code" maxlength="12" aria-label="Lobby code"><button class="btn" type="submit">Join</button></form>
+      <p class="hint">Create a lobby and send your friends its code. Only people with the code can join.</p>
+    </div>
+    <div id="mp-lobby" hidden>
+      <div class="mp-codebar">LOBBY CODE <b id="mp-codeval"></b> <button id="mp-copy" class="btn btn-sm">Copy</button></div>
+      <table class="champ-table" id="mp-players"></table>
+      <div id="mp-hostctl" class="gen-rows">
+        <div class="garage-row"><span class="lbl">Stage</span><div class="chips" id="mp-stage" role="radiogroup" aria-label="Stage"></div></div>
+        <form class="garage-row" id="mp-seedform" autocomplete="off"><span class="lbl">Or a code</span><input id="mp-seed" inputmode="numeric" placeholder="Stage code" aria-label="Stage code"><button class="btn btn-sm" type="submit">Use</button></form>
+        <div class="garage-row"><span class="lbl">Collisions</span><div class="chips" id="mp-coll" role="radiogroup" aria-label="Collisions"><button class="chip" data-coll="1">On</button><button class="chip" data-coll="0">Off (ghosts)</button></div></div>
+      </div>
+      <p class="mp-setup" id="mp-setup"></p>
+      <div class="champ-foot">
+        <button id="mp-leave" class="btn btn-sm">Leave lobby</button>
+        <button id="mp-car" class="btn btn-sm">Change car</button>
+        <button id="mp-start" class="btn btn-primary">Start race ▶</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -390,6 +423,7 @@
     </div>
     <div class="fin-medal" id="fin-medal" hidden></div>
     <div class="fin-career" id="fin-career" hidden></div>
+    <div class="fin-mp" id="fin-mp" hidden></div>
     <p class="fin-unlock" id="fin-unlock" hidden></p>
     <p class="fin-meta"><span id="fin-prev"></span><br><span id="fin-pen"></span></p>
     <div class="fin-actions">

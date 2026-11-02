@@ -557,6 +557,76 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     assert(!problems.length, problems.join('; '));
   });
 
+  await check('multiplayer: private lobby, grid start, see each other, collisions, results', async () => {
+    // A stand-in for claude.ai's live rooms: pages in one browser talk over
+    // a BroadcastChannel per room name.
+    const cm = await browser.newContext({ viewport: { width: 800, height: 450 } });
+    await cm.addInitScript(() => {
+      localStorage.setItem('sideways.welcomed', '1');
+      const room = {
+        join: async (name) => {
+          const me = Math.random().toString(36).slice(2, 10), bc = new BroadcastChannel('mock-' + name);
+          const others = new Map(); let mine = {}; const hs = [];
+          const snap = () => [[me, mine], ...others].map(([peer, presence]) => ({ peer, by: null, isMe: peer === me, sameTab: peer === me, kind: 'viewer', guest: false, presence, updatedAt: 0 }));
+          const fire = () => { const ps = snap(); hs.forEach((h) => h({ peers: ps, joined: [], left: [], updated: [] })); };
+          bc.onmessage = (e) => { const m = e.data;
+            if (m.t === 'p') { others.set(m.peer, Object.freeze(m.presence)); fire(); }
+            if (m.t === 'hello') bc.postMessage({ t: 'p', peer: me, presence: mine });
+            if (m.t === 'bye') { others.delete(m.peer); fire(); } };
+          bc.postMessage({ t: 'hello' });
+          return {
+            name,
+            presence: async (patch) => { mine = { ...mine, ...patch }; for (const k in mine) if (mine[k] === null) delete mine[k]; mine = Object.freeze(mine); bc.postMessage({ t: 'p', peer: me, presence: mine }); setTimeout(fire, 0); },
+            peers: snap, onPeers: (h) => { hs.push(h); setTimeout(fire, 0); return () => {}; },
+            connected: () => true, leave: async () => { bc.postMessage({ t: 'bye', peer: me }); bc.close(); },
+          };
+        },
+      };
+      window.claude = { use: async (n) => (n === 'room' ? room : null) };
+    });
+    await page.goto('about:blank');
+    const A = await cm.newPage(), B = await cm.newPage();
+    const errsM = []; for (const p of [A, B]) p.on('pageerror', (e) => errsM.push(String(e)));
+    for (const p of [A, B]) { await p.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 }); await p.waitForFunction(() => !!window.__sideways, null, { timeout: 60000 }); }
+    await A.evaluate(() => { document.getElementById('btn-mp').click(); document.getElementById('mp-nick').value = 'Alpha'; });
+    await A.waitForTimeout(300);
+    await A.evaluate(() => window.__sideways.mpCreate());
+    await A.waitForFunction(() => window.__sideways.net.inLobby, null, { timeout: 10000 });
+    const code = await A.evaluate(() => window.__sideways.net.code);
+    await B.evaluate(async (code) => { document.getElementById('btn-mp').click(); document.getElementById('mp-nick').value = 'Bravo'; await window.__sideways.mpJoin(code); }, code);
+    await A.waitForFunction(() => document.getElementById('mp-players').textContent.includes('Bravo'), null, { timeout: 15000 });
+    // Host: a Classic by code, collisions on, start.
+    await A.evaluate(() => { document.getElementById('mp-seed').value = '900122'; document.getElementById('mp-seedform').requestSubmit(); document.querySelector('#mp-coll [data-coll="1"]').click(); });
+    await A.waitForTimeout(500);
+    await A.screenshot({ path: path.join(__dirname, 'out-mp-lobby.png') }).catch(() => {});
+    const setupB = await B.waitForFunction(() => /900122.*collisions ON/.test(document.getElementById('mp-setup').textContent), null, { timeout: 15000 }).then(() => true).catch(() => false);
+    assert(setupB, 'joiner did not see the host setup');
+    await A.evaluate(() => window.__sideways.mpStartRace());
+    // Both load, line up on the grid, and get the go.
+    for (const p of [A, B]) await p.waitForFunction(() => { const s = window.__sideways; return s.mpActive() && s.run.state === 'running'; }, null, { timeout: 120000 });
+    const grid = await Promise.all([A, B].map((p) => p.evaluate(() => window.__sideways.mp.slot)));
+    assert(new Set(grid).size === 2, 'both cars in the same grid slot: ' + grid);
+    // Each sees the other's car.
+    await B.waitForFunction(() => window.__sideways.remote.cars.size === 1, null, { timeout: 30000 });
+    await B.waitForTimeout(2500);
+    await B.screenshot({ path: path.join(__dirname, 'out-mp-race.png') }).catch(() => {});
+    // Collisions: put B's car on top of where it sees A, moving at it.
+    const hit = await B.evaluate(() => {
+      const s = window.__sideways, o = s.mp.poses[0];
+      s.car.x = o.x + 0.6; s.car.z = o.z; s.car.vx = -8; s.car.vz = 0;
+      s.stepSim(0.05, { throttle: 0, brake: 0, steer: 0, handbrake: false });
+      return { d: Math.hypot(s.car.x - o.x, s.car.z - o.z), vx: s.car.vx };
+    });
+    assert(hit.d > 0.6 && hit.vx > -8, 'collision did not push apart: ' + JSON.stringify(hit));
+    // A finishes: B sees it in the standings; then B finishes and both see results.
+    await A.evaluate(() => { const s = window.__sideways; s.run.t = 100; s.run.splits = [1, 2, 3, 4, 5]; s.finishRun(); });
+    await B.evaluate(() => { const s = window.__sideways; s.run.t = 101.5; s.run.splits = [1, 2, 3, 4, 5]; s.finishRun(); });
+    const res = await B.waitForFunction(() => /Alpha[\s\S]*1:40\.00[\s\S]*Bravo[\s\S]*\+0:01\.50/.test(document.getElementById('fin-mp').textContent), null, { timeout: 20000 }).then(() => true).catch(async () => B.evaluate(() => document.getElementById('fin-mp').textContent));
+    assert(res === true, 'results wrong: ' + res);
+    await cm.close();
+    assert(!errsM.length, errsM.join(' | '));
+  });
+
   await check('offline: installs a service worker, then boots with no connection', async () => {
     // Every module must be in the offline file list.
     const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
@@ -569,7 +639,7 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await p3.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await p3.waitForFunction(() => navigator.serviceWorker?.controller || navigator.serviceWorker?.ready.then(() => true), null, { timeout: 60000 });
     await p3.evaluate(() => navigator.serviceWorker.ready);
-    await p3.waitForFunction(async () => (await (await caches.open('sideways-v3')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
+    await p3.waitForFunction(async () => (await (await caches.open('sideways-v4')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
     await c3.setOffline(true);
     await p3.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
     const ok = await p3.waitForFunction(() => !!window.__sideways, null, { timeout: 60000 }).then(() => true).catch(() => false);

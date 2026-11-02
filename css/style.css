@@ -400,11 +400,11 @@ body.touch .replay-tag { left: calc(18px + var(--safe-l)); transform: none; bott
 #btn-daily { padding: 14px 20px; font-size: 22px; }
 #btn-daily small { font-size: 13px; }
 /* Six columns: three picks on the first row, two wider ones on the second. */
-.picks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-/* Four big tiles (career, classics, random, endurance), then two wide ones. */
-.picks .btn { grid-column: span 1; min-width: 0; }
+.picks { display: grid; grid-template-columns: repeat(12, 1fr); gap: 10px; }
+/* Four big tiles (career, classics, random, endurance), then three wide ones. */
+.picks .btn { grid-column: span 3; min-width: 0; }
 .picks .btn:nth-child(-n+4) { min-height: 92px; display: flex; flex-direction: column; justify-content: flex-start; }
-.picks .btn:nth-child(n+5) { grid-column: span 2; }
+.picks .btn:nth-child(n+5) { grid-column: span 4; }
 .title-foot { display: flex; gap: 10px; align-items: stretch; }
 .menu-row { flex: 1; display: grid; grid-template-columns: repeat(4, auto); gap: 8px; }
 .menu-row .btn { white-space: nowrap; padding-left: 8px; padding-right: 8px; }
@@ -821,3 +821,21 @@ body.replaying:not(.touch) .hud-br { bottom: calc(84px + var(--safe-b)); }
 .hud-fps { position: absolute; left: calc(14px + var(--safe-l, 0px)); top: calc(34px + var(--safe-t, 0px)); font-family: var(--font-display); font-size: 11px;
   letter-spacing: 0.06em; color: var(--accent); background: rgba(11, 13, 18, 0.6); padding: 2px 6px; border-radius: 4px; }
 body.touch .hud-fps { top: auto; bottom: calc(150px + var(--safe-b, 0px)); }
+
+/* ---------- Multiplayer ---------- */
+.mp-entry { display: flex; flex-direction: column; gap: 10px; }
+.mp-row { display: flex; gap: 8px; align-items: center; }
+.mp-row .lbl { min-width: 6em; }
+.mp-row input, #mp-seed { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 4px; border: 2px solid var(--line); background: rgba(0,0,0,0.3); color: var(--text); font: inherit; }
+#mp-seedform { display: flex; gap: 8px; align-items: center; }
+.mp-codebar { font-family: var(--font-display); letter-spacing: 0.08em; display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.mp-codebar b { color: var(--accent); font-size: 26px; letter-spacing: 0.18em; text-transform: uppercase; }
+.mp-setup { font-family: var(--font-display); color: var(--accent); margin: 8px 0; }
+.champ-table td .tag { font-size: 11px; opacity: 0.7; margin-left: 6px; }
+.hud-mp { margin-top: 6px; font-family: var(--font-display); font-size: 22px; letter-spacing: 0.06em; color: var(--accent); text-shadow: 0 2px 0 rgba(0,0,0,0.6); }
+.hud-mp small { font-size: 13px; color: var(--text); margin-left: 8px; }
+.fin-mp { margin: 6px 0; }
+.fin-mp table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.fin-mp td { padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.fin-mp tr.you td { color: var(--accent); }
+.countdown.wait { font-size: clamp(22px, 4vw, 40px); }
