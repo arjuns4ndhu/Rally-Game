@@ -66,7 +66,10 @@ export function canvasTex(w, h, draw) {
 // The tube: walls on the barrier line and an arched roof, lit by a row of
 // ceiling lamps. Street tunnels are concrete with a building on top;
 // tarmac ones are cut through a pile of rock.
-export function buildTunnels(road, tunnels, { rock = false, seed = 1 } = {}) {
+// openSide(t): for tunnels cut into a cliff, the side facing the drop
+// (+1 left, -1 right). That side becomes a gallery: stone pillars holding
+// up the roof with a low parapet between them, open to the view.
+export function buildTunnels(road, tunnels, { rock = false, seed = 1, openSide = null } = {}) {
   const group = new THREE.Group();
   if (!tunnels.length) return group;
   const W = road.width / 2 + BARRIER_GAP;
@@ -78,12 +81,14 @@ export function buildTunnels(road, tunnels, { rock = false, seed = 1 } = {}) {
   const lamps = [];
   const rnd = mulberry32((seed * 9301 + 49297) >>> 0);
   for (const t of tunnels) {
+    const open = openSide ? openSide(t) : 0;
+    const skip = open === -1 ? 0 : open === 1 ? prof.length - 2 : -1;   // the wall segment left out
     // Tube, built ring by ring.
     const pos = [];
     let prev = null;
     for (let a = t.from; a <= t.to + 0.01; a += 2) {
       const ring = prof.map(([l, h]) => { const p = at(road, a, l); return [p.x, p.y + h, p.z]; });
-      if (prev) for (let k = 0; k < prof.length - 1; k++) pos.push(...prev[k], ...ring[k], ...ring[k + 1], ...prev[k], ...ring[k + 1], ...prev[k + 1]);
+      if (prev) for (let k = 0; k < prof.length - 1; k++) if (k !== skip) pos.push(...prev[k], ...ring[k], ...ring[k + 1], ...prev[k], ...ring[k + 1], ...prev[k + 1]);
       prev = ring;
       if (Math.round(a) % 8 === 0) { const p = at(road, a, 0); lamps.push([p.x, p.y + 6.0, p.z, Math.atan2(road.tx[p.i], road.tz[p.i])]); }
     }
@@ -109,7 +114,21 @@ export function buildTunnels(road, tunnels, { rock = false, seed = 1 } = {}) {
       group.add(Object.assign(new THREE.Mesh(fg, new THREE.MeshStandardMaterial({ color: 0x8f8a80, roughness: 0.95, side: THREE.DoubleSide })), { receiveShadow: true }));
     }
     // Yellow and black hazard band along the bottom of each wall.
-    for (const s of [-1, 1]) group.add(new THREE.Mesh(wallStrip(road, t.from, t.to, s * (W - 0.02), 0.2, 0.9), stripeMat));
+    for (const s of [-1, 1]) if (s !== open) group.add(new THREE.Mesh(wallStrip(road, t.from, t.to, s * (W - 0.02), 0.2, 0.9), stripeMat));
+    if (open) {
+      // Gallery: pillars every 7 m and a stone parapet along the open side.
+      const stone = new THREE.MeshStandardMaterial({ color: 0x9a9184, roughness: 0.95, flatShading: true, side: THREE.DoubleSide });
+      const par = new THREE.Mesh(wallStrip(road, t.from, t.to, open * W, -3, 0.95), stone);
+      par.receiveShadow = true; group.add(par);
+      const top = new THREE.Mesh(wallStrip(road, t.from, t.to, open * (W + 0.02), 4.0, 4.6), stone);
+      group.add(top);
+      for (let a = t.from + 3.5; a < t.to - 2; a += 7) {
+        const p = at(road, a, open * (W + 0.1)), yaw = Math.atan2(road.tx[p.i], road.tz[p.i]);
+        const pil = new THREE.Mesh(new THREE.BoxGeometry(0.9, 7.6, 1.1), stone);
+        pil.position.set(p.x, p.y + 0.8, p.z); pil.rotation.y = yaw; pil.castShadow = true;
+        group.add(pil);
+      }
+    }
     // Portals: a thick frame at each end.
     for (const a of [t.from, t.to]) {
       const p = at(road, a, 0), yaw = Math.atan2(road.tx[p.i], road.tz[p.i]);
@@ -127,6 +146,7 @@ export function buildTunnels(road, tunnels, { rock = false, seed = 1 } = {}) {
       const rm = new THREE.MeshStandardMaterial({ color: 0x8c8274, flatShading: true, roughness: 1 });
       for (let a = t.from - 6; a <= t.to + 6; a += 9) {
         for (const [l, h, r] of [[0, 15, 9], [-(W + 9), 6, 8], [W + 9, 6, 8], [-(W + 18), 3, 9], [W + 18, 3, 9]]) {
+          if (open && Math.sign(l) === open) continue;     // keep the gallery side open
           const p = at(road, a + (rnd() - 0.5) * 4, l), sc = r * (0.8 + rnd() * 0.4);
           const m = new THREE.Mesh(rockGeo, rm);
           m.position.set(p.x, p.y + h + rnd() * 2, p.z); m.scale.set(sc, sc * 0.8, sc); m.rotation.set(rnd(), rnd() * 6, rnd());

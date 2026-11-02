@@ -177,7 +177,9 @@ const codriver = new CoDriver((list) => {
   noteTimer = setTimeout(() => el.classList.remove('on'), 3600);
 });
 codriver.mode = 'signs';
-try { const m = localStorage.getItem('sideways.codriver'); if (m === 'off' || m === 'voice') codriver.mode = m; } catch { /* ignore */ }
+// (The spoken co-driver, mode 'voice', is switched off until a recorded
+// voice exists: see .claude/skills/codriver-voice.)
+try { if (localStorage.getItem('sideways.codriver') === 'off') codriver.mode = 'off'; } catch { /* ignore */ }
 
 // ---------- Stage ----------
 // A stage is a road plus everything built around it. Loading a new one
@@ -370,7 +372,9 @@ function loadStage(kind, seed = 0) {
     stage.walls = ledge.barrier;
   }
   if (road.tunnels?.length) {
-    stageGroup.add(buildTunnels(road, road.tunnels, { rock: !theme.street, seed }));
+    // On a mountain ledge the tunnel's drop side is open: a gallery over the view.
+    const openSide = theme.cliff ? (t) => { const sg = terrain.cliffSide(road.indexAt((t.from + t.to) / 2)); return Math.abs(sg) < 0.15 ? 0 : sg > 0 ? -1 : 1; } : null;
+    stageGroup.add(buildTunnels(road, road.tunnels, { rock: !theme.street, seed, openSide }));
     road.tunnels.forEach((t, k) => { if (t.from > 90) stageGroup.add(buildSign(road, t.from - 60, 'TUNNEL', k % 2 ? 1 : -1)); });
   }
   stage.lamps = headlights[0].intensity;
