@@ -388,6 +388,13 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await page.waitForFunction(() => !document.getElementById('career').hidden, null, { timeout: 20000 });
     const after = await S(() => ({ last: document.getElementById('career-last').textContent, pts: window.__sideways.career.points.you, rally: window.__sideways.career.rally }));
     assert(after.rally === 1 && after.pts > 0 && /you finished/.test(after.last), 'after rally 1: ' + JSON.stringify(after));
+    // Prize money buys an upgrade in the service park, and it changes the car on career stages.
+    const shop = await S(() => {
+      const s = window.__sideways, before = s.career.credits;
+      document.querySelector('#career-shop [data-buy="engine"]').click();
+      return { before, after: s.career.credits, lvl: s.career.up.engine };
+    });
+    assert(shop.before >= 1000 && shop.lvl === 1 && shop.after < shop.before, 'upgrade: ' + JSON.stringify(shop));
     await page.screenshot({ path: path.join(__dirname, 'out-career.png') }).catch(() => {});
     // The other three rallies, straight through the career logic, then the finale.
     const fin = await S(async () => {

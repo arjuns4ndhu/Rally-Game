@@ -10,7 +10,7 @@ import { THEMES, pickTheme, specialOf, SPECIAL_LABEL } from './themes.js';
 import { setupWorld, buildScenery } from './scenery.js';
 import { CameraRig, TVCamera } from './camera.js';
 import { Dust, BeamDust } from './particles.js';
-import { stageK, TIERS, RESTART_PENALTY, newCareer, loadCareer, saveCareer, resetCareer, seasonPlan, recordStage, standings, finishSeason, ordinal, RIVALS } from './career.js';
+import { stageK, UPGRADES, upgradedSpec, buyUpgrade, TIERS, RESTART_PENALTY, newCareer, loadCareer, saveCareer, resetCareer, seasonPlan, recordStage, standings, finishSeason, ordinal, RIVALS } from './career.js';
 import { Podium } from './podium.js';
 import { buildStreet, buildTunnels, planHarbour, harbourCarve, inHarbour, buildHarbour, Fireworks } from './street.js';
 import { buildCountry, buildLedge } from './country.js';
@@ -628,6 +628,8 @@ function restartRun() {
     toast(`RESTART · +${RESTART_PENALTY * career.restarts}s CAREER PENALTY`, 1600);
   }
   run.liveSeed = stage.seed;
+  // Career upgrades only count on career stages.
+  car.setSpec(inCareerStage() && career?.up ? upgradedSpec(CARS[carId], career.up) : CARS[carId]);
   recorder.reset();
   run.state = stage.kind === 'practice' ? 'free' : 'countdown';
   run.cd = 3.8; run.cdShown = null;
@@ -2751,6 +2753,13 @@ function renderCareer() {
     $('career-last').innerHTML = `<b>${esc(plan[L.rally]?.name || 'Rally')}: you finished ${ordinal(me + 1)}</b> (+${[25, 18, 15, 12, 10, 8, 6, 4][me] || 0} pts)` +
       `<ol>${L.cls.map((x, i) => `<li class="${x.you ? 'you' : ''}">${esc(x.name)} <small>${i ? '+' + fmt(x.t - win) : fmt(x.t)}</small></li>`).join('')}</ol>`;
   }
+  // Service park: credits and upgrades.
+  $('career-credits').textContent = career.credits || 0;
+  $('career-shop').innerHTML = UPGRADES.map((u) => {
+    const lvl = career.up?.[u.id] || 0, cost = u.cost[lvl];
+    return `<div class="shop-item"><b>${u.name}</b><small>${u.desc}</small><span class="pips">${'■'.repeat(lvl)}${'□'.repeat(u.cost.length - lvl)}</span>` +
+      (cost == null ? '<button class="btn btn-sm" disabled>Maxed</button>' : `<button class="btn btn-sm" data-buy="${u.id}"${(career.credits || 0) < cost ? ' disabled' : ''}>Buy ${cost}</button>`) + '</div>';
+  }).join('');
   const done = career.rally >= 4;
   $('career-go').textContent = done ? 'Season finale ▶' : career.stage ? `Continue: ${plan[career.rally].name}, SS${career.stage + 1} ▶` : `Start ${plan[career.rally].name} ▶`;
   $('career-sub').textContent = `Season ${career.season} · ${TIERS[career.tier].label} · round ${Math.min(4, career.rally + 1)} of 4`;
@@ -2772,7 +2781,7 @@ function careerFinish() {
   careerRun.result = res;
   const pen = res.t - run.t;
   careerRun.html = `SS${careerRun.stage + 1}: ${ordinal(res.stagePos)} of 8 · ${res.rallyDone ? 'Rally result' : 'Rally'}: ${ordinal(res.rallyPos)}` +
-    `<small>${pen ? `Includes +${pen}s for restarts · ` : ''}${res.rallyPos === 1 ? `Leading by ${fmt(Math.abs(res.rallyGap))}` : `${fmt(res.rallyGap)} behind the leader`}${res.award ? ` · +${res.award.pts} championship points` : ''}</small>`;
+    `<small>${pen ? `Includes +${pen}s for restarts · ` : ''}${res.rallyPos === 1 ? `Leading by ${fmt(Math.abs(res.rallyGap))}` : `${fmt(res.rallyGap)} behind the leader`}${res.award ? ` · +${res.award.pts} championship points · +${res.award.prize} credits` : ''}</small>`;
 }
 // The career result on the finish screen (the first finish is the one that counts).
 function showCareerFin() {
@@ -2809,6 +2818,11 @@ function showPodium() {
     openPage('career'); renderCareer();
   };
 }
+$('career-shop').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-buy]');
+  if (!b || !career) return;
+  if (buyUpgrade(career, b.dataset.buy)) { saveCareer(career); audio.beep(880, 0.1); renderCareer(); }
+});
 $('btn-career').addEventListener('click', () => { if (career) career.showLast = false; openPage('career'); renderCareer(); });
 $('career-go').addEventListener('click', () => { if (career && career.rally >= 4) { hidePages(); showPodium(); } else startCareerStage(); });
 $('career-reset').addEventListener('click', () => {

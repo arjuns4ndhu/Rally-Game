@@ -842,3 +842,13 @@ body.touch .hud-fps { top: auto; bottom: calc(150px + var(--safe-b, 0px)); }
 
 .loading-tip { margin: 14px 0 0; font-size: 14px; opacity: 0.85; max-width: 46ch; }
 .loading-tip b { color: var(--accent); font-weight: 600; }
+
+.career-h .credits { float: right; color: var(--text); }
+.career-h .credits b { color: var(--accent); font-weight: 400; }
+.career-shop { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 10px; }
+@media (max-width: 760px) { .career-shop { grid-template-columns: 1fr; } }
+.shop-item { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; }
+.shop-item b { font-family: var(--font-display); font-weight: 400; letter-spacing: 0.05em; }
+.shop-item small { opacity: 0.75; font-size: 12px; }
+.shop-item .pips { grid-column: 1; letter-spacing: 3px; color: var(--accent); }
+.shop-item .btn { grid-row: 1 / span 3; grid-column: 2; }

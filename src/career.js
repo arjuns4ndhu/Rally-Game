@@ -25,6 +25,35 @@ export const RIVALS = [
   { id: 'vance', name: 'E. Vance', car: 'pocket', color: '#ff8a1c', skill: 0.93, spread: 0.04, risk: 0.1 },
 ];
 export const POINTS = [25, 18, 15, 12, 10, 8, 6, 4];
+// Prize money for each rally finishing position, plus a bonus per stage won.
+export const RALLY_CREDITS = [1000, 750, 600, 480, 380, 300, 220, 150];
+export const STAGE_WIN_BONUS = 100;
+// The team's upgrades, bought in the service park between rallies. They
+// fit whichever car you drive, and only count in career.
+export const UPGRADES = [
+  { id: 'engine', name: 'Engine', desc: '+4% power a level', cost: [450, 900, 1500] },
+  { id: 'tyres', name: 'Tyres', desc: '+2.5% grip a level', cost: [400, 800, 1350] },
+  { id: 'suspension', name: 'Suspension', desc: 'Steadier on rough ground, sharper steering', cost: [350, 700, 1200] },
+  { id: 'gearbox', name: 'Gearbox', desc: 'Shorter gears: quicker off the corners', cost: [300, 650, 1100] },
+];
+export function upgradedSpec(spec, up = {}) {
+  const e = up.engine || 0, t = up.tyres || 0, s = up.suspension || 0, g = up.gearbox || 0;
+  if (!e && !t && !s && !g) return spec;
+  return {
+    ...spec,
+    torque: spec.torque * (1 + 0.04 * e),
+    muF: spec.muF * (1 + 0.025 * t), muR: spec.muR * (1 + 0.025 * t),
+    offroad: (spec.offroad || 0) + 0.08 * s, steerSpeed: spec.steerSpeed * (1 + 0.03 * s),
+    finalDrive: spec.finalDrive * (1 + 0.025 * g),
+  };
+}
+export function buyUpgrade(career, id) {
+  const u = UPGRADES.find((x) => x.id === id), lvl = (career.up ||= {})[id] || 0;
+  if (!u || lvl >= u.cost.length || (career.credits || 0) < u.cost[lvl]) return false;
+  career.credits -= u.cost[lvl];
+  career.up[id] = lvl + 1;
+  return true;
+}
 const RALLY_NAMES = ['Rally Nordvik', 'Rally Sierra Alta', 'Rally Isola Verde', 'Lakeland Rally', 'Rally Dunmore', 'Rally Altavista',
   'Highland Stages', 'Rally Costa Brava Nova', 'Rally Kaskadi', 'Rally Ardenwald', 'Rally Pampas Sur', 'Glenmoor Rally'];
 // Each season: two gravel rallies, one on tarmac, one with a twist.
@@ -33,7 +62,7 @@ const TYPE_LABEL = { gravel: 'Gravel', tarmac: 'Tarmac', night: 'Night forest', 
 const TYPE_BASE = { gravel: [100000, 900000], tarmac: [4e6, 3e5], night: [4.3e6, 3e5], river: [4.6e6, 3e5], street: [4.9e6, 3e5], country: [5.2e6, 3e5], cliff: [5.5e6, 3e5] };
 
 export function newCareer() {
-  return { v: 1, season: 1, tier: 0, rally: 0, stage: 0, points: {}, rallyTimes: [], rallyStages: [], restarts: 0, results: [], car: null };
+  return { v: 1, season: 1, tier: 0, rally: 0, stage: 0, points: {}, rallyTimes: [], rallyStages: [], restarts: 0, results: [], car: null, credits: 0, up: {} };
 }
 export function loadCareer() {
   try {
@@ -104,11 +133,14 @@ export function recordStage(career, st, time) {
   const rallyPos = rallyCls.findIndex((x) => x.you) + 1;
   const rallyGap = rallyPos === 1 ? rallyCls[0].t - rallyCls[1].t : rallyCls[rallyPos - 1].t - rallyCls[0].t;
   career.stage++;
+  career.credits = (career.credits || 0) + (stagePos === 1 ? STAGE_WIN_BONUS : 0);
   const rallyDone = career.stage >= 3;
   let award = null;
   if (rallyDone) {
     rallyCls.forEach((x, i) => { career.points[x.id] = (career.points[x.id] || 0) + (POINTS[i] || 0); });
-    award = { cls: rallyCls, pos: rallyPos, pts: POINTS[rallyPos - 1] || 0 };
+    const prize = RALLY_CREDITS[rallyPos - 1] || 0;
+    career.credits += prize;
+    award = { cls: rallyCls, pos: rallyPos, pts: POINTS[rallyPos - 1] || 0, prize };
     career.results.push({ rally: career.rally, pos: rallyPos });
     career.lastRally = { cls: rallyCls.map(({ id, name, t, you }) => ({ id, name, t, you })), rally: career.rally };
     career.rally++; career.stage = 0; career.rallyTimes = []; career.rallyStages = [];
@@ -122,7 +154,7 @@ export function finishSeason(career) {
   const table = standings(career);
   const pos = table.findIndex((x) => x.you) + 1;
   const promoted = pos === 1 && career.tier < TIERS.length - 1;
-  const next = { ...newCareer(), season: career.season + 1, tier: career.tier + (promoted ? 1 : 0), car: career.car, titles: (career.titles || 0) + (pos === 1 ? 1 : 0) };
+  const next = { ...newCareer(), season: career.season + 1, tier: career.tier + (promoted ? 1 : 0), car: career.car, titles: (career.titles || 0) + (pos === 1 ? 1 : 0), credits: career.credits || 0, up: { ...(career.up || {}) } };
   return { table, pos, promoted, next };
 }
 
