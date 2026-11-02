@@ -56,7 +56,7 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
   // the left climbs as a rock face and ground on the right drops away to
   // the sea, and the other way round. sg[i] says which (smoothed along the
   // road, so the sides swap gently where the road turns across the slope).
-  let cliffH = null, seaY = null, sgArr = null;
+  let cliffH = null, seaY = null, sgArr = null, steepArr = null;
   if (theme?.cliff) {
     const ang = ((seed * 2654435761) >>> 0) / 4294967296 * Math.PI * 2, ux = Math.cos(ang), uz = Math.sin(ang);
     const raw = new Float32Array(road.n), sg = new Float32Array(road.n);
@@ -67,6 +67,15 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
       sg[i] = t / c;
     }
     sgArr = sg;
+    // How close the mountain crowds the road, varying along it: where it's
+    // steep (1) the slope rises sheer from a retaining wall; elsewhere (0)
+    // it's an open, gentler bank you could run up onto.
+    const ph1 = (seed % 97) * 0.31, ph2 = (seed % 89) * 0.53;
+    steepArr = new Float32Array(road.n);
+    for (let i = 0; i < road.n; i++) {
+      const v = 0.5 + 0.42 * Math.sin(i * 0.016 + ph1) + 0.22 * Math.sin(i * 0.047 + ph2);
+      steepArr[i] = smooth(0.42, 0.62, v);
+    }
     let rmin = Infinity, rsum = 0, cxm = 0, czm = 0;
     for (let i = 0; i < road.n; i++) { rmin = Math.min(rmin, road.py[i]); rsum += road.py[i]; cxm += road.px[i]; czm += road.pz[i]; }
     seaY = rmin - 45;
@@ -80,9 +89,16 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
       // The rise starts a whole grid cell out from the barriers, so no ground
       // triangle can reach from road level up the slope across the road.
       const ry = road.py[i] - 0.6, edge = road.width / 2 + 2.2 + cell, k = Math.abs(sg[i]);
-      if (Math.abs(lat) < edge) return ry;
-      const d = Math.abs(lat) - edge, up = lat * sg[i] > 0;
-      const near = up ? Math.min(ry + 120, ry + d * (0.3 + 1.25 * k) + lump(x, z) * 2) : Math.max(seaY - 8, ry - d * (0.3 + 1.6 * k));
+      const up = lat * sg[i] > 0, st = steepArr[i];
+      // Gentle uphill banks start just past the road edge (the slope is low,
+      // so a coarse triangle can't rise over the road); sheer ones only a
+      // grid cell out, behind their retaining wall.
+      const gentleUp = up && st <= 0.5;
+      if (Math.abs(lat) < (gentleUp ? road.width / 2 + 1.2 : edge)) return ry;
+      const d = Math.abs(lat) - edge;
+      const rise = (0.12 + 0.35 * k) * (1 - st) + (0.3 + 1.25 * k) * st;
+      const dUp = gentleUp ? Math.abs(lat) - (road.width / 2 + 1.2) : d;
+      const near = up ? Math.min(ry + 120, ry + Math.max(0, dUp) * rise + lump(x, z) * 2 * st) : Math.max(seaY - 8, ry - d * (0.3 + 1.6 * k));
       return near + (plane(x, z) - near) * smooth(90, 125, nr.d);
     };
   }
@@ -169,6 +185,7 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
   return {
     mesh, heightAt, nearestRoad, seaY,
     cliffSide: (i) => (sgArr ? sgArr[i] : 0),      // + : ground rises on the road's left
+    cliffSteep: (i) => (steepArr ? steepArr[i] : 0), // 1 : sheer, needs a retaining wall
     bounds: { minX, maxX, minZ, maxZ },
     minH, maxH, meanH: sumH / pos.count,
   };

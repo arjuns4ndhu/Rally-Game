@@ -162,7 +162,9 @@ export function buildCountry(road, { seed = 1, start = 0, finish = road.length, 
 // side(i): + when the ground climbs on the road's left (the drop is right).
 export const LEDGE = 1.0;
 
-export function buildLedge(road, { side, tunnels = [] }) {
+// steep(i): 0..1, how sheer the mountain is there; only sheer stretches get
+// a retaining wall on the uphill side.
+export function buildLedge(road, { side, steep = () => 1, tunnels = [] }) {
   const group = new THREE.Group();
   const w = road.width / 2, B = w + LEDGE;
   // Split the road into runs by which side the drop is on; tunnels have their own walls.
@@ -172,7 +174,8 @@ export function buildLedge(road, { side, tunnels = [] }) {
     const i = road.indexAt(a), sg = side(i);
     const inT = tunnels.some((t) => a > t.from && a < t.to);
     const drop = inT ? 0 : Math.abs(sg) < 0.15 ? 2 : sg > 0 ? -1 : 1;    // 2 = both sides
-    if (!cur || cur.drop !== drop) { cur = { drop, from: a, to: a }; runs.push(cur); }
+    const wall = drop !== 2 && drop !== 0 && steep(i) > 0.5;
+    if (!cur || cur.drop !== drop || cur.wall !== wall) { cur = { drop, wall, from: a, to: a }; runs.push(cur); }
     cur.to = a + 2;
   }
   const parapet = [], kerbs = [], rails = [], posts = [];
@@ -183,21 +186,23 @@ export function buildLedge(road, { side, tunnels = [] }) {
       rails.push(wallStrip(road, r.from, r.to, s * (B - 0.02), 1.0, 1.35));
       for (let a = r.from; a < r.to; a += 3) { const p = at(road, a, s * (B + 0.25)); posts.push([p.x, p.y, p.z]); }
     }
-    // The rock face on the uphill side: a solid wall of rock from the
-    // barrier line up into the slope (hides the terrain's coarse edge).
-    if (r.drop !== 2) kerbs.push(thickWall(road, r.from, r.to, B, -r.drop, 7, 3.5, 3));
+    // Where the mountain crowds the road: a masonry retaining wall holding
+    // the slope back. Elsewhere the uphill side is an open bank.
+    if (r.wall) kerbs.push(thickWall(road, r.from, r.to, B, -r.drop, 6.5, 3.5, 3));
   }
   const stone = new THREE.MeshStandardMaterial({ map: stoneTex(), roughness: 1, side: THREE.DoubleSide });
   if (parapet.length) group.add(Object.assign(new THREE.Mesh(merge(parapet), stone), { castShadow: true, receiveShadow: true }));
-  const rockTex = canvasTex(32, 32, (g, W, H) => {
-    g.fillStyle = '#8a8170'; g.fillRect(0, 0, W, H);
-    for (let k = 0; k < 90; k++) { const l = 100 + Math.random() * 70; g.fillStyle = `rgb(${l},${l - 8},${l - 22})`; g.fillRect(Math.random() * W, Math.random() * H, 2 + Math.random() * 6, 2 + Math.random() * 4); }
-  });
-  rockTex.repeat.set(1, 3);
-  if (kerbs.length) group.add(Object.assign(new THREE.Mesh(merge(kerbs), new THREE.MeshStandardMaterial({ map: rockTex, roughness: 1, side: THREE.DoubleSide, flatShading: true })), { castShadow: true, receiveShadow: true }));
+  const wallTex = stoneTex(); wallTex.repeat.set(1, 4);
+  if (kerbs.length) group.add(Object.assign(new THREE.Mesh(merge(kerbs), new THREE.MeshStandardMaterial({ map: wallTex, color: 0xd8cfbe, roughness: 1, side: THREE.DoubleSide })), { castShadow: true, receiveShadow: true }));
   const railTex = canvasTex(64, 8, (g, W, H) => { for (let x = 0; x < W; x += 16) { g.fillStyle = '#f2f2ee'; g.fillRect(x, 0, 8, H); g.fillStyle = '#c4162a'; g.fillRect(x + 8, 0, 8, H); } });
   if (rails.length) group.add(new THREE.Mesh(merge(rails), new THREE.MeshStandardMaterial({ map: railTex, roughness: 0.5, metalness: 0.3, side: THREE.DoubleSide })));
   const m4 = new THREE.Matrix4();
   instance(group, new THREE.BoxGeometry(0.1, 1.4, 0.1).translate(0, 0.7, 0), new THREE.MeshStandardMaterial({ color: 0xdedbd2 }), posts, ([x, y, z]) => m4.makeTranslation(x, y, z));
-  return { group, barrier: B };
+  // Which sides stop the car: the drop side always (the parapet), the
+  // uphill side only where there's a retaining wall.
+  const wallSide = (i, s) => {
+    const sg = side(i), drop = Math.abs(sg) < 0.15 ? 2 : sg > 0 ? -1 : 1;
+    return drop === 2 || s === drop || steep(i) > 0.5 || tunnels.some((t) => road.cum[i] > t.from && road.cum[i] < t.to);
+  };
+  return { group, barrier: B, wallSide };
 }

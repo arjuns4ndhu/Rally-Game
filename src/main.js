@@ -354,7 +354,7 @@ function loadStage(kind, seed = 0) {
   }
   // Street circuits: barriers, promenade, buildings, banners. Tunnels on
   // street and tarmac stages.
-  stage.walls = 0;
+  stage.walls = 0; stage.wallSide = null;
   if (theme.street) {
     const street = buildStreet(road, { seed, tunnels: road.tunnels, start: stage.start, finish: stage.finish, groundY: worldGround, night: weather.dark ? 1 : weather.id === 'dusk' ? 0.55 : 0, harbour });
     stageGroup.add(street.group);
@@ -367,9 +367,10 @@ function loadStage(kind, seed = 0) {
     stage.walls = lanes.barrier;
   }
   if (theme.cliff) {
-    const ledge = buildLedge(road, { side: terrain.cliffSide, tunnels: road.tunnels });
+    const ledge = buildLedge(road, { side: terrain.cliffSide, steep: terrain.cliffSteep, tunnels: road.tunnels });
     stageGroup.add(ledge.group);
     stage.walls = ledge.barrier;
+    stage.wallSide = ledge.wallSide;
   }
   if (road.tunnels?.length) {
     // On a mountain ledge the tunnel's drop side is open: a gallery over the view.
@@ -1766,6 +1767,7 @@ function hitBarriers() {
   const lat = (car.x - road.px[i]) * roadLx + (car.z - road.pz[i]) * roadLz;
   if (Math.abs(lat) <= lim) return;
   const s = Math.sign(lat), push = Math.abs(lat) - lim;
+  if (stage.wallSide && !stage.wallSide(i, s)) return;     // an open bank, not a wall
   car.x -= roadLx * s * push; car.z -= roadLz * s * push;
   const vn = (car.vx * roadLx + car.vz * roadLz) * s;       // speed into the barrier
   if (vn <= 0) return;
