@@ -24,9 +24,10 @@ for f in sorted((root / 'src').glob('*.js')) + [root / 'css' / 'style.css', root
 v = h.hexdigest()[:10]
 html = html.replace('href="css/style.css"', f'href="css/style.css?v={v}"').replace('src="src/main.js"', f'src="src/main.js?v={v}"')
 (out / 'index.html').write_text(html)
-for d in ['css', 'src', 'music']:
+for d in ['css', 'src', 'music', 'voice']:
     shutil.rmtree(out / d, ignore_errors=True)
-    shutil.copytree(root / d, out / d)
+    if (root / d).is_dir():            # voice/ only once a recorded co-driver exists
+        shutil.copytree(root / d, out / d)
 for f in (out / 'src').glob('*.js'):
     f.write_text(re.sub(r"(from\s+'\./[\w-]+\.js)'", rf"\1?v={v}'", f.read_text()))
 print('\n'.join(str(p.relative_to(out)) for p in sorted(out.rglob('*')) if p.is_file()))

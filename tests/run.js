@@ -481,6 +481,21 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await ready();
   });
 
+  await check('co-driver phrases are all in tools/voice-lines.json', async () => {
+    if (!(await S(() => !!window.__sideways))) await ready();
+    const known = new Set(JSON.parse(fs.readFileSync(path.join(ROOT, 'tools', 'voice-lines.json'), 'utf8')).phrases.map((p) => p.phrase));
+    const said = await S(() => {
+      const s = window.__sideways, out = new Set();
+      for (const [kind, seed] of [['classic', 900031], ['classic', 900122], ['classic', 900228], ['classic', 900016], ['classic', 900151], ['random', 4600123], ['random', 4900123], ['random', 5500123]]) {
+        s.loadStage(kind, seed);
+        for (const n of s.codriver.notes) for (const p of n.say.toLowerCase().replace(/!/g, '').split(',')) if (p.trim()) out.add(p.trim());
+      }
+      return [...out];
+    });
+    const missing = said.filter((p) => !known.has(p));
+    assert(!missing.length, 'phrases with no voice line: ' + missing.join(' | '));
+  });
+
   await check('phone drag steering gives analogue steer', async () => {
     const st = await S(async () => {
       const s = window.__sideways;
@@ -679,7 +694,7 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await p3.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await p3.waitForFunction(() => navigator.serviceWorker?.controller || navigator.serviceWorker?.ready.then(() => true), null, { timeout: 60000 });
     await p3.evaluate(() => navigator.serviceWorker.ready);
-    await p3.waitForFunction(async () => (await (await caches.open('sideways-v4')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
+    await p3.waitForFunction(async () => (await (await caches.open('sideways-v5')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
     await c3.setOffline(true);
     await p3.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
     const ok = await p3.waitForFunction(() => !!window.__sideways, null, { timeout: 60000 }).then(() => true).catch(() => false);

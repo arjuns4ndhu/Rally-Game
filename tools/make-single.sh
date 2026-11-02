@@ -25,3 +25,4 @@ print(sys.argv[2], len(html) // 1024, 'KB')
 PY
 rm -f "$js"
 rm -rf "$(dirname "$out")/music" && cp -r music "$(dirname "$out")/music"
+if [ -d voice ]; then rm -rf "$(dirname "$out")/voice" && cp -r voice "$(dirname "$out")/voice"; fi

@@ -12,6 +12,7 @@ import { CameraRig, TVCamera } from './camera.js';
 import { Dust, BeamDust } from './particles.js';
 import { stageK, UPGRADES, upgradedSpec, buyUpgrade, TIERS, RESTART_PENALTY, newCareer, loadCareer, saveCareer, resetCareer, seasonPlan, recordStage, standings, finishSeason, ordinal, RIVALS } from './career.js';
 import { Podium } from './podium.js';
+import { CoDriverVoice } from './voice.js';
 import { CUSTOM, PATTERNS } from './loftcar.js';
 import { buildStreet, buildTunnels, planHarbour, harbourCarve, inHarbour, buildHarbour, Fireworks } from './street.js';
 import { buildCountry, buildLedge } from './country.js';
@@ -163,8 +164,11 @@ const marks = new TyreMarks(scene);
 const audio = new AudioEngine();
 const input = new Input();
 let noteTimer = 0;
-// Pace-note signs (DiRT Rally style) across the top of the screen.
+const voice = new CoDriverVoice(audio);
+// Pace-note signs (DiRT Rally style) across the top of the screen, and
+// read out loud if the co-driver's voice is on.
 const codriver = new CoDriver((list) => {
+  if (codriver.mode === 'voice') voice.speak(list.map((n) => n.say).join(', '));
   const el = $('hud-note');
   el.innerHTML = notesHTML(list);
   el.setAttribute('aria-label', list.map((n) => n.text).join(', '));
@@ -173,7 +177,7 @@ const codriver = new CoDriver((list) => {
   noteTimer = setTimeout(() => el.classList.remove('on'), 3600);
 });
 codriver.mode = 'signs';
-try { if (localStorage.getItem('sideways.codriver') === 'off') codriver.mode = 'off'; } catch { /* ignore */ }
+try { const m = localStorage.getItem('sideways.codriver'); if (m === 'off' || m === 'voice') codriver.mode = m; } catch { /* ignore */ }
 
 // ---------- Stage ----------
 // A stage is a road plus everything built around it. Loading a new one
@@ -948,7 +952,7 @@ let running = false, paused = false;
 function start(kind = 'daily', seed) {
   perf.grace = 3; perf.time = 0; perf.frames = 0;
   // Sound must never stop the stage from starting.
-  try { audio.init(); audio.music(musicOn); } catch (err) { console.warn('audio', err); }
+  try { audio.init(); audio.music(musicOn); if (codriver.mode === 'voice') voice.loadClips(); } catch (err) { console.warn('audio', err); }
   if (schoolNext && kind === 'practice') school.start(); else school.stop();
   schoolNext = false;
   if (kind === 'daily' && seed == null) seed = dateSeed();
@@ -970,7 +974,7 @@ function start(kind = 'daily', seed) {
 function toMenu() {
   running = false; paused = false;
   stats.save();
-  codriver.stop();
+  codriver.stop(); voice.stop();
   $('pause').hidden = true; $('finish').hidden = true; $('hud').hidden = true;
   $('start').hidden = false;
   audio.resume(); audio.idle();
@@ -983,7 +987,7 @@ function setPaused(p) {
   if (!running) return;
   paused = p;
   $('pause').hidden = !p;
-  if (p) codriver.stop();
+  if (p) { codriver.stop(); voice.stop(); }
   if (p) audio.suspend(); else audio.resume();
 }
 function resetCar() {
@@ -1293,6 +1297,7 @@ try { muted = localStorage.getItem('sideways.muted') === '1'; } catch { /* ignor
 function setMuted(m) {
   muted = m;
   audio.setMuted(m);
+  voice.muted = m; if (m) voice.stop();
   $('btn-mute').setAttribute('aria-pressed', String(m));
   $('btn-mute').setAttribute('aria-label', m ? 'Unmute sound' : 'Mute sound');
   $('opt-mute').checked = m;
@@ -1387,6 +1392,7 @@ GESTURES.forEach((g) => window.addEventListener(g, firstGesture, true));
 $('opt-codriver').value = codriver.mode;
 $('opt-codriver').addEventListener('change', (e) => {
   codriver.mode = e.target.value;
+  if (codriver.mode === 'voice') { audio.init(); voice.loadClips(); voice.speak('left three, into, right four, long'); } else voice.stop();
   if (codriver.mode === 'off') $('hud-note').classList.remove('on');
   try { localStorage.setItem('sideways.codriver', codriver.mode); } catch { /* ignore */ }
   e.target.blur();

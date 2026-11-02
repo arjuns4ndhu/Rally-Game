@@ -2,7 +2,7 @@
 // is installed, and served from the cache (then refreshed in the background)
 // so it starts with no connection. Music is cached the first time each
 // track plays. Bump VERSION when the file list changes.
-const VERSION = 'sideways-v4';
+const VERSION = 'sideways-v5';
 const SHELL = [
   './',
   './index.html',
@@ -44,6 +44,7 @@ const SHELL = [
   './src/track.js',
   './src/trackside.js',
   './src/tyremarks.js',
+  './src/voice.js',
   './src/weather.js',
   'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js',
   'https://fonts.googleapis.com/css2?family=Bungee&family=Chakra+Petch:wght@400;600;700&display=swap',
