@@ -58,13 +58,17 @@ export function seasonPlan(season) {
   });
 }
 
-const THEME_K = { forest: 1, desert: 1, alpine: 0.97, autumn: 0.95, snow: 0.9, tarmac: 1.1, nightwood: 0.93 };
+const THEME_K = { forest: 1, desert: 1, alpine: 0.97, autumn: 0.95, snow: 0.9, tarmac: 1.1, nightwood: 0.93, street: 1.04, country: 0.98, cliff: 1.02 };
 const WEATHER_K = { rain: 0.93, snowfall: 0.95, night: 0.94, fog: 0.95, dusk: 0.99 };
+// How fast a stage is to drive, from its scenery and weather (1 = normal gravel).
+export function stageK(seed, fords = 0) {
+  const { theme } = pickTheme(seed);
+  const w = pickWeather(seed, theme).id;
+  return (THEME_K[theme.id] ?? 1) * (WEATHER_K[w] ?? 1) * (fords ? 0.97 : 1);
+}
 // A rival's time on a stage ({ seed, dist }), in seconds.
 export function rivalTime(rival, tier, st) {
-  const { theme } = pickTheme(st.seed);
-  const w = pickWeather(st.seed, theme).id;
-  const k = (THEME_K[theme.id] ?? 1) * (WEATHER_K[w] ?? 1) * (st.fords ? 0.97 : 1);
+  const k = stageK(st.seed, st.fords);
   const base = st.dist / (TIERS[tier].pace / 3.6 * k);
   const r = mulberry32(((st.seed * 2654435761) ^ (rival.id.charCodeAt(0) * 40503 + rival.id.length * 977)) >>> 0);
   const g = (r() + r() + r() - 1.5) * 2;                       // roughly normal, -3..3

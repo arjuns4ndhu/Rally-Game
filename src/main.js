@@ -10,7 +10,7 @@ import { THEMES, pickTheme, specialOf, SPECIAL_LABEL } from './themes.js';
 import { setupWorld, buildScenery } from './scenery.js';
 import { CameraRig, TVCamera } from './camera.js';
 import { Dust, BeamDust } from './particles.js';
-import { TIERS, RESTART_PENALTY, newCareer, loadCareer, saveCareer, resetCareer, seasonPlan, recordStage, standings, finishSeason, ordinal, RIVALS } from './career.js';
+import { stageK, TIERS, RESTART_PENALTY, newCareer, loadCareer, saveCareer, resetCareer, seasonPlan, recordStage, standings, finishSeason, ordinal, RIVALS } from './career.js';
 import { Podium } from './podium.js';
 import { buildStreet, buildTunnels } from './street.js';
 import { buildCountry, buildLedge } from './country.js';
@@ -653,7 +653,7 @@ function updateRun(q, dt) {
   if (riderFall.on && run.state === 'running') run.state = 'dnf';   // no passenger, no finish
   // 3-2-1-GO from a standstill on the line; the clock starts on GO.
   if (run.state === 'countdown') {
-    if (mp.hold) return;                 // multiplayer: on the grid until everyone's loaded
+    if (mp.hold || flyover.on) return;   // multiplayer: on the grid until everyone's loaded; or the fly-over
     run.cd -= dt;
     const n = run.cd > 3 ? null : run.cd > 0 ? Math.ceil(run.cd) : 0;
     if (n !== run.cdShown) {
@@ -685,7 +685,9 @@ function passCheckpoint() {
   run.splits.push(run.t);
   run.next++;
   const sectorTime = run.t - (k ? run.splits[k - 1] : 0);
-  const delta = best ? run.t - best.splits[k] : null;
+  // Against your best; on a first run, against gold pace for the distance so far.
+  const md = best ? null : stageMedal();
+  const delta = best ? run.t - best.splits[k] : md ? run.t - medalTimes(md, md.d).gold * (k + 1) / SECTORS : null;
   if (k === SECTORS - 1) { finishRun(); return; }
   showSplit(`S${k + 1}`, sectorTime, delta);
   audio.beep(1040, 0.1, 'square', 0.18);
@@ -727,8 +729,8 @@ function finishRun() {
   $('fin-mp').hidden = true;
   if (mpActive()) { net.set({ st: 'done', fin: Math.round(run.t * 1000) / 1000 }); mpShowFin(); }
   $('btn-retry').classList.toggle('btn-primary', $('btn-next').hidden);
-  // Classic stages: medal for this run, and the next target to chase.
-  const cl = stage.kind === 'classic' ? classicOf(stage.seed) : null;
+  // Medal for this run (every timed stage has targets), and the next to chase.
+  const cl = stageMedal();
   const medal = cl ? medalFor(cl, run.t, stage.finish - stage.start) : null;
   lastResult.medal = medal;
   $('fin-medal').hidden = !cl;
@@ -813,13 +815,21 @@ function stageLabel() {
   }
   return `${stage.name} · #${stage.seed}`;
 }
+// Medal targets: the Classics have their own; every other timed stage gets
+// targets from its length, scenery and weather.
+function stageMedal() {
+  if (stage.kind === 'practice' || !road) return null;
+  return classicOf(stage.seed) || { d: stage.finish - stage.start, k: stageK(stage.seed, (road.fords || []).length) };
+}
 function refreshStageHud() {
   const timed = stage.kind !== 'practice';
   $('hud-stage').textContent = stageLabel();
   $('pause-code').textContent = stage.kind === 'practice' ? '' : `Stage code ${stage.seed}`;
   $('btn-pcopy').hidden = stage.kind === 'practice';
   $('hud-timing').hidden = !timed;
-  $('hud-best').textContent = fmt(best?.time) + (ghostModel ? (rival ? ` · VS ${rival.nick.toUpperCase()}` : ' · GHOST') : '');
+  const md = stageMedal();
+  $('hud-best').textContent = fmt(best?.time) + (ghostModel ? (rival ? ` · VS ${rival.nick.toUpperCase()}` : ' · GHOST') : '')
+    + (md ? ` · GOLD ${fmt(medalTimes(md, md.d).gold)}` : '');
   [...$('hud-sectors').children].forEach((el, k) => {
     el.classList.toggle('done', k < run.next);
     el.classList.toggle('now', run.state === 'running' && k === run.next);
@@ -927,8 +937,10 @@ function start(kind = 'daily', seed) {
   if (kind === 'daily' && seed == null) seed = dateSeed();
   if (kind === 'random' && seed == null) seed = 100000 + Math.floor(Math.random() * 900000);
   if (kind === 'endurance' && seed == null) seed = 3e6 + Math.floor(Math.random() * 1e6);
-  if (kind !== stage.kind || seed !== stage.seed || !road || stage.detail !== qualityLevel()) loadStage(kind, seed);
+  const fresh = kind !== stage.kind || seed !== stage.seed || !road || stage.detail !== qualityLevel();
+  if (fresh) loadStage(kind, seed);
   else restartRun();
+  if (fresh && kind !== 'practice' && !mpActive() && flyover.enabled) startPreview();
   $('start').hidden = true;
   $('pause').hidden = true;
   $('hud').hidden = false;
@@ -2394,6 +2406,7 @@ function frame(now) {
   model.setCockpit(!replay.on && rig.mode === 'cockpit');
   if (!paused) drone.update(car, dt, worldGround);
   if (replay.on) { if (!paused) updateReplayCam(Math.max(dt, 1e-4)); }
+  else if (flyover.on) updatePreview();
   else rig.update(car, dt);
   world.sky.position.copy(camera.position);
   if (!paused) { dust.update(dt); updateFlyingRocks(dt); updateRider(dt); }
@@ -2465,6 +2478,63 @@ $('btn-install').addEventListener('click', async () => {
   try { await installPrompt.userChoice; } catch { /* ignore */ }
   installPrompt = null; $('btn-install').hidden = true;
 });
+
+// ---------- Loading tips and the stage fly-over ----------
+const TIPS = [
+  'Tap the brake as you turn in to kick the tail out, then hold the throttle to keep it sliding.',
+  'Lift off mid-corner to rotate the car more; counter-steer to straighten up.',
+  'The handbrake swings the tail round hairpins. Too slow for it? Try Handbrake assist in Pause → Driving.',
+  'Pace notes count down from 6 (flat out) to 1 (very tight). Hairpins are tighter still.',
+  'T puts you back at the last checkpoint for a 5 second penalty: quicker than limping back.',
+  'Shortcuts hide where the road doubles back: rough tracks marked with arrows.',
+  'Crests go light: lift a little before them or the car lands wherever it likes.',
+  'Rain cuts grip and darkens the road. Brake earlier and be gentle.',
+  'Tarmac grips far more than gravel: you can carry much more speed into corners.',
+  'Each stage has bronze, silver and gold targets. Gold pace is shown at the top of the screen.',
+  'Race a friend\'s ghost from the finish-screen leaderboard with the Race button.',
+  'Multiplayer: make a private lobby and send your friends the code.',
+  'C changes camera. Try the cockpit view for maximum fear.',
+  'Every stage has a code (Pause menu). Share it and your friends drive exactly the same road.',
+  'In career, restarting costs 10 seconds. Survive first, then go fast.',
+  'Watch the replay after a finish: slow-mo, six cameras, and you can save a clip.',
+];
+// Before the countdown on a newly loaded stage: the camera sweeps along the
+// first part of the road, high up, then drops back to the car. Any key,
+// tap or button skips it.
+const flyover = { on: false, enabled: true, t0: 0, dur: 6000 };
+try { flyover.enabled = localStorage.getItem('sideways.preview') !== '0' && !navigator.webdriver; } catch { /* ignore */ }
+$('opt-preview').checked = flyover.enabled;
+$('opt-preview').addEventListener('change', (e) => {
+  flyover.enabled = e.target.checked;
+  try { localStorage.setItem('sideways.preview', e.target.checked ? '1' : '0'); } catch { /* ignore */ }
+});
+function startPreview() {
+  flyover.on = true; flyover.t0 = performance.now();
+  const el = $('hud-count'); el.textContent = 'STAGE PREVIEW · ANY KEY SKIPS'; el.classList.add('wait'); el.classList.remove('go'); el.hidden = false;
+}
+function endPreview() {
+  if (!flyover.on) return;
+  flyover.on = false;
+  const el = $('hud-count'); el.classList.remove('wait'); el.hidden = true;
+  camera.fov = 70; camera.updateProjectionMatrix();
+  rig.snap(car);
+}
+function updatePreview() {
+  const u = Math.min(1, (performance.now() - flyover.t0) / flyover.dur);
+  if (u >= 1 || !running) { endPreview(); return; }
+  const span = Math.min(900, (stage.finish - stage.start) * 0.5);
+  const e = u * u * (3 - 2 * u);
+  const a = stage.start + 40 + e * span;
+  const p = road.indexAt(a), q = road.indexAt(Math.min(road.length - 1, a + 70));
+  const h = 34 - 10 * Math.sin(u * Math.PI);
+  camera.position.set(road.px[p] - road.tx[p] * 30 + road.tz[p] * 12, road.py[p] + h, road.pz[p] - road.tz[p] * 30 - road.tx[p] * 12);
+  camera.lookAt(road.px[q], road.py[q], road.pz[q]);
+  camera.fov = 55; camera.updateProjectionMatrix();
+}
+const skipPreview = () => { if (flyover.on) endPreview(); };
+window.addEventListener('keydown', skipPreview, true);
+window.addEventListener('pointerdown', skipPreview, true);
+input.on('pad', skipPreview);
 
 // ---------- Multiplayer ----------
 function mpActive() { return !!(net.inLobby && mp.race && road && stage.seed === mp.race.seed && stage.kind === mp.race.kind); }
@@ -2855,6 +2925,7 @@ function launchStage(p) {
   if (!needLoad) { go(); return; }
   starting = true;
   $('loading-name').textContent = stageTitle(p.kind, p.seed);
+  $('loading-tip').innerHTML = `<b>Tip:</b> ${TIPS[Math.floor(Math.random() * TIPS.length)]}`;
   $('loading').hidden = false;
   requestAnimationFrame(() => requestAnimationFrame(go));
 }
@@ -3020,7 +3091,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, hitBarriers, net, mp, mpActive, mpCreate, mpJoin, mpStartRace, mpToLobby, remote, inTunnelAt, get career() { return career; }, set career(c) { career = c; }, get careerRun() { return careerRun; }, startCareerStage, careerNext, showPodium, renderCareer, finishRun, echo, measureEcho, replay, startReplay, stopReplay, replayCam, toggleClip, clip, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
+  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, hitBarriers, flyover, net, mp, mpActive, mpCreate, mpJoin, mpStartRace, mpToLobby, remote, inTunnelAt, get career() { return career; }, set career(c) { career = c; }, get careerRun() { return careerRun; }, startCareerStage, careerNext, showPodium, renderCareer, finishRun, echo, measureEcho, replay, startReplay, stopReplay, replayCam, toggleClip, clip, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver, crash, get riderFall() { return riderFall; },
