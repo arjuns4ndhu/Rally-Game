@@ -70,7 +70,8 @@ export function buildTunnels(road, tunnels, { rock = false, seed = 1 } = {}) {
   const group = new THREE.Group();
   if (!tunnels.length) return group;
   const W = road.width / 2 + BARRIER_GAP;
-  const prof = [[-W, 0], [-W, 4.4], [-W * 0.72, 5.6], [0, 6.1], [W * 0.72, 5.6], [W, 4.4], [W, 0]];
+  // Walls run down below the road so nothing shows underneath on a ledge.
+  const prof = [[-W, -3], [-W, 4.4], [-W * 0.72, 5.6], [0, 6.1], [W * 0.72, 5.6], [W, 4.4], [W, -3]];
   const inner = new THREE.MeshStandardMaterial({ color: rock ? 0x6d655c : 0xb9b4aa, roughness: 0.95, side: THREE.DoubleSide, flatShading: true });
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe2a8 });
   const stripeMat = new THREE.MeshStandardMaterial({ color: 0xf2c230, roughness: 0.6, side: THREE.DoubleSide });
@@ -92,6 +93,21 @@ export function buildTunnels(road, tunnels, { rock = false, seed = 1 } = {}) {
     const tube = new THREE.Mesh(g, inner);
     tube.castShadow = true; tube.receiveShadow = true;
     group.add(tube);
+    // Kerbed walkways from the road edge to each wall (no gap at the sides).
+    for (const sd of [-1, 1]) {
+      const pos2 = [];
+      let pv = null;
+      for (let a = t.from; a <= t.to + 0.01; a += 2) {
+        const p0 = at(road, a, sd * (road.width / 2 - 0.05)), p1 = at(road, a, sd * W);
+        const cur = [[p0.x, p0.y + 0.05, p0.z], [p1.x, p1.y + 0.18, p1.z]];
+        if (pv) pos2.push(...pv[0], ...cur[0], ...cur[1], ...pv[0], ...cur[1], ...pv[1]);
+        pv = cur;
+      }
+      const fg = new THREE.BufferGeometry();
+      fg.setAttribute('position', new THREE.Float32BufferAttribute(pos2, 3));
+      fg.computeVertexNormals();
+      group.add(Object.assign(new THREE.Mesh(fg, new THREE.MeshStandardMaterial({ color: 0x8f8a80, roughness: 0.95, side: THREE.DoubleSide })), { receiveShadow: true }));
+    }
     // Yellow and black hazard band along the bottom of each wall.
     for (const s of [-1, 1]) group.add(new THREE.Mesh(wallStrip(road, t.from, t.to, s * (W - 0.02), 0.2, 0.9), stripeMat));
     // Portals: a thick frame at each end.

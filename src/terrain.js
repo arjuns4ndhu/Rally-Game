@@ -77,7 +77,9 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
       const nr = nearestRoad(x, z);
       if (!nr) return plane(x, z);
       const i = nr.i, lat = (x - road.px[i]) * road.tz[i] - (z - road.pz[i]) * road.tx[i];
-      const ry = road.py[i] - 0.6, edge = road.width / 2 + 1.8, k = Math.abs(sg[i]);
+      // The rise starts a whole grid cell out from the barriers, so no ground
+      // triangle can reach from road level up the slope across the road.
+      const ry = road.py[i] - 0.6, edge = road.width / 2 + 2.2 + cell, k = Math.abs(sg[i]);
       if (Math.abs(lat) < edge) return ry;
       const d = Math.abs(lat) - edge, up = lat * sg[i] > 0;
       const near = up ? Math.min(ry + 120, ry + d * (0.3 + 1.25 * k) + lump(x, z) * 2) : Math.max(seaY - 8, ry - d * (0.3 + 1.6 * k));
