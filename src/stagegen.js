@@ -256,6 +256,27 @@ export function generateStage(seed) {
   // Tarmac stages keep only one jump (they're for sliding, not flying).
   const special = specialOf(seed);
   if (special === 'tarmac') { let j = 0; for (let k = bumps.length - 1; k >= 0; k--) if (bumps[k].kind === 'jump' && j++ >= 1) bumps.splice(k, 1); }
+  // Street circuits: no jumps (a car flying in a town is a bad idea) and
+  // only gentle crests.
+  if (special === 'street') { for (let k = bumps.length - 1; k >= 0; k--) if (bumps[k].kind === 'jump') bumps.splice(k, 1); else bumps[k].h = Math.min(bumps[k].h, 0.8); }
+  // Tunnels: one long curving one on street circuits (plus a short one
+  // sometimes), one through a hillside on tarmac stages. Never on a jump or
+  // crest, or where a sector gantry stands.
+  const tunnels = [];
+  if (special === 'street' || special === 'tarmac') {
+    const fin = total - 70, gates = [24, fin, ...[1, 2, 3, 4].map((k) => 24 + (fin - 24) * k / 5)];
+    const want = special === 'street' ? [[180, 280], ...(brand() < 0.5 ? [[70, 110]] : [])] : [[80, 150]];
+    for (const [lo, hi] of want) {
+      for (let tries = 0; tries < 80; tries++) {
+        const len = lo + brand() * (hi - lo), from = 90 + brand() * (fin - len - 180), to = from + len;
+        const near = (a) => a > from - 30 && a < to + 30;
+        if (gates.some(near) || bumps.some((b) => near(b.at)) || tunnels.some((t) => from < t.to + 120 && to > t.from - 120)) continue;
+        tunnels.push({ from, to });
+        break;
+      }
+    }
+    tunnels.sort((a, b) => a.from - b.from);
+  }
   // River stages: two to four fords where a shallow river runs across the
   // road, on straights or gentle bends away from jumps and crests.
   const fords = [];
@@ -284,8 +305,8 @@ export function generateStage(seed) {
   const counts = {};
   segs.forEach((s) => (counts[s.type] = (counts[s.type] || 0) + 1));
   return {
-    seed, name: stageName(seed), points: pts, width: 7.5,
+    seed, name: stageName(seed), points: pts, width: special === 'street' ? 9 : 7.5,
     runout: 70,   // metres of road after the finish line
-    counts, bumps, fords, special, theme: theme.id, hilliness,
+    counts, bumps, fords, tunnels, special, theme: theme.id, hilliness,
   };
 }

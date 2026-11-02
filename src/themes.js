@@ -64,6 +64,17 @@ export const THEMES = {
     hills: 0x8b8452, heightAmp: 1.3, hillAmp: 1.3, maxGrade: 0.13,
     names: ['Corniche', 'Terraces', 'Vineyards', 'Coast Road', 'Bends'],
   },
+  // Street circuit: a harbour town, barriers both sides, a long tunnel.
+  street: {
+    id: 'street', label: 'Street',
+    sky: { top: '#2a63b8', horizon: '#f2dcc0', fog: '#d8c9b4', fogDensity: 0.0038, sunGlow: [1.0, 0.85, 0.6] },
+    light: { hemiSky: '#fff2de', hemiGround: '#7a7266', hemi: 1.6, sun: '#fff0d6', sunI: 2.5, sunDir: [-0.45, 0.7, -0.5] },
+    ground: { base: '#a39d90', dark: [130, 126, 116], light: [200, 194, 182], tintLow: [1.0, 0.98, 0.95], tintHigh: [1.04, 1.0, 0.96], rock: [0.6, 0.58, 0.55] },
+    road: { base: '#4b4d52', rut: [28, 28, 30], edge: [235, 235, 228], stone: [-30, -30, -28], verge: 0x9a958a, grip: 1.12, dust: [0.5, 0.5, 0.5], lines: true, sealed: true },
+    trees: [['broadleaf', 1]], treeDensity: 0.12, rockDensity: 0, rockColor: [0.1, 0.05, 0.6],
+    hills: 0x8d8678, heightAmp: 0.9, hillAmp: 1.2, maxGrade: 0.11, street: true,
+    names: ['Harbour', 'Casino Hill', 'Promenade', 'Old Town', 'Marina'],
+  },
   nightwood: {
     id: 'nightwood', label: 'Night forest',
     sky: { top: '#2a3a5c', horizon: '#d9a877', fog: '#c79a72', fogDensity: 0.0095, sunGlow: [1.0, 0.75, 0.45] },
@@ -80,10 +91,10 @@ const ORDER = ['forest', 'desert', 'snow', 'alpine', 'autumn'];
 
 // Special stage types by code: tarmac, night forest, river crossings.
 export function specialOf(seed) {
-  if (!(seed >= 4e6 && seed < 4.9e6)) return null;
-  return ['tarmac', 'night', 'river'][Math.floor((seed - 4e6) / 3e5)];
+  if (!(seed >= 4e6 && seed < 5.2e6)) return null;
+  return ['tarmac', 'night', 'river', 'street'][Math.floor((seed - 4e6) / 3e5)];
 }
-export const SPECIAL_LABEL = { tarmac: 'Tarmac', night: 'Night forest', river: 'River crossings' };
+export const SPECIAL_LABEL = { tarmac: 'Tarmac', night: 'Night forest', river: 'River crossings', street: 'Street circuit' };
 
 // Theme plus a per-stage hilliness multiplier, both from the seed.
 export function pickTheme(seed) {
@@ -92,6 +103,7 @@ export function pickTheme(seed) {
   const sp = specialOf(seed);
   if (sp === 'tarmac') theme = THEMES.tarmac;
   else if (sp === 'night') theme = THEMES.nightwood;
+  else if (sp === 'street') theme = THEMES.street;
   else if (sp === 'river') theme = THEMES[['forest', 'autumn', 'alpine'][Math.floor(r() * 3)]];
   const hilliness = 0.6 + r() * 1.0;        // 0.6 (flat and fast) .. 1.6 (big hills)
   return { theme, hilliness };

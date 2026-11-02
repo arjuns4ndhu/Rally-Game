@@ -12,6 +12,7 @@ import { CameraRig, TVCamera } from './camera.js';
 import { Dust, BeamDust } from './particles.js';
 import { TIERS, RESTART_PENALTY, newCareer, loadCareer, saveCareer, resetCareer, seasonPlan, recordStage, standings, finishSeason, ordinal, RIVALS } from './career.js';
 import { Podium } from './podium.js';
+import { buildStreet, buildTunnels } from './street.js';
 import { AudioEngine } from './audio.js';
 import { DrivingSchool } from './school.js';
 import { Input, ACTIONS, BINDS, bindKey, resetKeys, isDriveKey, keyLabel, FEEL, saveFeel } from './input.js';
@@ -235,6 +236,7 @@ function loadStage(kind, seed = 0) {
     road = new Road(def.points, { width: def.width, closed: false });
     road.applyBumps(def.bumps);
     road.applyFords(def.fords);
+    road.tunnels = def.tunnels || [];
     runout = def.runout;
     stage.name = def.name;
   }
@@ -250,7 +252,7 @@ function loadStage(kind, seed = 0) {
   };
   // Shortcuts (stages only): rough tracks across where the road doubles back.
   let cuts = [];
-  if (kind !== 'practice') {
+  if (kind !== 'practice' && !theme.street) {        // barriers on street circuits: no way across
     const st = 24, fin = road.length - runout;
     const cps = [1, 2, 3, 4].map((k) => st + (fin - st) * k / SECTORS);
     cuts = findShortcuts(road, { checkpoints: cps, start: st, finish: fin });
@@ -319,7 +321,7 @@ function loadStage(kind, seed = 0) {
     for (let k = 0; k < SECTORS - 1; k++) stageGroup.add(buildGate(road, stage.cps[k], `S${k + 2}`, 'sector'));
     stageGroup.add(buildGate(road, stage.finish, 'FINISH', 'finish'));
   }
-  hazards = kind === 'practice' || kind === 'classic' ? null : buildHazards(road, {
+  hazards = kind === 'practice' || kind === 'classic' || theme.street ? null : buildHazards(road, {
     seed, theme, groundY: worldGround, start: stage.start, finish: stage.finish, cps: stage.cps, corners: road.findSharpCorners(),
   });
   if (hazards) stageGroup.add(hazards.group);
@@ -330,6 +332,19 @@ function loadStage(kind, seed = 0) {
     stageGroup.add(trackside.group);
     buildObstacleGrid([...builtObstacles, ...trackside.obstacles]);
   }
+  // Street circuits: barriers, promenade, buildings, banners. Tunnels on
+  // street and tarmac stages.
+  stage.walls = 0;
+  if (theme.street) {
+    const street = buildStreet(road, { seed, tunnels: road.tunnels, start: stage.start, finish: stage.finish, groundY: worldGround, night: weather.dark ? 1 : weather.id === 'dusk' ? 0.55 : 0 });
+    stageGroup.add(street.group);
+    stage.walls = street.barrier;
+  }
+  if (road.tunnels?.length) {
+    stageGroup.add(buildTunnels(road, road.tunnels, { rock: !theme.street, seed }));
+    road.tunnels.forEach((t, k) => { if (t.from > 90) stageGroup.add(buildSign(road, t.from - 60, 'TUNNEL', k % 2 ? 1 : -1)); });
+  }
+  stage.lamps = headlights[0].intensity;
   scene.add(stageGroup);
   minimap.build(road, kind === 'practice'
     ? { closed: true }
@@ -404,7 +419,9 @@ function measureEcho() {
       if (k > 0.5) near = Math.min(near, d);
     }
   }
-  const rock = { desert: 1.15, alpine: 1, snow: 0.8, autumn: 0.65, forest: 0.55 }[stage.theme?.id] ?? 0.7;
+  // In a tunnel: a short, hard echo all round.
+  if (inTunnelAt(roadAlong)) { echo.k = 1; echo.delay = 0.09; return; }
+  const rock = { desert: 1.15, alpine: 1, snow: 0.8, autumn: 0.65, forest: 0.55, street: 0.9 }[stage.theme?.id] ?? 0.7;
   echo.k = Math.min(1, (Math.min(wall[0], wall[1]) * 0.95 + Math.max(wall[0], wall[1]) * 0.25) * rock);
   echo.delay = 0.16 + near * 2 / 343 + 0.05;
 }
@@ -1085,7 +1102,7 @@ $('btn-daily').addEventListener('click', () => pickThenStart('daily'));
 // code that gives them (the code alone still decides everything, so it can
 // be shared like any other).
 const GEN = {
-  type: [['gravel', 'Gravel'], ['tarmac', 'Tarmac'], ['night', 'Night forest'], ['river', 'River crossings']],
+  type: [['gravel', 'Gravel'], ['tarmac', 'Tarmac'], ['street', 'Street circuit'], ['night', 'Night forest'], ['river', 'River crossings']],
   theme: [['any', 'Any'], ['forest', 'Forest'], ['desert', 'Canyon'], ['snow', 'Snow'], ['alpine', 'Alpine'], ['autumn', 'Autumn']],
   weather: [['any', 'Any'], ['clear', 'Clear'], ['overcast', 'Overcast'], ['dusk', 'Dusk'], ['fog', 'Fog'], ['rain', 'Rain / snowfall'], ['night', 'Night']],
   hills: [['any', 'Any'], ['flat', 'Flat'], ['rolling', 'Rolling'], ['big', 'Big hills']],
@@ -1097,7 +1114,7 @@ try { Object.assign(gen, JSON.parse(localStorage.getItem('sideways.gen') || '{}'
 // Tarmac and night forest have their own scenery; night forest is always
 // at night; river stages run through forest, autumn or alpine country.
 const genBlocked = (k, v) => (k === 'weather' && v === 'rain' && gen.theme === 'desert') || (k === 'theme' && v === 'desert' && gen.weather === 'rain')
-  || (k === 'theme' && v !== 'any' && (gen.type === 'tarmac' || gen.type === 'night'))
+  || (k === 'theme' && v !== 'any' && (gen.type === 'tarmac' || gen.type === 'night' || gen.type === 'street'))
   || (k === 'theme' && gen.type === 'river' && ['desert', 'snow'].includes(v))
   || (k === 'weather' && gen.type === 'night' && !['any', 'night'].includes(v));
 function renderGen() {
@@ -1109,7 +1126,7 @@ function renderGen() {
   }
 }
 // Codes: 100000-999999 gravel; 4000000+ the special types, 300000 each.
-const TYPE_BASE = { tarmac: 4e6, night: 4.3e6, river: 4.6e6 };
+const TYPE_BASE = { tarmac: 4e6, night: 4.3e6, river: 4.6e6, street: 4.9e6 };
 function genSeed() {
   for (let n = 0; n < 20000; n++) {
     const seed = gen.type in TYPE_BASE ? TYPE_BASE[gen.type] + Math.floor(Math.random() * 3e5) : 100000 + Math.floor(Math.random() * 900000);
@@ -1668,6 +1685,33 @@ function collide() {
     }
   }
 }
+// Street circuits: a steel barrier along each edge. Hitting it pushes the
+// car back onto the road, bouncing off the speed going into it, with sparks
+// and a bang for a real hit and a scrape for a brush.
+function hitBarriers() {
+  if (!stage.walls || !road) return;
+  const i = roadHint, lim = stage.walls - 0.95;
+  const lat = (car.x - road.px[i]) * roadLx + (car.z - road.pz[i]) * roadLz;
+  if (Math.abs(lat) <= lim) return;
+  const s = Math.sign(lat), push = Math.abs(lat) - lim;
+  car.x -= roadLx * s * push; car.z -= roadLz * s * push;
+  const vn = (car.vx * roadLx + car.vz * roadLz) * s;       // speed into the barrier
+  if (vn <= 0) return;
+  car.vx -= roadLx * s * vn * 1.25; car.vz -= roadLz * s * vn * 1.25;
+  car.vx *= 0.992; car.vz *= 0.992;                         // scrub along it
+  car.yawRate *= 0.85;
+  const wx = car.x + roadLx * s * 0.9, wz = car.z + roadLz * s * 0.9;
+  if (vn > 2) {
+    audio.thud(Math.min(0.9, 0.2 + vn / 14));
+    input.rumble(Math.min(1, vn / 10), 0.6, 160);
+    shakeKick = Math.max(shakeKick, Math.min(0.3, vn * 0.03));
+    sparks(wx, (car.y ?? 0) + 0.5, wz, 6 + vn * 3, car.vx, car.vz);
+    if (vn > 5) dentAt(wx, wz, Math.min(0.2, vn * 0.015));
+    if (vn > CRASH_SPEED * 1.3) crash(vn);
+  } else if (car.speed > 6 && Math.random() < 0.3) sparks(wx, (car.y ?? 0) + 0.4, wz, 2, car.vx, car.vz);
+}
+function inTunnelAt(along) { return (road?.tunnels || []).some((t) => along > t.from && along < t.to); }
+
 // Cosmetic dent where the car touched something (world x/z).
 function dentAt(wx, wz, depth) {
   const dx = wx - car.x, dz = wz - car.z, c = Math.cos(car.yaw), sn = Math.sin(car.yaw);
@@ -1918,6 +1962,7 @@ function stepPhysics(dt, inp) {
     const rough = surface.name === 'grass' ? 0.22 : surface === RUBBLE ? 0.3 : surface.dustK > 1.3 ? 0.12 : 0;
     if (rough) input.rumble(rough * Math.min(1, car.speed / 20), rough, 90);
   }
+  hitBarriers();
   collide();
   knockRocks();
   // Stuck off the road (crawling for 4 s while trying to drive): put back.
@@ -2301,6 +2346,15 @@ function frame(now) {
   if (!paused && trackside) crowdNoise = trackside.update(dt, car.x, car.z, { air: car.air && car.airTime > 0.1, speed: car.speed, dark: lampGlow > 0.6 }) || 0;
   if (!paused && (echoT -= dt) <= 0) { echoT = 0.25; measureEcho(); }
   if (skyPlan && road) updateSky(replay.on ? replay.along : roadAlong);
+  // Tunnels: lights on inside, back to how they were outside.
+  if (road?.tunnels?.length) {
+    const inside = inTunnelAt(replay.on ? replay.along : roadAlong);
+    const want = Math.max(stage.lamps || 0, inside ? 110 : 0);
+    if (headlights[0].intensity !== want) { headlights.forEach((l) => { l.intensity = want; }); model.setGlow(Math.max(lampGlow, inside ? 0.9 : 0)); }
+    // No rain or snow under the roof.
+    if (rain.group) rain.group.visible = !inside;
+    if (precip.mesh) precip.mesh.visible = !inside;
+  }
   if (!paused) beamDust.update(dt, car, headlights[0].intensity / 140 * (lampGlow > 0.6 ? 1 : 0), stage.theme?.id === 'nightwood' ? 2 : 0.8);
   if (!paused) { precip.update(dt, camera, { x: car.vx, z: car.vz }); rain.update(dt, camera, { x: car.vx, z: car.vz }, car.y); }
   wasSplash = !!surface.splash;
@@ -2734,7 +2788,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, get career() { return career; }, set career(c) { career = c; }, get careerRun() { return careerRun; }, startCareerStage, careerNext, showPodium, renderCareer, finishRun, echo, measureEcho, replay, startReplay, stopReplay, replayCam, toggleClip, clip, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
+  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, hitBarriers, inTunnelAt, get career() { return career; }, set career(c) { career = c; }, get careerRun() { return careerRun; }, startCareerStage, careerNext, showPodium, renderCareer, finishRun, echo, measureEcho, replay, startReplay, stopReplay, replayCam, toggleClip, clip, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver, crash, get riderFall() { return riderFall; },

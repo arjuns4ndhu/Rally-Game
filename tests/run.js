@@ -100,7 +100,7 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
   await check('no rock, tree or prop reaches into the road (Classics + random)', async () => {
     const bad = await S(() => {
       const s = window.__sideways, out = [];
-      for (const [kind, seed] of [['classic', 900031], ['classic', 900122], ['classic', 900228], ['classic', 900016], ['classic', 900151], ['random', 274801], ['random', 512345], ['random', 4000123], ['random', 4300123], ['random', 4600123]]) {
+      for (const [kind, seed] of [['classic', 900031], ['classic', 900122], ['classic', 900228], ['classic', 900016], ['classic', 900151], ['random', 274801], ['random', 512345], ['random', 4000123], ['random', 4300123], ['random', 4600123], ['random', 4900123]]) {
         s.loadStage(kind, seed);
         const road = s.road;
         s.obGrid.forEach((list) => { for (const o of list) {
@@ -408,6 +408,28 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     assert(next.season === 2 && next.tier === 1 && next.rally === 0 && next.page, 'next season: ' + JSON.stringify(next));
   });
 
+  await check('street circuit: barriers keep the car on the road, tunnels light up', async () => {
+    if (!(await S(() => !!window.__sideways))) await ready();
+    const r = await S(() => {
+      const s = window.__sideways;
+      s.loadStage('random', 4900123);
+      const R = s.road, i = R.indexAt(400);
+      s.placeOnRoad(i); s.run.state = 'racing';
+      // Fire the car sideways at the barrier and let it run for a second.
+      const lx = R.tz[i], lz = -R.tx[i];
+      s.car.vx = lx * 15; s.car.vz = lz * 15;
+      s.stepSim(1, { throttle: 0, brake: 0, steer: 0, handbrake: false });
+      const j = R.nearest(s.car.x, s.car.z).i;
+      const lat = (s.car.x - R.px[j]) * R.tz[j] + (s.car.z - R.pz[j]) * -R.tx[j];
+      return { walls: s.stage.walls, lat, half: R.width / 2, tunnels: R.tunnels.length, inside: s.inTunnelAt((R.tunnels[0].from + R.tunnels[0].to) / 2), notes: s.codriver.notes.some((n) => n.kind === 'tunnel') };
+    });
+    assert(r.walls > 0 && Math.abs(r.lat) <= r.walls, 'barrier did not hold: ' + JSON.stringify(r));
+    assert(r.tunnels >= 1 && r.inside && r.notes, 'tunnel: ' + JSON.stringify(r));
+    if (!(await S(() => !!window.__bot))) await page.addScriptTag({ path: path.join(__dirname, 'bot.js') });
+    const b = await S(() => { let x = window.__bot('vector', 'random', 4900123, { sign: -1, maxT: 260, gripK: 0.62 }); if (!x.done) x = window.__bot('vector', 'random', 4900123, { sign: -1, maxT: 260, gripK: 0.55 }); delete x.trace; return x; });
+    assert(b.done, 'test driver did not finish the street stage: ' + JSON.stringify(b));
+  });
+
   await check('phone drag steering gives analogue steer', async () => {
     const st = await S(async () => {
       const s = window.__sideways;
@@ -536,7 +558,7 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await p3.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await p3.waitForFunction(() => navigator.serviceWorker?.controller || navigator.serviceWorker?.ready.then(() => true), null, { timeout: 60000 });
     await p3.evaluate(() => navigator.serviceWorker.ready);
-    await p3.waitForFunction(async () => (await (await caches.open('sideways-v1')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
+    await p3.waitForFunction(async () => (await (await caches.open('sideways-v2')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
     await c3.setOffline(true);
     await p3.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
     const ok = await p3.waitForFunction(() => !!window.__sideways, null, { timeout: 60000 }).then(() => true).catch(() => false);

@@ -28,9 +28,9 @@ export const POINTS = [25, 18, 15, 12, 10, 8, 6, 4];
 const RALLY_NAMES = ['Rally Nordvik', 'Rally Sierra Alta', 'Rally Isola Verde', 'Lakeland Rally', 'Rally Dunmore', 'Rally Altavista',
   'Highland Stages', 'Rally Costa Brava Nova', 'Rally Kaskadi', 'Rally Ardenwald', 'Rally Pampas Sur', 'Glenmoor Rally'];
 // Each season: two gravel rallies, one on tarmac, one with a twist.
-const RALLY_TYPES = [['gravel', 'tarmac', 'gravel', 'night'], ['gravel', 'river', 'tarmac', 'gravel'], ['night', 'gravel', 'tarmac', 'river']];
-const TYPE_LABEL = { gravel: 'Gravel', tarmac: 'Tarmac', night: 'Night forest', river: 'River crossings' };
-const TYPE_BASE = { gravel: [100000, 900000], tarmac: [4e6, 3e5], night: [4.3e6, 3e5], river: [4.6e6, 3e5] };
+const RALLY_TYPES = [['gravel', 'tarmac', 'gravel', 'night'], ['gravel', 'river', 'tarmac', 'street'], ['night', 'street', 'tarmac', 'river']];
+const TYPE_LABEL = { gravel: 'Gravel', tarmac: 'Tarmac', night: 'Night forest', river: 'River crossings', street: 'Street circuit' };
+const TYPE_BASE = { gravel: [100000, 900000], tarmac: [4e6, 3e5], night: [4.3e6, 3e5], river: [4.6e6, 3e5], street: [4.9e6, 3e5] };
 
 export function newCareer() {
   return { v: 1, season: 1, tier: 0, rally: 0, stage: 0, points: {}, rallyTimes: [], rallyStages: [], restarts: 0, results: [], car: null };
