@@ -31,9 +31,26 @@ export class Net {
     return !!this.room;
   }
 
+  // A lobby lives in the page's main room (everyone who can open the page is
+  // in it; claude.ai can refuse separate named rooms to some viewers). Each
+  // player carries the lobby code in their presence, and only players with
+  // the same code count as being in the lobby.
+  lobbyView(code) {
+    const room = this.room;
+    let mine = {};
+    const inLobby = (p) => p.kind === 'viewer' && (p.sameTab || p.presence?.lb === code);
+    return {
+      peers: () => room.peers().filter(inLobby),
+      onPeers: (fn, onErr) => room.onPeers((ch) => fn({ ...ch, peers: ch.peers.filter(inLobby) }), onErr),
+      onConnection: (fn, onErr) => room.onConnection(fn, onErr),
+      presence: (patch) => { mine = { ...mine, ...patch }; return room.presence({ ...patch, lb: code }); },
+      leave: () => room.presence(Object.fromEntries([...Object.keys(mine), 'lb'].map((k) => [k, null]))),
+    };
+  }
+
   async join(code, presence) {
     await this.leave();
-    this.lobby = await this.room.join(`race-${code}`);
+    this.lobby = this.lobbyView(code);
     this.code = code;
     const fail = (e) => { this.lastError = e?.code || 'upstream_error'; this.onStatus?.(false, this.lastError); };
     this.unsub = this.lobby.onPeers((ch) => { this.peers = ch.peers; this.onChange?.(ch); }, fail);

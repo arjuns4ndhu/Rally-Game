@@ -676,7 +676,16 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
           };
         },
       };
-      window.claude = { use: async (n) => (n === 'room' ? room : null) };
+      // The page's main room, as the game now uses it (no named rooms).
+      let lobbyRoom = null, joining = null;
+      const main = {
+        peers: () => lobbyRoom ? lobbyRoom.peers() : [], onPeers: (h) => { main.ensure().then((r) => r.onPeers(h)); return () => {}; },
+        onConnection: (h) => { setTimeout(() => h(true), 0); return () => {}; }, connected: () => true,
+        presence: async (patch) => (await main.ensure()).presence(patch),
+        ensure: () => (joining ||= room.join('main').then((r) => (lobbyRoom = r))),
+        join: async () => { throw Object.assign(new Error('no named rooms'), { code: 'not_permitted' }); },
+      };
+      window.claude = { use: async (n) => (n === 'room' ? main : null) };
     });
     await page.goto('about:blank');
     const A = await cm.newPage(), B = await cm.newPage();
@@ -697,7 +706,10 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     assert(setupB, 'joiner did not see the host setup');
     await A.evaluate(() => window.__sideways.mpStartRace());
     // Both load, line up on the grid, and get the go.
-    for (const p of [A, B]) await p.waitForFunction(() => { const s = window.__sideways; return s.mpActive() && s.run.state === 'running'; }, null, { timeout: 120000 });
+    for (const p of [A, B]) await p.waitForFunction(() => { const s = window.__sideways; return s.mpActive() && s.run.state === 'running'; }, null, { timeout: 120000 }).catch(async (e) => {
+      const d = await Promise.all([A, B].map((q) => q.evaluate(() => { const s = window.__sideways; return { active: s.mpActive(), st: s.run.state, hold: s.mp.hold, race: s.mp.race, peers: s.net.peers.map((p) => ({ me: p.sameTab, st: p.presence.st, rid: p.presence.rid, host: p.presence.host, race: p.presence.race })) }; })));
+      throw new Error(e.message + ' ' + JSON.stringify(d));
+    });
     const grid = await Promise.all([A, B].map((p) => p.evaluate(() => window.__sideways.mp.slot)));
     assert(new Set(grid).size === 2, 'both cars in the same grid slot: ' + grid);
     // Each sees the other's car.
