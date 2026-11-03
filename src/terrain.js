@@ -117,6 +117,25 @@ export function buildTerrain(road, { seed = 1, flat = false, grassMap = null, ba
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     H[j * nx + i] = heightRaw(minX + i * cell, minZ + j * cell);
   }
+  // Mountain edge: the ground is steep right next to the road, and a grid
+  // triangle reaching from a high point across the road would stick up
+  // through the tarmac. Every grid point that close to any part of the road
+  // is held down at road level (the verge shoulders and walls cover the step).
+  if (cliffH) {
+    const near = road.width / 2 + cell * 1.5;
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+      const x = minX + i * cell, z = minZ + j * cell;
+      // Every bit of road within reach (hairpins put two stretches close).
+      const cx = Math.floor(x / RC), cz = Math.floor(z / RC);
+      let low = Infinity;
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+        for (const k of rgrid.get(`${cx + dx},${cz + dz}`) || []) {
+          if ((road.px[k] - x) ** 2 + (road.pz[k] - z) ** 2 < near * near) low = Math.min(low, road.py[k]);
+        }
+      }
+      if (low < Infinity) H[j * nx + i] = Math.min(H[j * nx + i], low - 0.6);
+    }
+  }
 
   // Height on the mesh's own triangles (PlaneGeometry splits each cell
   // along the (i+1, j) - (i, j+1) diagonal), so things placed on the ground

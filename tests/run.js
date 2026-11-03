@@ -453,6 +453,20 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
       out.done = x.done; out.t = x.t;
       return out;
     }));
+    // No ground pokes up through the road on mountain-edge stages.
+    const poke = await S(() => {
+      const s = window.__sideways, out = [];
+      for (const seed of [5500123, 5600042, 5700001]) {
+        s.loadStage('random', seed);
+        const R = s.road, T = s.terrain;
+        for (let i = 0; i < R.n; i += 2) for (const l of [-1, 0, 1]) {
+          const lat = l * (R.width / 2 + 0.3), x = R.px[i] + R.tz[i] * lat, z = R.pz[i] - R.tx[i] * lat;
+          if (T.heightAt(x, z) > R.py[i] + 0.05) { out.push(`${seed}@${Math.round(R.cum[i])}`); break; }
+        }
+      }
+      return out;
+    });
+    assert(!poke.length, 'ground above the road: ' + poke.slice(0, 5).join(', '));
     assert(more[0].theme === 'country' && more[1].theme === 'cliff' && more.every((m) => m.walls > 0 && m.done), 'country / cliff: ' + JSON.stringify(more));
   });
 

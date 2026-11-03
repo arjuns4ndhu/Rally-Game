@@ -9,9 +9,10 @@ import { facet } from './retro.js';
 import { merge, at, wallStrip, canvasTex } from './street.js';
 
 // A thick wall along the road: inner face, outer face and a top.
-function thickWall(road, from, to, lat, side, h, t, step = 2) {
-  const inner = wallStrip(road, from, to, side * lat, 0, h, step);
-  const outer = wallStrip(road, from, to, side * (lat + t), 0, h, step);
+// y0: how far below road level the faces start (deep for walls on a slope).
+function thickWall(road, from, to, lat, side, h, t, step = 2, y0 = 0) {
+  const inner = wallStrip(road, from, to, side * lat, y0, h, step);
+  const outer = wallStrip(road, from, to, side * (lat + t), y0, h, step);
   const top = [], uv = [];
   let prev = null;
   for (let a = from; a <= to + 0.01; a += step) {
@@ -21,6 +22,12 @@ function thickWall(road, from, to, lat, side, h, t, step = 2) {
       uv.push(0, 0, 1, 0, 1, 0.3, 0, 0, 1, 0.3, 0, 0.3);
     }
     prev = [p0, p1];
+  }
+  // End caps: close off both ends of the wall.
+  for (const a of [from, to]) {
+    const p0 = at(road, a, side * lat), p1 = at(road, a, side * (lat + t));
+    top.push(p0.x, p0.y + y0, p0.z, p1.x, p1.y + y0, p1.z, p1.x, p1.y + h, p1.z, p0.x, p0.y + y0, p0.z, p1.x, p1.y + h, p1.z, p0.x, p0.y + h, p0.z);
+    uv.push(0, 0, 0.3, 0, 0.3, 1, 0, 0, 0.3, 1, 0, 1);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(top, 3));
@@ -182,13 +189,13 @@ export function buildLedge(road, { side, steep = () => 1, tunnels = [] }) {
   for (const r of runs) {
     if (!r.drop || r.to - r.from < 2) continue;
     for (const s of r.drop === 2 ? [-1, 1] : [r.drop]) {
-      parapet.push(thickWall(road, r.from, r.to, B, s, 0.95, 0.5));
+      parapet.push(thickWall(road, r.from, r.to, B, s, 0.95, 0.5, 2, -4));
       rails.push(wallStrip(road, r.from, r.to, s * (B - 0.02), 1.0, 1.35));
       for (let a = r.from; a < r.to; a += 3) { const p = at(road, a, s * (B + 0.25)); posts.push([p.x, p.y, p.z]); }
     }
     // Where the mountain crowds the road: a masonry retaining wall holding
     // the slope back. Elsewhere the uphill side is an open bank.
-    if (r.wall) kerbs.push(thickWall(road, r.from, r.to, B, -r.drop, 6.5, 3.5, 3));
+    if (r.wall) kerbs.push(thickWall(road, Math.max(0, r.from - 2), Math.min(road.length, r.to + 2), B, -r.drop, 6.5, 3.5, 2, -1.5));
   }
   const stone = new THREE.MeshStandardMaterial({ map: stoneTex(), roughness: 1, side: THREE.DoubleSide });
   if (parapet.length) group.add(Object.assign(new THREE.Mesh(merge(parapet), stone), { castShadow: true, receiveShadow: true }));
