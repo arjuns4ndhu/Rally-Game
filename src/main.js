@@ -3030,9 +3030,22 @@ $('career-shop').addEventListener('click', (e) => {
 });
 $('btn-career').addEventListener('click', () => { if (career) career.showLast = false; openPage('career'); renderCareer(); });
 $('career-go').addEventListener('click', () => { if (career && career.rally >= 4) { hidePages(); showPodium(); } else startCareerStage(); });
-$('career-reset').addEventListener('click', () => {
-  if (career && (career.rally || career.stage || career.season > 1) && !confirm('Start a new career? Your current one will be lost.')) return;
-  resetCareer(); career = newCareer(); renderCareer();
+// New career: press twice (browser pop-ups are blocked inside claude.ai, so
+// the button itself asks "Sure?" for a few seconds).
+let resetArmed = 0;
+$('career-reset').addEventListener('click', (e) => {
+  const b = e.currentTarget, started = career && (career.rally || career.stage || career.season > 1 || career.credits);
+  if (started && Date.now() > resetArmed) {
+    resetArmed = Date.now() + 4000;
+    b.textContent = 'Sure? Tap again to wipe it';
+    b.classList.add('btn-danger');
+    setTimeout(() => { if (Date.now() > resetArmed) { b.textContent = 'New career'; b.classList.remove('btn-danger'); } }, 4100);
+    return;
+  }
+  resetArmed = 0;
+  b.textContent = 'New career'; b.classList.remove('btn-danger');
+  resetCareer(); career = newCareer(); saveCareer(career); renderCareer();
+  toast('NEW CAREER STARTED', 1200);
 });
 if (career) renderCareer();
 

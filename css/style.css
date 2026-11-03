@@ -905,3 +905,5 @@ body.touch .hud-fps { top: auto; bottom: calc(150px + var(--safe-b, 0px)); }
 .ach small { font-size: 12px; opacity: 0.85; }
 .ach .prog { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin-top: 3px; }
 .ach .prog i { display: block; height: 100%; background: var(--accent); }
+
+.btn.btn-danger { border-color: #ff6b5a; color: #ffb3a8; }

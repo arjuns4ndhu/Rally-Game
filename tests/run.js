@@ -413,6 +413,14 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await page.screenshot({ path: path.join(__dirname, 'out-podium.png') }).catch(() => {});
     const next = await S(() => { document.getElementById('podium-go').click(); const c = window.__sideways.career; return { season: c.season, tier: c.tier, rally: c.rally, page: !document.getElementById('career').hidden }; });
     assert(next.season === 2 && next.tier === 1 && next.rally === 0 && next.page, 'next season: ' + JSON.stringify(next));
+    // New career wipes it after a second tap (no browser pop-up).
+    const wiped = await S(() => {
+      const s = window.__sideways; s.career.credits = 500;
+      window.confirm = () => { throw new Error('confirm used'); };
+      const b = document.getElementById('career-reset'); b.click(); const asked = b.textContent; b.click();
+      return { asked, credits: s.career.credits, season: s.career.season };
+    }).catch((e) => ({ err: String(e) }));
+    assert(/Sure/.test(wiped.asked) && wiped.credits === 0 && wiped.season === 1, 'new career: ' + JSON.stringify(wiped));
   });
 
   await check('street circuit, countryside and mountain edge: barriers hold, tunnels light up, all drivable', async () => {
