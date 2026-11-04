@@ -297,6 +297,7 @@
   <div class="panel narrow">
     <div class="panel-head"><div><div class="eyebrow">Race your friends live</div><h2 class="logo">MULTIPLAYER</h2></div><button class="btn btn-sm" data-back>Back</button></div>
     <p class="mp-status" id="mp-status" hidden></p>
+    <p class="mp-diag" id="mp-diag"></p>
     <div id="mp-off" hidden>
       <p>Live lobbies can't connect from here. They only work on the claude.ai page of the game, for people who are signed in to claude.ai and were invited from its <b>Share</b> menu by name or email. Opening it through a public link lets you play, but not join lobbies.</p>
     </div>
@@ -304,6 +305,7 @@
       <label class="mp-row"><span class="lbl">Your name</span><input id="mp-nick" maxlength="16" autocomplete="off" placeholder="Racing name"></label>
       <button id="mp-create" class="btn btn-primary">Create private lobby</button>
       <form id="mp-joinform" class="mp-row" autocomplete="off"><input id="mp-code" placeholder="Lobby code" maxlength="12" aria-label="Lobby code"><button class="btn" type="submit">Join</button></form>
+      <div id="mp-open"></div>
       <p class="hint">Create a lobby and send your friends its code. Only people with the code can join.</p>
     </div>
     <div id="mp-lobby" hidden>

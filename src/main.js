@@ -2880,8 +2880,24 @@ function mpFrame(dt) {
     }
   }
 }
+// Everyone on the page right now (all lobbies), for the open-lobby list and
+// a small readout of what claude.ai's live room reports.
+function roomPeople() { try { return net.room ? net.room.peers().filter((p) => p.kind === 'viewer') : []; } catch { return []; } }
+let roomWatch = null;
+function watchRoom() {
+  if (roomWatch || !net.room) return;
+  roomWatch = net.room.onPeers(() => { if (!$('mp').hidden) renderLobby(); }, () => {});
+}
 function renderLobby() {
   const ok = net.room !== null;
+  if (ok) watchRoom();
+  const everyone = roomPeople();
+  const lobbies = {};
+  for (const p of everyone) { const lb = p.presence?.lb; if (typeof lb === 'string') lobbies[lb] = (lobbies[lb] || 0) + 1; }
+  $('mp-diag').textContent = ok ? `Live: ${everyone.length} on this page (you included) · ${Object.keys(lobbies).length ? Object.entries(lobbies).map(([c, n]) => `${c.toUpperCase()}×${n}`).join(' ') : 'no lobbies open'} · ${net.room.connected?.() ? 'connected' : 'not connected'}` : '';
+  // Open lobbies anyone can tap to join (hosts only, not yours).
+  const open = everyone.filter((p) => !p.sameTab && p.presence?.host && typeof p.presence.lb === 'string' && p.presence.lb !== net.code);
+  $('mp-open').innerHTML = !net.inLobby && open.length ? '<p class="hint">Open lobbies on this page:</p>' + open.map((p) => { const pl = readPlayer(p); return `<button class="btn btn-sm" data-joinlb="${esc(p.presence.lb)}">Join ${esc(pl.nick)} · ${esc(p.presence.lb.toUpperCase())}</button>`; }).join('') : '';
   $('mp-off').hidden = net.room !== null;
   $('mp-entry').hidden = !ok || net.inLobby;
   $('mp-lobby').hidden = !net.inLobby;
@@ -2914,6 +2930,7 @@ $('btn-mp').addEventListener('click', async () => {
   if (net.inLobby) net.set(myPresence());
 });
 $('mp-create').addEventListener('click', () => mpCreate());
+$('mp-open').addEventListener('click', (e) => { const b = e.target.closest('[data-joinlb]'); if (b) mpJoin(b.dataset.joinlb); });
 $('mp-joinform').addEventListener('submit', (e) => { e.preventDefault(); mpJoin($('mp-code').value); });
 $('mp-leave').addEventListener('click', () => mpLeave());
 $('mp-start').addEventListener('click', () => mpStartRace());
