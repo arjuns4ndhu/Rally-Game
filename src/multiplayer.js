@@ -26,7 +26,14 @@ export class Net {
 
   async available() {
     if (this.room === undefined) {
-      try { this.room = window.claude?.use ? await window.claude.use('room') : null; } catch { this.room = null; }
+      // claude.ai answers within a second or two; if it never does, give up
+      // after 12 s rather than waiting forever.
+      const timeout = new Promise((r) => setTimeout(() => r('timeout'), 12000));
+      try {
+        const got = window.claude?.use ? await Promise.race([window.claude.use('room'), timeout]) : null;
+        this.timedOut = got === 'timeout';
+        this.room = got === 'timeout' ? null : got;
+      } catch { this.room = null; }
     }
     return !!this.room;
   }

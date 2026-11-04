@@ -2754,7 +2754,7 @@ net.onStatus = (connected, code) => {
 async function mpConnect() {
   if (net.room === undefined) mpStatus('Connecting to live lobbies…');
   const ok = await net.available();
-  if (!ok) { mpStatus(MP_ERRORS.not_granted, 'bad'); renderLobby(); }
+  if (!ok) { mpStatus(net.timedOut ? "claude.ai's live lobby service isn't answering on this page. Reload and try again; if it keeps happening, live lobbies aren't working in this view." : MP_ERRORS.not_granted, 'bad'); renderLobby(); }
   return ok;
 }
 async function mpCreate() {
