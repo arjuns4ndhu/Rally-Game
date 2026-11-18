@@ -190,3 +190,141 @@ export class RemoteCars {
 
   clear() { for (const peer of [...this.cars.keys()]) this._remove(peer); }
 }
+
+// ---------- Direct connections (PeerJS) ----------
+// Used wherever claude.ai's live rooms aren't available (a normal web host,
+// or two players claude.ai keeps apart). The host's peer id comes from the
+// lobby code, so joiners just dial it; everyone sends their state to the
+// host, and the host sends everyone's state to everyone, so each page sees
+// the same list. Same calls as Net, so the game doesn't care which it has.
+const PEER_LIB = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
+const PEER_ID = (code) => `sideways-rally-${code}`;
+let peerLib = null;
+function loadPeer() {
+  if (window.Peer) return Promise.resolve(window.Peer);
+  if (!peerLib) {
+    peerLib = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = PEER_LIB; s.onload = () => res(window.Peer); s.onerror = () => rej(new Error('peerjs failed to load'));
+      document.head.appendChild(s);
+    });
+  }
+  return peerLib;
+}
+
+export class DirectNet {
+  constructor() {
+    this.room = null;          // the game checks net.room !== null for "lobbies possible"
+    this.direct = true;
+    this.peer = null; this.conns = new Map(); this.host = false;
+    this.mine = {}; this.states = new Map();   // peer id -> presence (host keeps everyone's)
+    this.peers = []; this.code = ''; this.connected = false;
+    this.onChange = null; this.onStatus = null; this.lastError = ''; this.timedOut = false;
+    this.myId = '';
+  }
+
+  async available() {
+    try { await loadPeer(); this.room = this.roomView(); return true; } catch { this.room = null; this.lastError = 'upstream_error'; return false; }
+  }
+
+  // What the lobby screen reads from "the room": only this lobby's people.
+  roomView() {
+    return { peers: () => this.peers, onPeers: (fn) => { (this._watch ||= []).push(fn); return () => {}; }, connected: () => this.connected };
+  }
+
+  _peer(id) {
+    return new Promise((res, rej) => {
+      const p = new window.Peer(id || undefined, { debug: 0 });
+      p.on('open', () => res(p));
+      p.on('error', (e) => rej(e));
+      setTimeout(() => rej(Object.assign(new Error('timeout'), { type: 'timeout' })), 12000);
+    });
+  }
+
+  _publish() {
+    const list = [[this.myId, this.mine], ...this.states];
+    this.peers = list.map(([id, presence]) => ({ peer: id, by: null, isMe: id === this.myId, sameTab: id === this.myId, kind: 'viewer', guest: false, presence: Object.freeze({ ...presence }), updatedAt: Date.now() }));
+    const ch = { peers: this.peers, joined: [], left: [], updated: [] };
+    this.onChange?.(ch);
+    for (const fn of this._watch || []) fn(ch);
+  }
+
+  _send(conn, msg) { try { if (conn.open) conn.send(msg); } catch { /* gone */ } }
+
+  // Host: everyone's state goes out to everyone.
+  _broadcast() {
+    const all = Object.fromEntries([[this.myId, this.mine], ...this.states]);
+    for (const c of this.conns.values()) this._send(c, { t: 'all', all });
+  }
+
+  _wire(conn, id) {
+    this.conns.set(id, conn);
+    conn.on('data', (m) => {
+      if (!m || typeof m !== 'object') return;
+      if (this.host && m.t === 'p' && m.presence && typeof m.presence === 'object') { this.states.set(id, { ...m.presence }); this._publish(); this._broadcast(); }
+      if (!this.host && m.t === 'all' && m.all && typeof m.all === 'object') {
+        this.states = new Map(Object.entries(m.all).filter(([k]) => k !== this.myId).map(([k, v]) => [k, v && typeof v === 'object' ? v : {}]));
+        this.connected = true; this.onStatus?.(true, '');
+        this._publish();
+      }
+    });
+    const gone = () => {
+      this.conns.delete(id);
+      if (this.host) { this.states.delete(id); this._publish(); this._broadcast(); }
+      else { this.connected = false; this.lastError = 'upstream_error'; this.onStatus?.(false, 'host_left'); }
+    };
+    conn.on('close', gone); conn.on('error', gone);
+  }
+
+  async join(code, presence, { host = false } = {}) {
+    await this.leave();
+    await loadPeer();
+    this.code = code; this.host = host; this.mine = { ...presence, lb: code, host: host || undefined };
+    this.room = this.roomView();
+    try {
+      this.peer = await this._peer(host ? PEER_ID(code) : null);
+    } catch (e) {
+      // Hosting a code that's already taken, or the service not answering.
+      throw Object.assign(new Error(String(e?.type || e)), { code: e?.type === 'unavailable-id' ? 'limit_reached' : e?.type === 'timeout' ? 'upstream_error' : 'upstream_error' });
+    }
+    this.myId = this.peer.id;
+    this.peer.on('error', (e) => { if (e?.type === 'peer-unavailable') { this.lastError = 'not_found'; this.onStatus?.(false, 'not_found'); } });
+    if (host) {
+      this.connected = true;
+      this.peer.on('connection', (conn) => { conn.on('open', () => { this._wire(conn, conn.peer); this._broadcast(); }); });
+      this._publish();
+      this.onStatus?.(true, '');
+    } else {
+      const conn = this.peer.connect(PEER_ID(code), { reliable: true });
+      await new Promise((res, rej) => {
+        const t = setTimeout(() => rej(Object.assign(new Error('no host'), { code: 'not_found' })), 10000);
+        conn.on('open', () => { clearTimeout(t); res(); });
+        conn.on('error', (e) => { clearTimeout(t); rej(Object.assign(new Error(String(e)), { code: 'not_found' })); });
+        this.peer.on('error', (e) => { if (e?.type === 'peer-unavailable') { clearTimeout(t); rej(Object.assign(new Error('no host'), { code: 'not_found' })); } });
+      });
+      this._wire(conn, PEER_ID(code));
+      this._send(conn, { t: 'p', presence: this.mine });
+      this.connected = true;
+      this._publish();
+    }
+  }
+
+  set(patch) {
+    if (!this.peer) return;
+    this.mine = { ...this.mine, ...patch };
+    for (const k in this.mine) if (this.mine[k] === null) delete this.mine[k];
+    if (this.host) { this._publish(); this._broadcast(); }
+    else { const c = this.conns.get(PEER_ID(this.code)); if (c) this._send(c, { t: 'p', presence: this.mine }); this._publish(); }
+  }
+
+  async leave() {
+    const p = this.peer;
+    this.peer = null; this.conns.clear(); this.states.clear(); this.peers = []; this.code = ''; this.connected = false; this.host = false; this.mine = {};
+    if (p) { try { p.destroy(); } catch { /* ignore */ } }
+  }
+
+  get inLobby() { return !!this.peer; }
+  me() { return this.peers.find((p) => p.sameTab) || null; }
+  others() { return this.peers.filter((p) => !p.sameTab); }
+  hostPeer() { return this.peers.find((p) => p.presence?.host) || null; }
+}

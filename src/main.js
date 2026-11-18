@@ -17,7 +17,7 @@ import { Achievements } from './achievements.js';
 import { CUSTOM, PATTERNS } from './loftcar.js';
 import { buildStreet, buildTunnels, planHarbour, harbourCarve, inHarbour, buildHarbour, Fireworks } from './street.js';
 import { buildCountry, buildLedge } from './country.js';
-import { Net, RemoteCars, newCode, cleanCode, cleanNick, readPlayer, readRace } from './multiplayer.js';
+import { Net, DirectNet, RemoteCars, newCode, cleanCode, cleanNick, readPlayer, readRace } from './multiplayer.js';
 import { AudioEngine } from './audio.js';
 import { DrivingSchool } from './school.js';
 import { Input, ACTIONS, BINDS, bindKey, resetKeys, isDriveKey, keyLabel, FEEL, saveFeel } from './input.js';
@@ -103,7 +103,9 @@ let harbour = null, marina = null;               // street circuits: the marina,
 // Multiplayer: the race this page is in (host's setup), held on the grid
 // until everyone has loaded, grid slot, other cars' poses for collisions.
 const mp = { race: null, hold: false, slot: 0, sendT: 0, posT: 0, poses: [], seen: '', goTimer: 0, setup: null };
-const net = new Net();
+// Lobbies go over claude.ai's live rooms where the page has them, else over
+// direct player-to-player connections (PeerJS). `net` is swapped at most once.
+let net = new Net();
 const remote = new RemoteCars(scene);
 
 // ---------- Graphics quality ----------
@@ -2737,7 +2739,9 @@ const MP_ERRORS = {
   not_permitted: "This account isn't allowed into live lobbies on this page. Everyone must be signed in to claude.ai and invited from the page's Share menu by name or email (a public link can't join lobbies).",
   not_granted: "Live lobbies aren't available to this viewer. Everyone must be signed in to claude.ai and invited from the page's Share menu by name or email (a public link can't join lobbies).",
   revoked: 'Access to this page changed. Reload it.',
-  limit_reached: 'Too many lobbies open in this tab. Leave one or reload, then try again.',
+  limit_reached: 'That lobby code is already being hosted. Try creating again for a new code.',
+  not_found: "No lobby with that code is open right now. Check the code, and make sure the host has the lobby open.",
+  host_left: 'The host left the lobby.',
   upstream_error: "Couldn't reach the live lobby server. Check your connection and try again.",
   invalid_argument: 'Something in the lobby data was refused. Try a shorter name.',
 };
@@ -2753,15 +2757,23 @@ net.onStatus = (connected, code) => {
 };
 async function mpConnect() {
   if (net.room === undefined) mpStatus('Connecting to live lobbies…');
-  const ok = await net.available();
-  if (!ok) { mpStatus(net.timedOut ? "claude.ai's live lobby service isn't answering on this page. Reload and try again; if it keeps happening, live lobbies aren't working in this view." : MP_ERRORS.not_granted, 'bad'); renderLobby(); }
+  let ok = await net.available();
+  // No claude.ai rooms here (a normal web host, or claude.ai keeping players
+  // apart): connect players directly instead.
+  if (!ok && !net.direct) {
+    mpStatus('Connecting players directly…');
+    const d = new DirectNet();
+    d.onStatus = net.onStatus; d.onChange = net.onChange;
+    if (await d.available()) { net = d; ok = true; }
+  }
+  if (!ok) { mpStatus(net.timedOut ? "The live lobby service isn't answering. Reload and try again." : MP_ERRORS.upstream_error, 'bad'); renderLobby(); }
   return ok;
 }
 async function mpCreate() {
   if (!(await mpConnect())) return;
   mp.setup = mpPick('daily');
   mpStatus('Opening a lobby…');
-  try { await net.join(newCode(), { ...myPresence(), host: true, setup: mp.setup }); } catch (e) { mpStatus(MP_ERRORS[e?.code] || `Couldn't open a lobby (${e?.code || e}).`, 'bad'); return; }
+  try { await net.join(newCode(), { ...myPresence(), host: true, setup: mp.setup }, { host: true }); } catch (e) { mpStatus(MP_ERRORS[e?.code] || `Couldn't open a lobby (${e?.code || e}).`, 'bad'); return; }
   mpStatus('');
   renderLobby();
 }
@@ -2894,7 +2906,7 @@ function renderLobby() {
   const everyone = roomPeople();
   const lobbies = {};
   for (const p of everyone) { const lb = p.presence?.lb; if (typeof lb === 'string') lobbies[lb] = (lobbies[lb] || 0) + 1; }
-  $('mp-diag').textContent = ok ? `Live: ${everyone.length} on this page (you included) · ${Object.keys(lobbies).length ? Object.entries(lobbies).map(([c, n]) => `${c.toUpperCase()}×${n}`).join(' ') : 'no lobbies open'} · ${net.room.connected?.() ? 'connected' : 'not connected'}` : '';
+  $('mp-diag').textContent = ok ? `${net.direct ? 'Direct' : 'Live'}: ${everyone.length} ${net.direct ? 'in this lobby' : 'on this page (you included)'} · ${Object.keys(lobbies).length ? Object.entries(lobbies).map(([c, n]) => `${c.toUpperCase()}×${n}`).join(' ') : 'no lobbies open'} · ${net.room.connected?.() ? 'connected' : 'not connected'}` : '';
   // Open lobbies anyone can tap to join (hosts only, not yours).
   const open = everyone.filter((p) => !p.sameTab && p.presence?.host && typeof p.presence.lb === 'string' && p.presence.lb !== net.code);
   $('mp-open').innerHTML = !net.inLobby && open.length ? '<p class="hint">Open lobbies on this page:</p>' + open.map((p) => { const pl = readPlayer(p); return `<button class="btn btn-sm" data-joinlb="${esc(p.presence.lb)}">Join ${esc(pl.nick)} · ${esc(p.presence.lb.toUpperCase())}</button>`; }).join('') : '';
@@ -3376,7 +3388,7 @@ function stepSim(seconds, inp) {
   rig.snap(car);
 }
 window.__sideways = {
-  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, get harbour() { return harbour; }, hitBarriers, flyover, net, mp, mpActive, mpCreate, mpJoin, mpStartRace, mpToLobby, remote, inTunnelAt, get career() { return career; }, set career(c) { career = c; }, get careerRun() { return careerRun; }, startCareerStage, careerNext, showPodium, renderCareer, finishRun, echo, measureEcho, replay, startReplay, stopReplay, replayCam, toggleClip, clip, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
+  get obGrid() { return obGrid; }, flying, auto: null, forceWeather: null, get weather() { return weather; }, get skyPlan() { return skyPlan; }, updateSky, get trackside() { return trackside; }, get harbour() { return harbour; }, hitBarriers, flyover, get net() { return net; }, mp, mpActive, mpCreate, mpJoin, mpStartRace, mpToLobby, remote, inTunnelAt, get career() { return career; }, set career(c) { career = c; }, get careerRun() { return careerRun; }, startCareerStage, careerNext, showPodium, renderCareer, finishRun, echo, measureEcho, replay, startReplay, stopReplay, replayCam, toggleClip, clip, get surfPlan() { return surfPlan; }, drone, rig, HAZARD_DEBUG, get model() { return model; }, get hazards() { return hazards; }, worldGround,
   get shortcuts() { return shortcuts; }, get onShortcut() { return onShortcut; },
   get obstacleCount() { let n = 0; obGrid.forEach((l) => (n += l.length)); return n; }, collide,
   codriver, crash, get riderFall() { return riderFall; },

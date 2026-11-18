@@ -733,6 +733,79 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     assert(!errsM.length, errsM.join(' | '));
   });
 
+  await check('multiplayer over direct connections (no claude.ai rooms): lobby, race, results', async () => {
+    // No window.claude at all (a normal web host). A stand-in for PeerJS
+    // connects pages in this browser over a BroadcastChannel.
+    const cd = await browser.newContext({ viewport: { width: 800, height: 450 } });
+    await cd.addInitScript(() => {
+      localStorage.setItem('sideways.welcomed', '1');
+      const bus = new BroadcastChannel('mock-peer');
+      const peers = new Map();        // id -> Peer in this page
+      const mkConn = (me, other) => {
+        const c = { peer: other, open: false, hs: {}, on(ev, fn) { (this.hs[ev] ||= []).push(fn); return this; }, emit(ev, ...a) { (this.hs[ev] || []).forEach((f) => f(...a)); },
+          send(d) { bus.postMessage({ t: 'data', from: me, to: other, d: JSON.parse(JSON.stringify(d)) }); }, close() { bus.postMessage({ t: 'close', from: me, to: other }); } };
+        return c;
+      };
+      class Peer {
+        constructor(id) {
+          this.id = id || 'anon-' + Math.random().toString(36).slice(2, 10); this.hs = {}; this.conns = new Map();
+          bus.postMessage({ t: 'claim?', id: this.id, nonce: Math.random() });
+          setTimeout(() => { if (this.destroyed) return; if (this.taken) this.emit('error', { type: 'unavailable-id' }); else { peers.set(this.id, this); this.emit('open', this.id); } }, 150);
+        }
+        on(ev, fn) { (this.hs[ev] ||= []).push(fn); return this; }
+        emit(ev, ...a) { (this.hs[ev] || []).forEach((f) => f(...a)); }
+        connect(other) {
+          const c = mkConn(this.id, other); this.conns.set(other, c);
+          bus.postMessage({ t: 'dial', from: this.id, to: other });
+          setTimeout(() => { if (!c.open && !c.failed) { c.failed = true; this.emit('error', { type: 'peer-unavailable' }); } }, 1500);
+          return c;
+        }
+        destroy() { this.destroyed = true; peers.delete(this.id); for (const c of this.conns.values()) c.close(); }
+      }
+      bus.onmessage = (e) => {
+        const m = e.data;
+        if (m.t === 'claim?') { if (peers.has(m.id)) bus.postMessage({ t: 'taken', id: m.id }); return; }
+        if (m.t === 'taken') { for (const p of document.__pending || []) if (p.id === m.id) p.taken = true; }
+        const p = peers.get(m.to); if (!p) return;
+        if (m.t === 'dial') { const c = mkConn(p.id, m.from); c.open = true; p.conns.set(m.from, c); p.emit('connection', c); bus.postMessage({ t: 'accept', from: p.id, to: m.from }); setTimeout(() => c.emit('open'), 0); }
+        if (m.t === 'accept') { const c = p.conns.get(m.from); if (c) { c.open = true; c.emit('open'); } }
+        if (m.t === 'data') { const c = p.conns.get(m.from); if (c) c.emit('data', m.d); }
+        if (m.t === 'close') { const c = p.conns.get(m.from); if (c) { c.open = false; p.conns.delete(m.from); c.emit('close'); } }
+      };
+      // Peers announce before open so "taken" can reach them.
+      const origPeer = Peer;
+      window.Peer = class extends origPeer { constructor(id) { super(id); (document.__pending ||= []).push(this); } };
+    });
+    await page.goto('about:blank');
+    const A = await cd.newPage(), B = await cd.newPage();
+    const errsD = []; for (const p of [A, B]) p.on('pageerror', (e) => errsD.push(String(e)));
+    for (const p of [A, B]) { await p.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 }); await p.waitForFunction(() => !!window.__sideways, null, { timeout: 60000 }); }
+    await A.evaluate(() => { document.getElementById('btn-mp').click(); document.getElementById('mp-nick').value = 'Alpha'; });
+    await A.waitForTimeout(300);
+    await A.evaluate(() => window.__sideways.mpCreate());
+    await A.waitForFunction(() => window.__sideways.net.inLobby && window.__sideways.net.direct, null, { timeout: 20000 }).catch(async (e) => {
+      throw new Error(e.message + ' ' + JSON.stringify(await A.evaluate(() => { const n = window.__sideways.net; return { direct: !!n.direct, room: n.room === undefined ? 'undef' : n.room === null ? 'null' : 'obj', inLobby: n.inLobby, status: document.getElementById('mp-status').textContent, err: n.lastError, peer: !!window.Peer }; })));
+    });
+    const code = await A.evaluate(() => window.__sideways.net.code);
+    await B.evaluate(async (code) => { document.getElementById('btn-mp').click(); document.getElementById('mp-nick').value = 'Bravo'; await window.__sideways.mpJoin(code); }, code);
+    await A.waitForFunction(() => document.getElementById('mp-players').textContent.includes('Bravo'), null, { timeout: 15000 });
+    await B.waitForFunction(() => document.getElementById('mp-players').textContent.includes('Alpha'), null, { timeout: 15000 });
+    await A.evaluate(() => { document.getElementById('mp-seed').value = '900122'; document.getElementById('mp-seedform').requestSubmit(); });
+    await B.waitForFunction(() => /900122/.test(document.getElementById('mp-setup').textContent), null, { timeout: 15000 });
+    await A.evaluate(() => window.__sideways.mpStartRace());
+    for (const p of [A, B]) await p.waitForFunction(() => { const s = window.__sideways; return s.mpActive() && s.run.state === 'running'; }, null, { timeout: 120000 });
+    await B.waitForFunction(() => window.__sideways.remote.cars.size === 1, null, { timeout: 30000 });
+    await A.evaluate(() => { const s = window.__sideways; s.run.t = 100; s.run.splits = [1, 2, 3, 4, 5]; s.finishRun(); });
+    await B.evaluate(() => { const s = window.__sideways; s.run.t = 101.5; s.run.splits = [1, 2, 3, 4, 5]; s.finishRun(); });
+    const res = await B.waitForFunction(() => /Alpha[\s\S]*1:40\.00[\s\S]*Bravo[\s\S]*\+0:01\.50/.test(document.getElementById('fin-mp').textContent), null, { timeout: 20000 }).then(() => true).catch(async () => B.evaluate(() => document.getElementById('fin-mp').textContent));
+    assert(res === true, 'results wrong: ' + res);
+    // A wrong code says so.
+    const bad = await B.evaluate(async () => { window.__sideways.mpToLobby(); await window.__sideways.mpJoin('zzzzzz'); return document.getElementById('mp-status').textContent; });
+    assert(/No lobby with that code/.test(bad), 'bad code message: ' + bad);
+    await cd.close();
+    assert(!errsD.length, errsD.join(' | '));
+  });
+
   await check('offline: installs a service worker, then boots with no connection', async () => {
     // Every module must be in the offline file list.
     const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
@@ -745,7 +818,7 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
     await p3.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
     await p3.waitForFunction(() => navigator.serviceWorker?.controller || navigator.serviceWorker?.ready.then(() => true), null, { timeout: 60000 });
     await p3.evaluate(() => navigator.serviceWorker.ready);
-    await p3.waitForFunction(async () => (await (await caches.open('sideways-v6')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
+    await p3.waitForFunction(async () => (await (await caches.open('sideways-v7')).keys()).length > 30, null, { timeout: 60000, polling: 1000 });
     await c3.setOffline(true);
     await p3.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
     const ok = await p3.waitForFunction(() => !!window.__sideways, null, { timeout: 60000 }).then(() => true).catch(() => false);

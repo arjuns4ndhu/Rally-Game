@@ -11,6 +11,10 @@ python3 -m http.server 8000
 
 ES modules need a web server, so opening `index.html` straight from the file system won't work.
 
+### Hosting it (GitHub Pages)
+
+`.github/workflows/pages.yml` publishes the repo to GitHub Pages on every push. Switch it on once in the repo's **Settings → Pages**, setting **Source** to **GitHub Actions**; the game is then at `https://<user>.github.io/<repo>/`. That link works for anyone, on any device, with multiplayer, the installable app and offline play. (The shared leaderboard and the weekly event's board only exist on the claude.ai copy.)
+
 ### Install it / play offline
 
 Served from a real web address (https, or localhost), the game is an installable app: **Install** appears on the title screen in Chrome and Edge, and on iPhone use Share → **Add to Home Screen**. Once installed (or after one visit), a service worker (`sw.js`) keeps the game, Three.js and the fonts cached so it starts with no connection; music tracks are cached the first time they play. After an update the cached copy is used once more, then the new one next launch. The claude.ai artifact and the one-file `dist/sideways.html` can't be installed, because both run inside another page.
@@ -55,7 +59,7 @@ Driving: tap the brake while turning to kick the rear out. Hold the throttle to 
 
 ## Features
 
-- **Multiplayer** (title screen → Multiplayer, on the shared claude.ai page): create a **private lobby** and send friends its code. The host picks the stage (today's, any stage type, a Classic, or any stage code) and turns **collisions on or off** (off = everyone drives through each other as ghosts). Cars line up two abreast on a grid behind the line, the countdown starts once everyone has loaded, and the HUD shows your position and the gap to the car ahead. Name tags float over every car; results fill in live as people finish. No restarts mid-race (T still takes you back to a checkpoint). Stages are exactly the same as in single player.
+- **Multiplayer** (title screen → Multiplayer): create a **private lobby** and send friends its code. The host picks the stage (today's, any stage type, a Classic, or any stage code) and turns **collisions on or off** (off = everyone drives through each other as ghosts). Cars line up two abreast on a grid behind the line, the countdown starts once everyone has loaded, and the HUD shows your position and the gap to the car ahead. Name tags float over every car; results fill in live as people finish. No restarts mid-race (T still takes you back to a checkpoint). Stages are exactly the same as in single player. Lobbies connect players directly to each other (PeerJS, a free public connection service) wherever the game is hosted; on the claude.ai page they use claude.ai's live rooms when those are available.
 - **Track editor** (title screen → Track editor): lay a stage piece by piece (straights, sweepers, corners, hairpins, chicanes, esses, jumps, crests), pick the scenery, weather and hills, and watch it draw from above. It gives you a code like `SW-801-sLrSjlRksHs`: type it on the title screen (or in a multiplayer lobby) to drive it; anyone with the code gets exactly the same stage, with best times, ghosts and leaderboard.
 - **Weekly event** (title screen → Weekly event): one special stage for everyone each week, with its own leaderboard.
 - **Livery editor** (Garage → Style → Custom): ten patterns (stripes, side stripe, two-tone, hoops, checks, arrows…), two colours and your own door number, on any car.
