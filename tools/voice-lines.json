@@ -1,0 +1,160 @@
+{
+  "about": "Every phrase the co-driver can say, as it appears in a call (comma-separated in pacenotes.js 'say'), the file it maps to, and how to say it. voice/manifest.json uses the same phrase keys.",
+  "phrases": [
+    {
+      "phrase": "left one",
+      "file": "left-one.mp3",
+      "speak": "left one"
+    },
+    {
+      "phrase": "left two",
+      "file": "left-two.mp3",
+      "speak": "left two"
+    },
+    {
+      "phrase": "left three",
+      "file": "left-three.mp3",
+      "speak": "left three"
+    },
+    {
+      "phrase": "left four",
+      "file": "left-four.mp3",
+      "speak": "left four"
+    },
+    {
+      "phrase": "left five",
+      "file": "left-five.mp3",
+      "speak": "left five"
+    },
+    {
+      "phrase": "left six",
+      "file": "left-six.mp3",
+      "speak": "left six"
+    },
+    {
+      "phrase": "hairpin left",
+      "file": "hairpin-left.mp3",
+      "speak": "hairpin left"
+    },
+    {
+      "phrase": "right one",
+      "file": "right-one.mp3",
+      "speak": "right one"
+    },
+    {
+      "phrase": "right two",
+      "file": "right-two.mp3",
+      "speak": "right two"
+    },
+    {
+      "phrase": "right three",
+      "file": "right-three.mp3",
+      "speak": "right three"
+    },
+    {
+      "phrase": "right four",
+      "file": "right-four.mp3",
+      "speak": "right four"
+    },
+    {
+      "phrase": "right five",
+      "file": "right-five.mp3",
+      "speak": "right five"
+    },
+    {
+      "phrase": "right six",
+      "file": "right-six.mp3",
+      "speak": "right six"
+    },
+    {
+      "phrase": "hairpin right",
+      "file": "hairpin-right.mp3",
+      "speak": "hairpin right"
+    },
+    {
+      "phrase": "long",
+      "file": "long.mp3",
+      "speak": "long"
+    },
+    {
+      "phrase": "tightens",
+      "file": "tightens.mp3",
+      "speak": "tightens"
+    },
+    {
+      "phrase": "opens",
+      "file": "opens.mp3",
+      "speak": "opens"
+    },
+    {
+      "phrase": "don't cut",
+      "file": "dont-cut.mp3",
+      "speak": "don't cut"
+    },
+    {
+      "phrase": "into",
+      "file": "into.mp3",
+      "speak": "into"
+    },
+    {
+      "phrase": "jump",
+      "file": "jump.mp3",
+      "speak": "jump"
+    },
+    {
+      "phrase": "over crest",
+      "file": "over-crest.mp3",
+      "speak": "over crest"
+    },
+    {
+      "phrase": "into tunnel",
+      "file": "into-tunnel.mp3",
+      "speak": "into tunnel"
+    },
+    {
+      "phrase": "water splash",
+      "file": "water-splash.mp3",
+      "speak": "water splash"
+    },
+    {
+      "phrase": "flat to finish",
+      "file": "flat-to-finish.mp3",
+      "speak": "flat to finish"
+    },
+    {
+      "phrase": "50",
+      "file": "50.mp3",
+      "speak": "fifty"
+    },
+    {
+      "phrase": "80",
+      "file": "80.mp3",
+      "speak": "eighty"
+    },
+    {
+      "phrase": "100",
+      "file": "100.mp3",
+      "speak": "one hundred"
+    },
+    {
+      "phrase": "150",
+      "file": "150.mp3",
+      "speak": "one fifty"
+    },
+    {
+      "phrase": "200",
+      "file": "200.mp3",
+      "speak": "two hundred"
+    },
+    {
+      "phrase": "250",
+      "file": "250.mp3",
+      "speak": "two fifty"
+    },
+    {
+      "phrase": "300",
+      "file": "300.mp3",
+      "speak": "three hundred"
+    }
+  ]
+}

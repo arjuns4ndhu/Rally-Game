@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Sideways</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23ffb000'/%3E%3Cpath d='M4 11l4-6 4 6' stroke='%230b0d12' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Chakra+Petch:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="scanlines" aria-hidden="true"></div>
+
+<button id="btn-mute" class="mute" aria-label="Mute sound" aria-pressed="false" title="Mute (M)">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path class="spk" d="M4 9h4l5-4v14l-5-4H4z"/><path class="on" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/><path class="off" d="M16 9l6 6M22 9l-6 6"/></svg>
+</button>
+
+<!-- HUD -->
+<div id="hud" hidden>
+  <div class="hud-tl">
+    <div class="brand">SIDEWAYS</div>
+    <div class="hud-sub"><span id="hud-stage">Test road</span> · <span id="hud-car">Stiletto V6</span></div>
+    <div class="hud-chip" id="hud-assist" hidden>LINE ASSIST</div>
+    <div class="hud-mp" id="hud-mp" hidden></div>
+  </div>
+  <div class="hud-drift" id="hud-drift"><span class="label">DRIFT</span> <span id="hud-drift-val">0°</span></div>
+  <div class="hud-br">
+    <div class="rpm" id="hud-rpm"></div>
+    <div class="speed-row">
+      <div class="gear" id="hud-gear">1</div>
+      <div class="speed"><span id="hud-speed">0</span><span class="unit">KM/H</span></div>
+    </div>
+  </div>
+  <div class="hud-help" id="hud-help">
+    <span id="help-drive"><b>W/S</b> throttle/brake · <b>A/D</b> steer · <b>Space</b> handbrake</span> · <b>C</b> camera · <b>G</b> line assist · <b>R</b> restart · <b>T</b> back to checkpoint · <b>1–6</b> car (practice) · <b>M</b> mute · <b>N</b> map · <b>?</b> tuning · <b>Esc</b> pause
+  </div>
+  <div class="hud-stack">
+  <div class="hud-top" id="hud-timing" hidden>
+    <div class="timer" id="hud-time">0:00.00</div>
+    <div class="hud-best">BEST <span id="hud-best">--:--.--</span></div>
+    <div class="gap" id="hud-gap" hidden></div>
+    <div class="sectors" id="hud-sectors"><i>S1</i><i>S2</i><i>S3</i><i>S4</i><i>S5</i></div>
+  </div>
+  <div class="school" id="school" hidden>
+    <div class="eyebrow">Driving school · <span id="school-step"></span></div>
+    <div class="school-text" id="school-text"></div>
+    <div class="school-track"><i id="school-bar"></i></div>
+  </div>
+  <div class="pacenote" id="hud-note" role="img"></div>
+  <div class="split" id="hud-split"></div>
+  </div>
+  <canvas class="minimap" id="minimap" role="img" aria-label="Stage map"></canvas>
+  <div class="hud-fps" id="hud-fps" hidden></div>
+  <div class="countdown" id="hud-count" hidden aria-live="assertive"></div>
+  <div class="hud-banner" id="hud-banner" role="alert" hidden><b id="hud-banner-text"></b><button class="btn btn-sm btn-primary" id="hud-banner-btn">Restart</button></div>
+  <div class="replay-tag" id="hud-replay" hidden>
+    <span class="rec"></span>REPLAY <b id="replay-time">0:00.00</b>
+    <span class="replay-ctl">
+      <button id="rp-slow" class="btn replay-btn" title="Slower (←)" aria-label="Slower">◀◀</button>
+      <button id="rp-play" class="btn replay-btn" title="Pause / play (Space)" aria-label="Pause or play">❚❚</button>
+      <button id="rp-fast" class="btn replay-btn" title="Faster (→)" aria-label="Faster">▶▶</button>
+      <b id="rp-speed" class="rp-speed">1×</b>
+      <button id="rp-auto" class="btn replay-btn on" title="Director: slow motion on jumps and big slides (D)">Auto slo-mo</button>
+      <button id="rp-cam" class="btn replay-btn" title="Camera (C)">TV cams</button>
+      <button id="rp-clip" class="btn replay-btn" title="Record a clip (V)"><span class="dot"></span> Clip</button>
+    </span>
+    <button id="btn-replay-exit" class="btn replay-exit">Exit <small>Esc</small></button>
+  </div>
+  <div class="clip-panel" id="clip-panel" hidden>
+    <video id="clip-video" controls playsinline loop muted></video>
+    <div class="clip-actions">
+      <a id="clip-save" class="btn btn-sm" download="sideways-clip.webm">Save clip</a>
+      <button id="clip-share" class="btn btn-sm" hidden>Share</button>
+      <button id="clip-close" class="btn btn-sm">Close</button>
+    </div>
+    <p class="hint">If saving is blocked here, right-click or long-press the video to save it.</p>
+  </div>
+</div>
+
+<!-- Short messages: shown over menus as well as in play -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Loading a stage -->
+<div id="loading" class="overlay" hidden>
+  <div class="title-card small loading-card">
+    <div class="eyebrow">Loading stage</div>
+    <h2 class="logo" id="loading-name">…</h2>
+    <div class="load-bar" aria-hidden="true"><i></i></div>
+    <p class="loading-tip" id="loading-tip"></p>
+  </div>
+</div>
+
+<!-- Touch controls -->
+<div id="touch" hidden>
+  <div class="tc-left">
+    <button class="tc-btn tc-steer" data-ctl="left" aria-label="Steer left"><svg class="tc-arrow" viewBox="0 0 48 48" aria-hidden="true"><path d="M30 9 L14 24 L30 39"/></svg></button>
+    <button class="tc-btn tc-steer" data-ctl="right" aria-label="Steer right"><svg class="tc-arrow" viewBox="0 0 48 48" aria-hidden="true"><path d="M18 9 L34 24 L18 39"/></svg></button>
+  </div>
+  <div class="tc-drag" id="tc-drag" hidden><i class="tc-knob" id="tc-knob"></i><span>Slide to steer</span></div>
+  <div class="tc-tilt" id="tc-tilt" hidden>Tilt to steer</div>
+  <div class="tc-right">
+    <button class="tc-btn tc-small" data-ctl="handbrake" aria-label="Handbrake">HB</button>
+    <button class="tc-btn tc-brake" data-ctl="brake" aria-label="Brake">BRAKE</button>
+    <button class="tc-btn tc-go" data-ctl="throttle" aria-label="Throttle">GO</button>
+  </div>
+  <div class="tc-top">
+    <button class="tc-mini" data-act="camera" aria-label="Camera">CAM</button>
+    <button class="tc-mini" data-act="reset" aria-label="Reset">RESET</button>
+    <button class="tc-mini" data-act="pause" aria-label="Pause">II</button>
+  </div>
+</div>
+
+<!-- Title / start -->
+<div id="start" class="overlay">
+  <div class="title-card">
+    <div class="title-hero">
+      <div class="eyebrow">Daily gravel rally</div>
+      <h1 class="logo">SIDE<span>WAYS</span></h1>
+      <p class="lede">A new gravel stage every day. Five sectors, one clock, unlimited attempts.</p>
+      <button id="btn-daily" class="btn btn-primary">Today's stage<small id="daily-name"></small></button>
+    </div>
+    <div class="picks">
+      <button id="btn-career" class="btn">Career<small id="career-sub">Seasons of rallies against rival drivers</small></button>
+      <button id="btn-classics" class="btn">Classics<small>Five fixed stages: compare times</small></button>
+      <button id="btn-random" class="btn">Random<small>A new road: gravel, tarmac, night, rivers</small></button>
+      <button id="btn-endurance" class="btn">Endurance<small>Long 5–8 km stages as day turns to night</small></button>
+      <button id="btn-mp" class="btn">Multiplayer<small id="mp-sub">Private lobbies: race your friends live</small></button>
+      <button id="btn-practice" class="btn">Practice loop<small>No clock, just driving</small></button>
+      <button id="btn-school" class="btn">Driving school<small>Learn to drift in nine quick steps</small></button>
+    </div>
+    <div class="title-foot">
+      <div class="menu-row">
+        <button id="btn-garage" class="btn btn-sm">Garage</button>
+        <button id="btn-champ" class="btn btn-sm">Championship</button>
+        <button id="btn-event" class="btn btn-sm">Weekly event</button>
+        <button id="btn-editor" class="btn btn-sm">Track editor</button>
+        <button id="btn-past" class="btn btn-sm">Past stages</button>
+        <button id="btn-stats" class="btn btn-sm">Stats</button>
+        <button id="btn-install" class="btn btn-sm" hidden>Install</button>
+      </div>
+      <div class="foot-row">
+        <div class="foot-btns">
+          <button id="btn-ach" class="btn btn-sm">Achievements <b id="ach-count"></b></button>
+          <button id="btn-settings" class="btn btn-sm">Settings</button>
+        </div>
+        <form id="code-form" class="code-form" autocomplete="off">
+          <input id="code-in" placeholder="Stage code" aria-label="Stage code">
+          <button class="btn btn-sm" type="button" id="btn-paste" title="Paste a stage code">Paste</button>
+          <button class="btn btn-sm" type="submit">Drive</button>
+        </form>
+      </div>
+    </div>
+    <details class="tips-box">
+      <summary>How to drift</summary>
+      <ul class="tips">
+        <li><b>Tap brake</b> while turning to kick the rear out.</li>
+        <li><b>Hold throttle</b> to keep the drift going.</li>
+        <li><b>Lift off</b> to rotate more, <b>counter-steer</b> to straighten or flick.</li>
+        <li><b>Space</b> handbrake for hairpins.</li>
+        <li><b>G</b> turns on the racing line assist, a gentle pull toward the ideal line.</li>
+        <li><b>R</b> restarts the stage, <b>T</b> puts you back at the last checkpoint (+5 s).</li>
+      </ul>
+    </details>
+  </div>
+</div>
+
+<!-- Garage -->
+<div id="garage" class="overlay page" hidden>
+  <div class="panel">
+    <div class="panel-head">
+      <div><div class="eyebrow" id="garage-for">Choose your car</div><h2 class="logo">GARAGE</h2></div>
+      <div class="garage-actions"><button class="btn btn-sm" id="garage-back" data-back>Back</button><button class="btn btn-sm btn-primary" id="garage-go">Continue ▶</button></div>
+    </div>
+    <div class="garage">
+      <div class="garage-cars" id="garage-cars" role="listbox" aria-label="Cars"></div>
+      <div class="garage-main">
+        <div class="garage-view-wrap">
+          <canvas id="garage-view" aria-label="Car preview"></canvas>
+          <div class="garage-peek" id="garage-peek" role="status" hidden><b>🔒 Preview</b> <span id="garage-peek-why"></span></div>
+        </div>
+        <div class="garage-controls">
+          <div class="garage-stats" id="garage-stats"></div>
+          <div class="garage-row"><span class="lbl">Paint</span><div class="swatches" id="garage-paint"></div><input type="color" id="garage-color" aria-label="Custom paint colour"></div>
+          <div class="garage-row"><span class="lbl">Wheels</span><div class="chips" id="garage-wheels"></div></div>
+          <div class="garage-row" id="garage-skin-row" hidden><span class="lbl">Style</span><div class="chips" id="garage-skin"></div></div>
+          <div class="garage-row" id="garage-livery-row" hidden><span class="lbl">Livery</span>
+            <div class="livery-ed">
+              <div class="chips" id="liv-pattern" role="radiogroup" aria-label="Livery pattern"></div>
+              <div class="liv-colors">
+                <label>Colour 1 <input type="color" id="liv-c1"></label>
+                <label>Colour 2 <input type="color" id="liv-c2"></label>
+                <label>Number <input id="liv-num" inputmode="numeric" maxlength="2" size="3"></label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Classic stages -->
+<div id="classics" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><h2 class="logo">CLASSICS</h2><button class="btn btn-sm" data-back>Back</button></div>
+    <table class="champ-table classics-table" id="classics-table"></table>
+    <p class="hint">These five never change and are the same for everyone, so you can race your mates' times. Beat the target times for bronze, silver and gold.</p>
+  </div>
+</div>
+
+<!-- Career -->
+<div id="career" class="overlay page" hidden>
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow" id="career-eyebrow"></div><h2 class="logo">CAREER</h2></div><button class="btn btn-sm" data-back>Back</button></div>
+    <div class="career-last" id="career-last" hidden></div>
+    <div class="career-cols">
+      <div><h3 class="career-h">Season calendar</h3><table class="champ-table" id="career-cal"></table></div>
+      <div><h3 class="career-h">Championship</h3><table class="champ-table career-table" id="career-table"></table></div>
+    </div>
+    <h3 class="career-h">Service park <span class="credits">Credits: <b id="career-credits">0</b></span></h3>
+    <div class="career-shop" id="career-shop"></div>
+    <div class="champ-foot">
+      <button class="btn btn-sm" id="career-reset">New career</button>
+      <button class="btn btn-primary" id="career-go">Start ▶</button>
+    </div>
+    <p class="hint">Three stages a rally against seven rivals; your rally time is the three stage times added up. Points for the rally result: 25, 18, 15, 12, 10, 8, 6, 4. No retries: restarting a stage costs 10 s. Win the championship to move up a class.</p>
+  </div>
+</div>
+
+<!-- Settings (the same controls as the pause menu, moved in while open) -->
+<div id="settings" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><h2 class="logo">SETTINGS</h2><button class="btn btn-sm" data-back>Back</button></div>
+    <div id="settings-body" class="settings-body"></div>
+  </div>
+</div>
+
+<!-- Achievements -->
+<div id="ach" class="overlay page" hidden>
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow" id="ach-sub"></div><h2 class="logo">ACHIEVEMENTS</h2></div><button class="btn btn-sm" data-back>Back</button></div>
+    <div class="ach-grid" id="ach-grid"></div>
+  </div>
+</div>
+
+<!-- Track editor -->
+<div id="editor" class="overlay page" hidden>
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Build your own stage</div><h2 class="logo">TRACK EDITOR</h2></div><button class="btn btn-sm" data-back>Back</button></div>
+    <div class="ed-grid">
+      <div class="ed-left">
+        <div class="ed-pieces" id="ed-pieces"></div>
+        <div class="ed-tools"><button class="btn btn-sm" id="ed-undo">Undo</button><button class="btn btn-sm" id="ed-clear">Clear</button></div>
+        <div class="garage-row"><span class="lbl">Scenery</span><div class="chips" id="ed-theme"></div></div>
+        <div class="garage-row"><span class="lbl">Weather</span><div class="chips" id="ed-weather"></div></div>
+        <div class="garage-row"><span class="lbl">Hills</span><div class="chips" id="ed-hills"></div></div>
+      </div>
+      <div class="ed-right">
+        <canvas id="ed-map" width="360" height="360" aria-label="Your stage from above"></canvas>
+        <p class="ed-info" id="ed-info"></p>
+      </div>
+    </div>
+    <div class="code-line"><span class="eyebrow">Code</span> <code id="ed-code"></code> <button class="btn btn-sm" id="ed-copy">Copy</button></div>
+    <form class="mp-row" id="ed-load" autocomplete="off"><input id="ed-in" placeholder="Paste an editor code (SW-…)" aria-label="Editor code"><button class="btn btn-sm" type="submit">Load</button></form>
+    <div class="champ-foot"><span></span><button class="btn btn-primary" id="ed-go">Drive it ▶</button></div>
+    <p class="hint">Add pieces in order from the start line. Share the code: anyone who types it in (on the title screen, or in a multiplayer lobby) drives exactly your stage.</p>
+  </div>
+</div>
+
+<!-- Weekly online event -->
+<div id="event" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><div><div class="eyebrow" id="event-week"></div><h2 class="logo">WEEKLY EVENT</h2></div><button class="btn btn-sm" data-back>Back</button></div>
+    <p class="mp-setup" id="event-stage"></p>
+    <p class="hint" id="event-ends"></p>
+    <table class="champ-table" id="event-table"></table>
+    <p class="hint" id="event-you"></p>
+    <div class="champ-foot"><span></span><button class="btn btn-primary" id="event-go">Drive it ▶</button></div>
+    <p class="hint">One stage for everyone, all week. A new one every Monday. Your best time this week goes on the board.</p>
+  </div>
+</div>
+
+<!-- Multiplayer lobby -->
+<div id="mp" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><div><div class="eyebrow">Race your friends live</div><h2 class="logo">MULTIPLAYER</h2></div><button class="btn btn-sm" data-back>Back</button></div>
+    <p class="mp-status" id="mp-status" hidden></p>
+    <p class="mp-diag" id="mp-diag"></p>
+    <div id="mp-off" hidden>
+      <p>Lobbies can't connect from here right now. Check your connection and reload the page.</p>
+    </div>
+    <div id="mp-entry" class="mp-entry" hidden>
+      <label class="mp-row"><span class="lbl">Your name</span><input id="mp-nick" maxlength="16" autocomplete="off" placeholder="Racing name"></label>
+      <button id="mp-create" class="btn btn-primary">Create private lobby</button>
+      <form id="mp-joinform" class="mp-row" autocomplete="off"><input id="mp-code" placeholder="Lobby code" maxlength="12" aria-label="Lobby code"><button class="btn" type="submit">Join</button></form>
+      <div id="mp-open"></div>
+      <p class="hint">Create a lobby and send your friends its code. Only people with the code can join.</p>
+    </div>
+    <div id="mp-lobby" hidden>
+      <div class="mp-codebar">LOBBY CODE <b id="mp-codeval"></b> <button id="mp-copy" class="btn btn-sm">Copy</button></div>
+      <table class="champ-table" id="mp-players"></table>
+      <div id="mp-hostctl" class="gen-rows">
+        <div class="garage-row"><span class="lbl">Stage</span><div class="chips" id="mp-stage" role="radiogroup" aria-label="Stage"></div></div>
+        <form class="garage-row" id="mp-seedform" autocomplete="off"><span class="lbl">Or a code</span><input id="mp-seed" placeholder="Stage code or SW- code" aria-label="Stage code"><button class="btn btn-sm" type="submit">Use</button></form>
+        <div class="garage-row"><span class="lbl">Collisions</span><div class="chips" id="mp-coll" role="radiogroup" aria-label="Collisions"><button class="chip" data-coll="1">On</button><button class="chip" data-coll="0">Off (ghosts)</button></div></div>
+      </div>
+      <p class="mp-setup" id="mp-setup"></p>
+      <div class="champ-foot">
+        <button id="mp-leave" class="btn btn-sm">Leave lobby</button>
+        <button id="mp-car" class="btn btn-sm">Change car</button>
+        <button id="mp-start" class="btn btn-primary">Start race ▶</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- End of a career season -->
+<div id="podium" class="overlay podium" hidden>
+  <canvas id="podium-canvas"></canvas>
+  <div class="podium-card">
+    <div class="eyebrow" id="podium-eyebrow"></div>
+    <h2 class="logo" id="podium-title">CHAMPION</h2>
+    <ol class="podium-list" id="podium-list"></ol>
+    <p class="hint" id="podium-note"></p>
+    <button class="btn btn-primary" id="podium-go">Next season ▶</button>
+  </div>
+</div>
+
+<!-- First visit -->
+<div id="welcome" class="overlay page" hidden>
+  <div class="title-card small welcome-card">
+    <div class="eyebrow">Welcome to</div>
+    <h1 class="logo">SIDE<span>WAYS</span></h1>
+    <p class="lede">A new gravel stage every day. First time? Two minutes in the driving school teaches you to drift.</p>
+    <button class="btn btn-primary" id="wel-school">Learn to drift<small>Driving school, nine quick steps</small></button>
+    <button class="btn" id="wel-daily">Just drive<small>Straight into today's stage</small></button>
+    <button class="btn btn-sm" id="wel-skip" data-back>Show me the menu</button>
+  </div>
+</div>
+
+<!-- Random stage setup -->
+<div id="randomgen" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><div><div class="eyebrow">Make your own</div><h2 class="logo">RANDOM STAGE</h2></div><button class="btn btn-sm" data-back>Back</button></div>
+    <div class="gen-rows">
+      <div class="garage-row"><span class="lbl">Stage type</span><div class="chips" id="gen-type" role="radiogroup" aria-label="Stage type"></div></div>
+      <div class="garage-row"><span class="lbl">Scenery</span><div class="chips" id="gen-theme" role="radiogroup" aria-label="Scenery"></div></div>
+      <div class="garage-row"><span class="lbl">Weather</span><div class="chips" id="gen-weather" role="radiogroup" aria-label="Weather"></div></div>
+      <div class="garage-row"><span class="lbl">Hills</span><div class="chips" id="gen-hills" role="radiogroup" aria-label="Hills"></div></div>
+    </div>
+    <button class="btn btn-primary" id="gen-go">Make stage ▶</button>
+    <p class="hint">A new road every time, built to your choices. It still gets a stage code you can share.</p>
+  </div>
+</div>
+
+<!-- Past stages -->
+<div id="past" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><h2 class="logo">PAST STAGES</h2><button class="btn btn-sm" data-back>Back</button></div>
+    <div class="cal-head"><button class="btn btn-sm" id="cal-prev" aria-label="Previous month">◀</button><b id="cal-month"></b><button class="btn btn-sm" id="cal-next" aria-label="Next month">▶</button></div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <p class="hint">Every day's stage, back to launch. Your best time shows on days you've finished.</p>
+  </div>
+</div>
+
+<!-- Weekly championship -->
+<div id="champ" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><div><div class="eyebrow" id="champ-week"></div><h2 class="logo">CHAMPIONSHIP</h2></div><button class="btn btn-sm" data-back>Back</button></div>
+    <table class="champ-table" id="champ-table"></table>
+    <div class="champ-foot">
+      <div class="champ-total">TOTAL <b id="champ-total"></b></div>
+      <button class="btn btn-primary" id="champ-continue">Continue ▶</button>
+    </div>
+    <p class="hint">Five new stages every Monday. Your total is your best on each, added up.</p>
+  </div>
+</div>
+
+<!-- Stats -->
+<div id="statsview" class="overlay page" hidden>
+  <div class="panel narrow">
+    <div class="panel-head"><h2 class="logo">STATS</h2><button class="btn btn-sm" data-back>Back</button></div>
+    <div class="stats-grid" id="stats-grid"></div>
+  </div>
+</div>
+
+<!-- Pause -->
+<div id="pause" class="overlay" hidden>
+  <div class="pause-card">
+    <div class="pause-actions">
+      <h2 class="logo">PAUSED</h2>
+      <div class="code-line"><div class="eyebrow" id="pause-code"></div><button class="btn btn-sm" id="btn-pcopy">Copy code</button></div>
+      <button id="btn-resume" class="btn btn-primary">Resume <small class="key">Esc</small></button>
+      <button id="btn-reset" class="btn">Back to checkpoint <small class="key">T</small></button>
+      <button id="btn-restart" class="btn">Restart stage <small class="key">R</small></button>
+      <button id="btn-pcar" class="btn">Change car</button>
+      <button id="btn-pmenu" class="btn">Menu</button>
+    </div>
+    <div class="pause-settings">
+      <details class="set-group" open>
+        <summary>Driving</summary>
+        <label class="check"><input type="checkbox" id="opt-assist"> Racing line assist</label>
+        <label class="check select">Assist strength
+      <select id="opt-assist-level">
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select>
+    </label>
+        <label class="check select">Co-driver
+      <select id="opt-codriver">
+        <option value="signs">Pace-note signs</option>
+        <option value="off">Off</option>
+      </select>
+    </label>
+        <label class="check"><input type="checkbox" id="opt-ghost" checked> Ghost car (your best run)</label>
+        <label class="check"><input type="checkbox" id="opt-hbassist"> Handbrake assist <small>(swings the tail at hairpins for you)</small></label>
+        <label class="check select">Steering sensitivity <span class="vol"><input type="range" id="opt-sens" min="50" max="200" step="10" value="100" aria-label="Steering sensitivity"><output id="opt-sens-val">100%</output></span></label>
+        <label class="check select">Stick dead zone <span class="vol"><input type="range" id="opt-dead" min="0" max="35" step="1" value="12" aria-label="Stick dead zone"><output id="opt-dead-val">12%</output></span></label>
+        <label class="check"><input type="checkbox" id="opt-rumble" checked> Rumble <small>(controller, or buzz on Android)</small></label>
+        <div class="check select touch-only">Steering
+          <div class="chips" id="opt-steer" role="radiogroup" aria-label="Phone steering">
+            <button class="chip" role="radio" data-steer="buttons">Buttons</button>
+            <button class="chip" role="radio" data-steer="tilt">Tilt</button>
+            <button class="chip" role="radio" data-steer="drag">Drag</button>
+          </div>
+        </div>
+      </details>
+      <details class="set-group">
+        <summary>Display</summary>
+        <label class="check"><input type="checkbox" id="opt-map" checked> Mini map</label>
+        <label class="check"><input type="checkbox" id="opt-drone" checked> Camera drone</label>
+        <label class="check select">Graphics
+      <select id="opt-quality">
+        <option value="auto">Auto</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low (phones)</option>
+      </select>
+    </label>
+        <label class="check"><input type="checkbox" id="opt-scan" checked> Scanlines</label>
+        <label class="check"><input type="checkbox" id="opt-bigtouch"> Big touch buttons</label>
+        <label class="check"><input type="checkbox" id="opt-fps"> Show frame rate</label>
+        <label class="check"><input type="checkbox" id="opt-preview" checked> Stage fly-over before the start</label>
+      </details>
+      <details class="set-group">
+        <summary>Sound</summary>
+        <label class="check select">Volume <span class="vol"><input type="range" id="opt-volume" min="0" max="100" step="5" value="80" aria-label="Volume"><output id="opt-volume-val">80%</output></span></label>
+        <label class="check"><input type="checkbox" id="opt-mute"> Mute sound</label>
+        <label class="check"><input type="checkbox" id="opt-music"> Music</label>
+        <label class="check select">Music volume <span class="vol"><input type="range" id="opt-musicvol" min="0" max="100" step="5" value="60" aria-label="Music volume"><output id="opt-musicvol-val">60%</output></span></label>
+        <p class="hint credits">Music: “Darkside Rally House” by kawaiiwork, “Clutch Boost” and “Flying Finish” by lesiakower (Pixabay).</p>
+      </details>
+      <details class="set-group">
+        <summary>Retro look</summary>
+        <label class="check"><input type="checkbox" id="opt-retro" checked> Retro mode <small>(reloads the game)</small></label>
+        <label class="check select retro-sub">Retro pixels
+      <select id="opt-pixels">
+        <option value="light">Light (360 lines)</option>
+        <option value="heavy">Heavy (240 lines)</option>
+        <option value="off">Off (sharp)</option>
+      </select>
+    </label>
+        <label class="check retro-sub"><input type="checkbox" id="opt-dither" checked> Retro colour (dithering)</label>
+        <label class="check retro-sub"><input type="checkbox" id="opt-wobble" checked> Vertex wobble <small>(reloads the game)</small></label>
+      </details>
+      <details class="set-group set-keys">
+        <summary>Controls</summary>
+        <div class="keybinds">
+      <p class="hint">Click an action, then press its new key.</p>
+      <p class="hint pad-help">Controller: left stick steer · RT throttle · LT brake · A/X handbrake · Y camera · RB back to checkpoint · LB line assist · Back restart · Start pause.</p>
+      <div id="keybinds"></div>
+      <button class="btn btn-sm" id="keys-reset">Default keys</button>
+    </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<!-- Finish -->
+<div id="finish" class="overlay" hidden>
+  <div class="title-card fin-card">
+    <div class="fin-result">
+    <div class="eyebrow" id="fin-stage"></div>
+    <h2 class="logo">FINISH</h2>
+    <div class="fin-row">
+      <div class="fin-time" id="fin-time">0:00.00</div>
+      <div class="newbest" id="fin-newbest" hidden>NEW BEST</div>
+    </div>
+    <div class="fin-medal" id="fin-medal" hidden></div>
+    <div class="fin-career" id="fin-career" hidden></div>
+    <div class="fin-mp" id="fin-mp" hidden></div>
+    <p class="fin-unlock" id="fin-unlock" hidden></p>
+    <p class="fin-meta"><span id="fin-prev"></span><br><span id="fin-pen"></span></p>
+    <div class="fin-actions">
+      <div class="fin-primary">
+        <button id="btn-next" class="btn btn-primary" hidden>Next stage</button>
+        <button id="btn-retry" class="btn btn-primary">Retry <small class="key">R</small></button>
+      </div>
+      <div class="fin-secondary">
+        <button id="btn-replay" class="btn btn-sm">Watch replay</button>
+        <button id="btn-share" class="btn btn-sm">Copy result</button>
+        <button id="btn-fcopy" class="btn btn-sm">Copy code</button>
+      </div>
+      <div class="fin-tertiary">
+        <button id="btn-new" class="btn btn-sm">Random stage</button>
+        <button id="btn-fcar" class="btn btn-sm">Change car</button>
+        <button id="btn-fmenu" class="btn btn-sm">Menu</button>
+      </div>
+    </div>
+    </div>
+    <div class="fin-data">
+    <div class="fin-table"><table id="fin-splits"></table></div>
+    <div class="fin-board" id="fin-board" hidden>
+      <div class="board-head">LEADERBOARD <small id="board-rank"></small></div>
+      <ol class="board-list" id="board-list"></ol>
+      <form class="board-name" id="board-name" hidden>
+        <input id="board-nick" maxlength="16" placeholder="Your racing name" autocomplete="off" aria-label="Racing name">
+        <button class="btn btn-sm btn-primary" type="submit">Post my times</button>
+      </form>
+      <p class="hint" id="board-note"></p>
+    </div>
+    </div>
+  </div>
+</div>
+
+<!-- Rotate prompt on portrait phones -->
+<div id="rotate" class="overlay" hidden>
+  <div class="title-card small"><h2 class="logo">ROTATE</h2><p class="lede">Turn your phone sideways to drive.</p></div>
+</div>
+
+<!-- Tuning panel -->
+<div id="debug" hidden>
+  <div class="dbg-title">Tuning <small>(? to hide)</small></div>
+  <pre id="dbg-read"></pre>
+  <div id="dbg-sliders"></div>
+  <button id="dbg-reset" class="btn dbg-reset">Reset to defaults</button>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,167 @@
+// Stage themes: everything that changes how a stage looks and how hilly it
+// is. Picked from the seed, so a given day always gets the same look.
+import { mulberry32 } from './rng.js';
+
+export const THEMES = {
+  forest: {
+    id: 'forest', label: 'Forest',
+    sky: { top: '#2a3a5c', horizon: '#d9a877', fog: '#c79a72', fogDensity: 0.0062, sunGlow: [1.0, 0.75, 0.45] },
+    light: { hemiSky: '#ffe6c4', hemiGround: '#5a5238', hemi: 1.6, sun: '#ffd7a3', sunI: 2.0, sunDir: [-0.6, 0.55, -0.75] },
+    ground: { base: '#4a5726', dark: [40, 52, 22], light: [150, 140, 80], tintLow: [0.92, 0.95, 0.85], tintHigh: [1.1, 1.03, 0.75], rock: [0.55, 0.52, 0.48] },
+    road: { base: '#b59c78', rut: [70, 55, 40], edge: [60, 70, 40], stone: [25, 10, -15], verge: 0x6e6340, grip: 1.0, dust: [0.74, 0.64, 0.5] },
+    trees: [['pine', 1]], treeDensity: 1, rockDensity: 1, rockColor: [0.08, 0.12, 0.45],
+    hills: 0x55603a, heightAmp: 1, hillAmp: 1, maxGrade: 0.12,
+    names: ['Ridge', 'Forest', 'Woods', 'Heath', 'Pass'],
+  },
+  desert: {
+    id: 'desert', label: 'Canyon',
+    sky: { top: '#3b78c4', horizon: '#f4d6a6', fog: '#e9c99a', fogDensity: 0.0042, sunGlow: [1.0, 0.95, 0.8] },
+    light: { hemiSky: '#fff3dc', hemiGround: '#9a6a40', hemi: 1.5, sun: '#fff1d6', sunI: 2.6, sunDir: [-0.3, 0.85, -0.4] },
+    ground: { base: '#c98e55', dark: [150, 90, 50], light: [235, 190, 140], tintLow: [1.0, 0.95, 0.9], tintHigh: [1.08, 0.85, 0.7], rock: [0.7, 0.42, 0.3] },
+    road: { base: '#d9a066', rut: [150, 90, 50], edge: [170, 110, 60], stone: [30, 15, -10], verge: 0xb07a48, grip: 0.97, dust: [0.86, 0.66, 0.45] },
+    trees: [['cactus', 0.55], ['shrub', 0.45]], treeDensity: 0.35, rockDensity: 2.2, rockColor: [0.04, 0.45, 0.45],
+    hills: 0xb56a3e, heightAmp: 1.3, hillAmp: 1.6, maxGrade: 0.12, mesas: true,
+    names: ['Canyon', 'Mesa', 'Dunes', 'Gulch', 'Flats'],
+  },
+  snow: {
+    id: 'snow', label: 'Snow',
+    sky: { top: '#7f9cc0', horizon: '#e8eef5', fog: '#dfe7ef', fogDensity: 0.0075, sunGlow: [0.9, 0.95, 1.0] },
+    light: { hemiSky: '#eef4ff', hemiGround: '#a8b4c2', hemi: 1.7, sun: '#fff8ee', sunI: 1.6, sunDir: [-0.7, 0.35, -0.6] },
+    ground: { base: '#eef2f6', dark: [200, 210, 222], light: [255, 255, 255], tintLow: [0.95, 0.97, 1.0], tintHigh: [1.0, 1.0, 1.02], rock: [0.42, 0.44, 0.48] },
+    road: { base: '#c9d2dc', rut: [120, 130, 145], edge: [235, 240, 245], stone: [-10, -5, 5], verge: 0xdfe6ee, grip: 0.86, dust: [0.95, 0.97, 1.0] },
+    trees: [['snowpine', 1]], treeDensity: 1.1, rockDensity: 0.5, rockColor: [0.6, 0.05, 0.45],
+    hills: 0xdce4ee, heightAmp: 1.1, hillAmp: 1.1, maxGrade: 0.11,
+    names: ['Frost', 'Fjell', 'Glacier', 'Tundra', 'Drift'],
+  },
+  alpine: {
+    id: 'alpine', label: 'Alpine',
+    sky: { top: '#2f5f9e', horizon: '#c9dcea', fog: '#b9cad6', fogDensity: 0.0048, sunGlow: [1.0, 0.92, 0.8] },
+    light: { hemiSky: '#f2f6ff', hemiGround: '#5e6650', hemi: 1.5, sun: '#fff0dc', sunI: 2.3, sunDir: [-0.5, 0.7, -0.5] },
+    ground: { base: '#5d6b3a', dark: [50, 62, 30], light: [140, 150, 90], tintLow: [0.95, 1.0, 0.9], tintHigh: [1.05, 1.05, 1.05], rock: [0.5, 0.5, 0.52] },
+    road: { base: '#a39f97', rut: [70, 68, 65], edge: [80, 90, 60], stone: [10, 10, 10], verge: 0x7b7a6c, grip: 1.0, dust: [0.7, 0.68, 0.64] },
+    trees: [['pine', 0.8], ['shrub', 0.2]], treeDensity: 0.6, rockDensity: 2.0, rockColor: [0.6, 0.03, 0.5],
+    hills: 0x8a8f96, heightAmp: 2.4, hillAmp: 2.4, maxGrade: 0.16, peaks: true,
+    names: ['Col', 'Summit', 'Switchbacks', 'Pass', 'Climb'],
+  },
+  autumn: {
+    id: 'autumn', label: 'Autumn',
+    sky: { top: '#5a6470', horizon: '#b8b3a6', fog: '#a9a597', fogDensity: 0.0085, sunGlow: [0.8, 0.75, 0.65] },
+    light: { hemiSky: '#e8e2d4', hemiGround: '#4a4232', hemi: 1.8, sun: '#f0dcc0', sunI: 1.2, sunDir: [-0.6, 0.6, -0.5] },
+    ground: { base: '#5b5a2c', dark: [60, 50, 25], light: [160, 120, 60], tintLow: [0.95, 0.92, 0.85], tintHigh: [1.05, 0.95, 0.8], rock: [0.45, 0.43, 0.4] },
+    road: { base: '#8c7458', rut: [55, 42, 30], edge: [60, 55, 30], stone: [15, 8, -5], verge: 0x5a4e34, grip: 0.93, dust: [0.55, 0.48, 0.38] },
+    trees: [['broadleaf', 0.6], ['birch', 0.25], ['pine', 0.15]], treeDensity: 1.0, rockDensity: 0.8, rockColor: [0.08, 0.08, 0.4],
+    hills: 0x5d5a3a, heightAmp: 1.1, hillAmp: 1.2, maxGrade: 0.12,
+    names: ['Moor', 'Glen', 'Hollow', 'Vale', 'Woods'],
+  },
+  // Special stages only (codes 4000000-4899999), never picked at random.
+  tarmac: {
+    id: 'tarmac', label: 'Tarmac',
+    sky: { top: '#2f6fc0', horizon: '#dfe8ef', fog: '#cdd8de', fogDensity: 0.0045, sunGlow: [1.0, 0.92, 0.75] },
+    light: { hemiSky: '#fff6e6', hemiGround: '#6b6440', hemi: 1.55, sun: '#fff2dc', sunI: 2.5, sunDir: [-0.4, 0.75, -0.5] },
+    ground: { base: '#7d7a3e', dark: [80, 78, 40], light: [190, 175, 110], tintLow: [1.0, 0.97, 0.88], tintHigh: [1.08, 1.0, 0.82], rock: [0.66, 0.62, 0.55] },
+    road: { base: '#55575c', rut: [30, 30, 32], edge: [235, 235, 228], stone: [-30, -30, -28], verge: 0x8a8460, grip: 1.12, dust: [0.5, 0.5, 0.5], lines: true, sealed: true },
+    trees: [['broadleaf', 0.5], ['shrub', 0.35], ['pine', 0.15]], treeDensity: 0.7, rockDensity: 0.7, rockColor: [0.1, 0.12, 0.6],
+    hills: 0x8b8452, heightAmp: 1.3, hillAmp: 1.3, maxGrade: 0.13,
+    names: ['Corniche', 'Terraces', 'Vineyards', 'Coast Road', 'Bends'],
+  },
+  // Street circuit: a harbour town, barriers both sides, a long tunnel.
+  street: {
+    id: 'street', label: 'Street',
+    sky: { top: '#2a63b8', horizon: '#f2dcc0', fog: '#d8c9b4', fogDensity: 0.0038, sunGlow: [1.0, 0.85, 0.6] },
+    light: { hemiSky: '#fff2de', hemiGround: '#7a7266', hemi: 1.6, sun: '#fff0d6', sunI: 2.5, sunDir: [-0.45, 0.7, -0.5] },
+    ground: { base: '#a39d90', dark: [130, 126, 116], light: [200, 194, 182], tintLow: [1.0, 0.98, 0.95], tintHigh: [1.04, 1.0, 0.96], rock: [0.6, 0.58, 0.55] },
+    road: { base: '#4b4d52', rut: [28, 28, 30], edge: [235, 235, 228], stone: [-30, -30, -28], verge: 0x9a958a, grip: 1.12, dust: [0.5, 0.5, 0.5], lines: true, sealed: true },
+    trees: [['broadleaf', 1]], treeDensity: 0.12, rockDensity: 0, rockColor: [0.1, 0.05, 0.6],
+    hills: 0x8d8678, heightAmp: 0.9, hillAmp: 1.2, maxGrade: 0.11, street: true,
+    names: ['Harbour', 'Casino Hill', 'Promenade', 'Old Town', 'Marina'],
+  },
+  // Country lanes: narrow, walled and hedged, through green patchwork fields.
+  country: {
+    id: 'country', label: 'Countryside',
+    sky: { top: '#5f7898', horizon: '#d6dbd8', fog: '#c3cbc6', fogDensity: 0.0058, sunGlow: [0.9, 0.88, 0.8] },
+    light: { hemiSky: '#eef0ea', hemiGround: '#4f5a36', hemi: 1.7, sun: '#fff4e0', sunI: 1.7, sunDir: [-0.5, 0.6, -0.6] },
+    ground: { base: '#5f8a3a', dark: [60, 90, 40], light: [150, 180, 90], tintLow: [0.95, 1.0, 0.9], tintHigh: [1.05, 1.05, 0.85], rock: [0.55, 0.52, 0.46] },
+    road: { base: '#5d5c58', rut: [40, 40, 38], edge: [70, 90, 50], stone: [-20, -18, -22], verge: 0x5d7f3a, grip: 1.06, dust: [0.5, 0.5, 0.48], sealed: true },
+    trees: [['oak', 0.85], ['birch', 0.15]], treeDensity: 0.45, rockDensity: 0.1, rockColor: [0.1, 0.05, 0.5],
+    hills: 0x6b8c45, heightAmp: 0.8, hillAmp: 0.9, maxGrade: 0.1, patchwork: true, lanes: true,
+    names: ['Lane', 'Green', 'Bottom', 'Combe', 'Wold'],
+  },
+  // Mountain road on a ledge: rock face on one side, a drop to the sea on the other.
+  cliff: {
+    id: 'cliff', label: 'Mountain edge',
+    sky: { top: '#2565c4', horizon: '#cfe2ee', fog: '#bcd3e0', fogDensity: 0.0032, sunGlow: [1.0, 0.9, 0.7] },
+    light: { hemiSky: '#f4f7ff', hemiGround: '#6b6252', hemi: 1.5, sun: '#fff1dc', sunI: 2.5, sunDir: [-0.45, 0.65, -0.55] },
+    ground: { base: '#7b7a5a', dark: [90, 85, 60], light: [170, 160, 120], tintLow: [1.0, 0.98, 0.9], tintHigh: [1.05, 1.0, 0.95], rock: [0.6, 0.56, 0.5] },
+    road: { base: '#55575c', rut: [30, 30, 32], edge: [235, 235, 228], stone: [-30, -30, -28], verge: 0x8a8470, grip: 1.1, dust: [0.55, 0.55, 0.52], lines: true, sealed: true },
+    trees: [['pine', 0.6], ['shrub', 0.4]], treeDensity: 0.3, rockDensity: 0.6, rockColor: [0.08, 0.08, 0.55],
+    hills: 0x7c7560, heightAmp: 1.6, hillAmp: 1.0, maxGrade: 0.12, cliff: true,
+    names: ['Corniche', 'Ledge', 'Col', 'Balcony Road', 'Heights'],
+  },
+  nightwood: {
+    id: 'nightwood', label: 'Night forest',
+    sky: { top: '#2a3a5c', horizon: '#d9a877', fog: '#c79a72', fogDensity: 0.0095, sunGlow: [1.0, 0.75, 0.45] },
+    light: { hemiSky: '#ffe6c4', hemiGround: '#5a5238', hemi: 1.6, sun: '#ffd7a3', sunI: 2.0, sunDir: [-0.6, 0.55, -0.75] },
+    ground: { base: '#3e4a22', dark: [34, 44, 20], light: [120, 120, 70], tintLow: [0.9, 0.95, 0.85], tintHigh: [1.05, 1.0, 0.8], rock: [0.5, 0.5, 0.46] },
+    road: { base: '#a88f6c', rut: [65, 50, 36], edge: [55, 62, 36], stone: [20, 8, -12], verge: 0x5e5536, grip: 0.98, dust: [0.8, 0.72, 0.6] },
+    trees: [['pine', 0.75], ['birch', 0.25]], treeDensity: 1.9, rockDensity: 0.7, rockColor: [0.08, 0.1, 0.4],
+    hills: 0x46502e, heightAmp: 1, hillAmp: 1.1, maxGrade: 0.12,
+    names: ['Darkwood', 'Owl Woods', 'Blackpine', 'Night Ridge', 'Hollow'],
+  },
+};
+
+const ORDER = ['forest', 'desert', 'snow', 'alpine', 'autumn'];
+
+// ---------- Player-made stages (the track editor) ----------
+// A stage code like "SW-a1b2-scLhj" holds the scenery, weather, hills and a
+// list of road pieces. Reading one registers it under a number (7000000 +
+// a hash of the code), and from then on that number plays like any other
+// stage: best times, ghosts, leaderboards, multiplayer.
+export const CUSTOM_STAGES = new Map();
+export const EDIT_THEMES = ['forest', 'desert', 'snow', 'alpine', 'autumn', 'tarmac', 'street', 'country', 'cliff', 'nightwood'];
+export const EDIT_WEATHER = ['clear', 'overcast', 'dusk', 'fog', 'rain', 'night'];
+export const EDIT_PIECES = {
+  s: 'Straight', S: 'Long straight', l: 'Sweeper left', r: 'Sweeper right', L: 'Corner left', R: 'Corner right',
+  h: 'Hairpin left', H: 'Hairpin right', c: 'Chicane (left first)', C: 'Chicane (right first)', e: 'Esses (left first)', E: 'Esses (right first)',
+  j: 'Jump', k: 'Crest',
+};
+export function encodeStage(def) {
+  return `SW-${EDIT_THEMES.indexOf(def.theme)}${EDIT_WEATHER.indexOf(def.weather)}${def.hills}-${def.pieces}`;
+}
+export function parseStageCode(text) {
+  const m = /^SW-(\d)(\d)([0-3])-([sSlrLRhHcCeEjk]{1,80})$/.exec(String(text || '').trim());
+  if (!m || !EDIT_THEMES[+m[1]] || !EDIT_WEATHER[+m[2]]) return null;
+  const def = { theme: EDIT_THEMES[+m[1]], weather: EDIT_WEATHER[+m[2]], hills: +m[3], pieces: m[4] };
+  def.code = encodeStage(def);
+  let h = 2166136261;
+  for (const ch of def.code) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  def.seed = 7e6 + ((h >>> 0) % 1e6);
+  return def;
+}
+export function registerStage(def) { CUSTOM_STAGES.set(def.seed, def); return def.seed; }
+const SPECIAL_OF_THEME = { tarmac: 'tarmac', street: 'street', country: 'country', cliff: 'cliff', nightwood: 'night' };
+
+// Special stage types by code: tarmac, night forest, river crossings.
+export function specialOf(seed) {
+  const cs = CUSTOM_STAGES.get(seed);
+  if (cs) return SPECIAL_OF_THEME[cs.theme] || null;
+  if (!(seed >= 4e6 && seed < 5.8e6)) return null;
+  return ['tarmac', 'night', 'river', 'street', 'country', 'cliff'][Math.floor((seed - 4e6) / 3e5)];
+}
+export const SPECIAL_LABEL = { tarmac: 'Tarmac', night: 'Night forest', river: 'River crossings', street: 'Street circuit', country: 'Countryside', cliff: 'Mountain edge' };
+
+// Theme plus a per-stage hilliness multiplier, both from the seed.
+export function pickTheme(seed) {
+  const cs = CUSTOM_STAGES.get(seed);
+  if (cs) return { theme: THEMES[cs.theme], hilliness: [0.45, 0.8, 1.15, 1.55][cs.hills] };
+  const r = mulberry32(((seed * 48271) ^ 0x5bd1e995) >>> 0);
+  let theme = THEMES[ORDER[Math.floor(r() * ORDER.length)]];
+  const sp = specialOf(seed);
+  if (sp === 'tarmac') theme = THEMES.tarmac;
+  else if (sp === 'night') theme = THEMES.nightwood;
+  else if (sp === 'street') theme = THEMES.street;
+  else if (sp === 'country') theme = THEMES.country;
+  else if (sp === 'cliff') theme = THEMES.cliff;
+  else if (sp === 'river') theme = THEMES[['forest', 'autumn', 'alpine'][Math.floor(r() * 3)]];
+  const hilliness = 0.6 + r() * 1.0;        // 0.6 (flat and fast) .. 1.6 (big hills)
+  return { theme, hilliness };
+}
