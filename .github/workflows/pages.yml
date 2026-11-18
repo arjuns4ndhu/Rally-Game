@@ -21,6 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true   # switch Pages on in the repo the first time
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
